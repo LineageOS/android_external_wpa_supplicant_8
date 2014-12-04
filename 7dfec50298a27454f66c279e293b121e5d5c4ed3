@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "key": {
+        "uuid": "bab6814e_38e25404",
+        "filename": "hostapd/Android.mk",
+        "patchSetId": 1
+      },
+      "lineNbr": 36,
+      "author": {
+        "id": 2936
+      },
+      "writtenOn": "2014-12-04T17:31:30Z",
+      "side": 1,
+      "message": "extra space there",
+      "revId": "7dfec50298a27454f66c279e293b121e5d5c4ed3",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": false
+    }
+  ]
+}
