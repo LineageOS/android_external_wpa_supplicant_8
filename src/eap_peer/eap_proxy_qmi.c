@@ -2050,12 +2050,16 @@ int eap_proxy_sm_get_status(struct eap_proxy_sm *sm, char *buf, size_t buflen,
                 return 0;
 
         if (sm->eap_type != EAP_TYPE_NONE) {
-                char name[8] = "Unknown";
+                char name[8];
 
-        if (sm->eap_type == EAP_TYPE_SIM)
-                os_strlcpy(name, "SIM", 4);
-        else if (sm->eap_type == EAP_TYPE_AKA)
-                os_strlcpy(name, "AKA", 4);
+                if (sm->eap_type == EAP_TYPE_SIM)
+                        os_strlcpy(name, "SIM", 4);
+                else if (sm->eap_type == EAP_TYPE_AKA)
+                        os_strlcpy(name, "AKA", 4);
+                else if (sm->eap_type == EAP_TYPE_AKA_PRIME)
+                        os_strlcpy(name, "AKA'", 5);
+                else
+                        os_strlcpy(name, "Unknown", 8);
 
                 ret = os_snprintf(buf + len, buflen - len,
                                 "selectedMethod=%d (EAP-%s)\n",
