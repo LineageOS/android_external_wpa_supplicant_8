@@ -1029,6 +1029,7 @@ struct wpa_supplicant {
 	unsigned int extra_roc_dur;
 	enum wpa_supplicant_test_failure test_failure;
 	unsigned int p2p_go_csa_on_inv:1;
+	unsigned int ignore_assoc_disallow:1;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	struct wmm_ac_assoc_data *wmm_ac_assoc_info;
