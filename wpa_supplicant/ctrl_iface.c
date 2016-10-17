@@ -486,6 +486,8 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 		wpa_s->p2p_go_csa_on_inv = !!atoi(value);
 	} else if (os_strcasecmp(cmd, "ignore_assoc_disallow") == 0) {
 		wpa_s->ignore_assoc_disallow = !!atoi(value);
+	} else if (os_strcasecmp(cmd, "reject_btm_req_reason") == 0) {
+		wpa_s->reject_btm_req_reason = atoi(value);
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifndef CONFIG_NO_CONFIG_BLOBS
 	} else if (os_strcmp(cmd, "blob") == 0) {
@@ -6386,6 +6388,7 @@ static int get_anqp(struct wpa_supplicant *wpa_s, char *dst)
 	u16 id[MAX_ANQP_INFO_ID];
 	size_t num_id = 0;
 	u32 subtypes = 0;
+	int get_cell_pref = 0;
 
 	used = hwaddr_aton2(dst, dst_addr);
 	if (used < 0)
@@ -6403,6 +6406,15 @@ static int get_anqp(struct wpa_supplicant *wpa_s, char *dst)
 #else /* CONFIG_HS20 */
 			return -1;
 #endif /* CONFIG_HS20 */
+		} else if (os_strncmp(pos, "mbo:", 4) == 0) {
+#ifdef CONFIG_MBO
+			int num = atoi(pos + 4);
+			if (num != MBO_ANQP_SUBTYPE_CELL_CONN_PREF)
+				return -1;
+			get_cell_pref = 1;
+#else /* CONFIG_MBO */
+			return -1;
+#endif /* CONFIG_MBO */
 		} else {
 			id[num_id] = atoi(pos);
 			if (id[num_id])
@@ -6417,7 +6429,8 @@ static int get_anqp(struct wpa_supplicant *wpa_s, char *dst)
 	if (num_id == 0)
 		return -1;
 
-	return anqp_send_req(wpa_s, dst_addr, id, num_id, subtypes);
+	return anqp_send_req(wpa_s, dst_addr, id, num_id, subtypes,
+			     get_cell_pref);
 }
 
 
@@ -7182,6 +7195,7 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 	wpa_s->test_failure = WPAS_TEST_FAILURE_NONE;
 	wpa_s->p2p_go_csa_on_inv = 0;
 	wpa_s->ignore_assoc_disallow = 0;
+	wpa_s->reject_btm_req_reason = 0;
 	wpa_sm_set_test_assoc_ie(wpa_s->wpa, NULL);
 #endif /* CONFIG_TESTING_OPTIONS */
 
