@@ -164,8 +164,11 @@ enum qca_radiotap_vendor_ids {
  *
  * @QCA_NL80211_VENDOR_SUBCMD_AOA_MEAS: Perform a standalone AOA (angle of
  *	arrival) measurement with a single peer. Specify peer MAC address in
- *	QCA_WLAN_VENDOR_ATTR_MAC_ADDR and measurement type in
- *	QCA_WLAN_VENDOR_ATTR_AOA_TYPE. Measurement result is reported in
+ *	QCA_WLAN_VENDOR_ATTR_MAC_ADDR and optionally frequency (MHz) in
+ *	QCA_WLAN_VENDOR_ATTR_FREQ (if not specified, locate peer in kernel
+ *	scan results cache and use the frequency from there).
+ *	Also specify measurement type in QCA_WLAN_VENDOR_ATTR_AOA_TYPE.
+ *	Measurement result is reported in
  *	QCA_NL80211_VENDOR_SUBCMD_AOA_MEAS_RESULT event.
  *
  * @QCA_NL80211_VENDOR_SUBCMD_AOA_ABORT_MEAS: Abort an AOA measurement. Specify
@@ -182,6 +185,9 @@ enum qca_radiotap_vendor_ids {
  *
  * @QCA_NL80211_VENDOR_SUBCMD_ENCRYPTION_TEST: Encrypt/decrypt the given
  *	data as per the given parameters.
+ *
+ * @QCA_NL80211_VENDOR_SUBCMD_GET_CHAIN_RSSI: Get antenna RSSI value for a
+ *	specific chain.
  */
 enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
@@ -281,6 +287,7 @@ enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_AOA_ABORT_MEAS = 135,
 	QCA_NL80211_VENDOR_SUBCMD_AOA_MEAS_RESULT = 136,
 	QCA_NL80211_VENDOR_SUBCMD_ENCRYPTION_TEST = 137,
+	QCA_NL80211_VENDOR_SUBCMD_GET_CHAIN_RSSI = 138,
 };
 
 
@@ -381,6 +388,15 @@ enum qca_wlan_vendor_attr {
 	 * antenna in the measured array(s).
 	 */
 	QCA_WLAN_VENDOR_ATTR_AOA_MEAS_RESULT = 25,
+	/* Used in QCA_NL80211_VENDOR_SUBCMD_GET_CHAIN_RSSI command
+	 * to specify the chain number (unsigned 32 bit value) to inquire
+	 * the corresponding antenna RSSI value */
+	QCA_WLAN_VENDOR_ATTR_CHAIN_INDEX = 26,
+	/* Used in QCA_NL80211_VENDOR_SUBCMD_GET_CHAIN_RSSI command
+	 * to report the specific antenna RSSI value (unsigned 32 bit value) */
+	QCA_WLAN_VENDOR_ATTR_CHAIN_RSSI = 27,
+	/* Frequency in MHz, various uses. Unsigned 32 bit value */
+	QCA_WLAN_VENDOR_ATTR_FREQ = 28,
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_MAX	= QCA_WLAN_VENDOR_ATTR_AFTER_LAST - 1,
@@ -566,6 +582,25 @@ enum qca_set_band {
 	QCA_SETBAND_AUTO,
 	QCA_SETBAND_5G,
 	QCA_SETBAND_2G,
+};
+
+/**
+ * enum qca_access_policy - Access control policy
+ *
+ * Access control policy is applied on the configured IE
+ * (QCA_WLAN_VENDOR_ATTR_CONFIG_ACCESS_POLICY_IE).
+ * To be set with QCA_WLAN_VENDOR_ATTR_CONFIG_ACCESS_POLICY.
+ *
+ * @QCA_ACCESS_POLICY_ACCEPT_UNLESS_LISTED: Deny Wi-Fi connections which match
+ *	the specific configuration (IE) set, i.e., allow all the
+ *	connections which do not match the configuration.
+ * @QCA_ACCESS_POLICY_DENY_UNLESS_LISTED: Accept Wi-Fi connections which match
+ *	the specific configuration (IE) set, i.e., deny all the
+ *	connections which do not match the configuration.
+ */
+enum qca_access_policy {
+	QCA_ACCESS_POLICY_ACCEPT_UNLESS_LISTED,
+	QCA_ACCESS_POLICY_DENY_UNLESS_LISTED,
 };
 
 /**
@@ -815,6 +850,49 @@ enum qca_wlan_vendor_attr_config {
 	 * present in the scan request, then that IE should be added to the IEs
 	 * sent in the Probe Request frames for that scan request. */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_SCAN_DEFAULT_IES,
+	/* Unsigned 32-bit attribute for generic commands */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_GENERIC_COMMAND,
+	/* Unsigned 32-bit value attribute for generic commands */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_GENERIC_VALUE,
+	/* Unsigned 32-bit data attribute for generic command response */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_GENERIC_DATA,
+	/* Unsigned 32-bit length attribute for
+	 * QCA_WLAN_VENDOR_ATTR_CONFIG_GENERIC_DATA */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_GENERIC_LENGTH,
+	/* Unsigned 32-bit flags attribute for
+	 * QCA_WLAN_VENDOR_ATTR_CONFIG_GENERIC_DATA */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_GENERIC_FLAGS,
+	/* Unsigned 32-bit, defining the access policy.
+	 * See enum qca_access_policy. Used with
+	 * QCA_WLAN_VENDOR_ATTR_CONFIG_ACCESS_POLICY_IE_LIST. */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_ACCESS_POLICY,
+	/* Sets the list of full set of IEs for which a specific access policy
+	 * has to be applied. Used along with
+	 * QCA_WLAN_VENDOR_ATTR_CONFIG_ACCESS_POLICY to control the access.
+	 * Zero length payload can be used to clear this access constraint. */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_ACCESS_POLICY_IE_LIST,
+	/* Unsigned 32-bit, specifies the interface index (netdev) for which the
+	 * corresponding configurations are applied. If the interface index is
+	 * not specified, the configurations are attributed to the respective
+	 * wiphy. */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_IFINDEX,
+	/* 8-bit unsigned value to trigger QPower: 1-Enable, 0-Disable */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_QPOWER,
+	/* 8-bit unsigned value to configure the driver and below layers to
+	 * ignore the assoc disallowed set by APs while connecting
+	 * 1-Ignore, 0-Don't ignore */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_IGNORE_ASSOC_DISALLOWED,
+	/* 32-bit unsigned value to trigger antenna diversity features:
+	 * 1-Enable, 0-Disable */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_ANT_DIV_ENA,
+	/* 32-bit unsigned value to configure specific chain antenna */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_ANT_DIV_CHAIN,
+	/* 32-bit unsigned value to trigger cycle selftest
+	 * 1-Enable, 0-Disable */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_ANT_DIV_SELFTEST,
+	/* 32-bit unsigned to configure the cycle time of selftest
+	 * the unit is micro-second */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_ANT_DIV_SELFTEST_INTVL,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
@@ -1030,6 +1108,10 @@ enum qca_wlan_vendor_attr_loc_capa_flags {
  * @QCA_WLAN_VENDOR_ATTR_FTM_PEER_AOA_BURST_PERIOD: Request AOA
  *	measurement every <value> bursts. If 0 or not specified,
  *	AOA measurements will be disabled for this peer.
+ * @QCA_WLAN_VENDOR_ATTR_FTM_PEER_FREQ: Frequency in MHz where
+ *	the measurement frames are exchanged. Optional; if not
+ *	specified, try to locate the peer in the kernel scan
+ *	results cache and use frequency from there.
  */
 enum qca_wlan_vendor_attr_ftm_peer_info {
 	QCA_WLAN_VENDOR_ATTR_FTM_PEER_INVALID,
@@ -1038,6 +1120,7 @@ enum qca_wlan_vendor_attr_ftm_peer_info {
 	QCA_WLAN_VENDOR_ATTR_FTM_PEER_MEAS_PARAMS,
 	QCA_WLAN_VENDOR_ATTR_FTM_PEER_SECURE_TOKEN_ID,
 	QCA_WLAN_VENDOR_ATTR_FTM_PEER_AOA_BURST_PERIOD,
+	QCA_WLAN_VENDOR_ATTR_FTM_PEER_FREQ,
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_FTM_PEER_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_FTM_PEER_MAX =
