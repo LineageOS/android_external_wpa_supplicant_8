@@ -616,6 +616,12 @@ static void wpa_set_scan_ssids(struct wpa_supplicant *wpa_s,
 	unsigned int i;
 	struct wpa_ssid *ssid;
 
+	/*
+	 * For devices with max_ssids greater than 1, leave the last slot empty
+	 * for adding the wildcard scan entry.
+	 */
+	max_ssids = max_ssids > 1 ? max_ssids - 1 : max_ssids;
+
 	for (i = 0; i < wpa_s->scan_id_count; i++) {
 		unsigned int j;
 
@@ -2723,4 +2729,32 @@ fail:
 	os_free(scan_plans);
 	wpa_printf(MSG_ERROR, "invalid scan plans list");
 	return -1;
+}
+
+
+/**
+ * wpas_scan_reset_sched_scan - Reset sched_scan state
+ * @wpa_s: Pointer to wpa_supplicant data
+ *
+ * This function is used to cancel a running scheduled scan and to reset an
+ * internal scan state to continue with a regular scan on the following
+ * wpa_supplicant_req_scan() calls.
+ */
+void wpas_scan_reset_sched_scan(struct wpa_supplicant *wpa_s)
+{
+	wpa_s->normal_scans = 0;
+	if (wpa_s->sched_scanning) {
+		wpa_s->sched_scan_timed_out = 0;
+		wpa_s->prev_sched_ssid = NULL;
+		wpa_supplicant_cancel_sched_scan(wpa_s);
+	}
+}
+
+
+void wpas_scan_restart_sched_scan(struct wpa_supplicant *wpa_s)
+{
+	/* simulate timeout to restart the sched scan */
+	wpa_s->sched_scan_timed_out = 1;
+	wpa_s->prev_sched_ssid = NULL;
+	wpa_supplicant_cancel_sched_scan(wpa_s);
 }
