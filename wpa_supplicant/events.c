@@ -1078,6 +1078,10 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 			continue;
 		}
 #ifdef CONFIG_MBO
+#ifdef CONFIG_TESTING_OPTIONS
+		if (wpa_s->ignore_assoc_disallow)
+			goto skip_assoc_disallow;
+#endif /* CONFIG_TESTING_OPTIONS */
 		assoc_disallow = wpas_mbo_get_bss_attr(
 			bss, MBO_ATTR_ID_ASSOC_DISALLOW);
 		if (assoc_disallow && assoc_disallow[1] >= 1) {
@@ -1092,6 +1096,9 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 				"   skip - MBO retry delay has not passed yet");
 			continue;
 		}
+#ifdef CONFIG_TESTING_OPTIONS
+	skip_assoc_disallow:
+#endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_MBO */
 
 		/* Matching configuration found */
@@ -3183,14 +3190,16 @@ static void wpa_supplicant_update_channel_list(
 		free_hw_features(ifs);
 		ifs->hw.modes = wpa_drv_get_hw_feature_data(
 			ifs, &ifs->hw.num_modes, &ifs->hw.flags);
-	}
 
-	/* Restart sched_scan with updated channel list */
-	if (wpa_s->sched_scanning) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"Channel list changed restart sched scan.");
-		wpa_supplicant_cancel_sched_scan(wpa_s);
-		wpa_supplicant_req_scan(wpa_s, 0, 0);
+		/* Restart PNO/sched_scan with updated channel list */
+		if (ifs->pno) {
+			wpas_stop_pno(ifs);
+			wpas_start_pno(ifs);
+		} else if (ifs->sched_scanning && !ifs->pno_sched_pending) {
+			wpa_dbg(ifs, MSG_DEBUG,
+				"Channel list changed - restart sched_scan");
+			wpas_scan_restart_sched_scan(ifs);
+		}
 	}
 
 	wpas_p2p_update_channel_list(wpa_s, WPAS_P2P_CHANNEL_UPDATE_DRIVER);
