@@ -1028,7 +1028,9 @@ struct wpa_supplicant {
 	struct l2_packet_data *l2_test;
 	unsigned int extra_roc_dur;
 	enum wpa_supplicant_test_failure test_failure;
+	unsigned int reject_btm_req_reason;
 	unsigned int p2p_go_csa_on_inv:1;
+	unsigned int ignore_assoc_disallow:1;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	struct wmm_ac_assoc_data *wmm_ac_assoc_info;
@@ -1052,7 +1054,6 @@ struct wpa_supplicant {
 		enum mbo_non_pref_chan_reason reason;
 		u8 oper_class;
 		u8 chan;
-		u8 reason_detail;
 		u8 preference;
 	} *non_pref_chan;
 	size_t non_pref_chan_num;
@@ -1193,6 +1194,8 @@ size_t wpas_mbo_ie_bss_trans_reject(struct wpa_supplicant *wpa_s, u8 *pos,
 				    size_t len,
 				    enum mbo_transition_reject_reason reason);
 void wpas_mbo_update_cell_capa(struct wpa_supplicant *wpa_s, u8 mbo_cell_capa);
+struct wpabuf * mbo_build_anqp_buf(struct wpa_supplicant *wpa_s,
+				   struct wpa_bss *bss);
 
 /**
  * wpa_supplicant_ctrl_iface_ctrl_rsp_handle - Handle a control response

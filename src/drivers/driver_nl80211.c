@@ -2050,6 +2050,49 @@ static int nl80211_register_spurious_class3(struct i802_bss *bss)
 }
 
 
+static int nl80211_action_subscribe_ap(struct i802_bss *bss)
+{
+	int ret = 0;
+
+	/* Public Action frames */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x04", 1) < 0)
+		ret = -1;
+	/* RRM Measurement Report */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x05\x01", 2) < 0)
+		ret = -1;
+	/* RRM Neighbor Report Request */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x05\x04", 2) < 0)
+		ret = -1;
+	/* FT Action frames */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x06", 1) < 0)
+		ret = -1;
+#ifdef CONFIG_IEEE80211W
+	/* SA Query */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x08", 1) < 0)
+		ret = -1;
+#endif /* CONFIG_IEEE80211W */
+	/* Protected Dual of Public Action */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x09", 1) < 0)
+		ret = -1;
+	/* WNM */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x0a", 1) < 0)
+		ret = -1;
+	/* WMM */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x11", 1) < 0)
+		ret = -1;
+#ifdef CONFIG_FST
+	/* FST Action frames */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x12", 1) < 0)
+		ret = -1;
+#endif /* CONFIG_FST */
+	/* Vendor-specific */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x7f", 1) < 0)
+		ret = -1;
+
+	return ret;
+}
+
+
 static int nl80211_mgmt_subscribe_ap(struct i802_bss *bss)
 {
 	static const int stypes[] = {
@@ -2058,7 +2101,6 @@ static int nl80211_mgmt_subscribe_ap(struct i802_bss *bss)
 		WLAN_FC_STYPE_REASSOC_REQ,
 		WLAN_FC_STYPE_DISASSOC,
 		WLAN_FC_STYPE_DEAUTH,
-		WLAN_FC_STYPE_ACTION,
 		WLAN_FC_STYPE_PROBE_REQ,
 /* Beacon doesn't work as mac80211 doesn't currently allow
  * it, but it wouldn't really be the right thing anyway as
@@ -2083,6 +2125,9 @@ static int nl80211_mgmt_subscribe_ap(struct i802_bss *bss)
 		}
 	}
 
+	if (nl80211_action_subscribe_ap(bss))
+		goto out_err;
+
 	if (nl80211_register_spurious_class3(bss))
 		goto out_err;
 
@@ -2105,10 +2150,7 @@ static int nl80211_mgmt_subscribe_ap_dev_sme(struct i802_bss *bss)
 	wpa_printf(MSG_DEBUG, "nl80211: Subscribe to mgmt frames with AP "
 		   "handle %p (device SME)", bss->nl_mgmt);
 
-	if (nl80211_register_frame(bss, bss->nl_mgmt,
-				   (WLAN_FC_TYPE_MGMT << 2) |
-				   (WLAN_FC_STYPE_ACTION << 4),
-				   NULL, 0) < 0)
+	if (nl80211_action_subscribe_ap(bss))
 		goto out_err;
 
 	nl80211_mgmt_handle_register_eloop(bss);
@@ -9137,6 +9179,55 @@ static int nl80211_p2p_lo_stop(void *priv)
 
 	return send_and_recv_msgs(drv, msg, NULL, NULL);
 }
+
+static int nl80211_set_tdls_mode(void *priv, int tdls_external_control)
+{
+	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct nl_msg *msg;
+	struct nlattr *params;
+	int ret;
+	u32 tdls_mode;
+
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: Set TDKS mode: tdls_external_control=%d",
+		   tdls_external_control);
+
+	if (tdls_external_control == 1)
+		tdls_mode = QCA_WLAN_VENDOR_TDLS_TRIGGER_MODE_IMPLICIT |
+			QCA_WLAN_VENDOR_TDLS_TRIGGER_MODE_EXTERNAL;
+	else
+		tdls_mode = QCA_WLAN_VENDOR_TDLS_TRIGGER_MODE_EXPLICIT;
+
+	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR)) ||
+	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_QCA) ||
+	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
+			QCA_NL80211_VENDOR_SUBCMD_CONFIGURE_TDLS))
+		goto fail;
+
+	params = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA);
+	if (!params)
+		goto fail;
+
+	if (nla_put_u32(msg, QCA_WLAN_VENDOR_ATTR_TDLS_CONFIG_TRIGGER_MODE,
+			tdls_mode))
+		goto fail;
+
+	nla_nest_end(msg, params);
+
+	ret = send_and_recv_msgs(drv, msg, NULL, NULL);
+	msg = NULL;
+	if (ret) {
+		wpa_printf(MSG_ERROR,
+			   "nl80211: Set TDLS mode failed: ret=%d (%s)",
+			   ret, strerror(-ret));
+		goto fail;
+	}
+	return 0;
+fail:
+	nlmsg_free(msg);
+	return -1;
+}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 static int nl80211_get_ext_capab(void *priv, enum wpa_driver_if_type type,
@@ -9290,6 +9381,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.p2p_lo_start = nl80211_p2p_lo_start,
 	.p2p_lo_stop = nl80211_p2p_lo_stop,
 	.set_default_scan_ies = nl80211_set_default_scan_ies,
+	.set_tdls_mode = nl80211_set_tdls_mode,
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 	.get_ext_capab = nl80211_get_ext_capab,
 };
