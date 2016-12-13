@@ -166,8 +166,76 @@ static void wpa_qmi_client_indication_cb
         void                          *ind_cb_data
 )
 {
-        /* we currently not need the card status changes */
-        /* Making this a dummy CB handler */
+	u32 decoded_payload_len = 0;
+	qmi_client_error_type qmi_err = QMI_NO_ERR;
+	void * decoded_payload = NULL;
+	struct eap_proxy_sm *eap_proxy = ind_cb_data;
+	uim_status_change_ind_msg_v01* status_change_ind_ptr = NULL;
+	struct wpa_supplicant *wpa_s = NULL;
+	u32 i, card_info_len = 0;
+
+	wpa_printf(MSG_DEBUG, "eap_proxy: %s: msg_id=0x%lx", __func__, msg_id);
+
+	if (user_handle == NULL) {
+		wpa_printf(MSG_ERROR, "eap_proxy: qmi_client_type missing in callback");
+		return;
+	}
+
+	if (eap_proxy == NULL) {
+		wpa_printf(MSG_ERROR, "eap_proxy: not initialized, discard client indiataion");
+		return;
+	}
+
+	if (ind_buf_ptr == NULL) {
+		wpa_printf(MSG_ERROR, "eap_proxy: indication buffer NULL, discard client indiataion");
+		return;
+	}
+
+	qmi_idl_get_message_c_struct_len(uim_get_service_object_v01(),
+					 QMI_IDL_INDICATION, msg_id,
+					 &decoded_payload_len);
+
+	if(!decoded_payload_len) {
+		wpa_printf(MSG_ERROR, "eap_proxy: cann't decode payload, discard client indiataion");
+		return;
+	}
+
+	decoded_payload = os_zalloc(decoded_payload_len);
+	if (decoded_payload == NULL) {
+		wpa_printf(MSG_ERROR, "eap_proxy: failed to allocate memory");
+		return;
+	}
+
+	qmi_err = qmi_client_message_decode(user_handle,
+					    QMI_IDL_INDICATION, msg_id,
+					    ind_buf_ptr, ind_buf_len,
+					    decoded_payload, decoded_payload_len);
+
+	if (qmi_err == QMI_NO_ERR) {
+		switch (msg_id) {
+		case QMI_UIM_STATUS_CHANGE_IND_V01:
+			status_change_ind_ptr = (uim_status_change_ind_msg_v01*)decoded_payload;
+			if (!status_change_ind_ptr->card_status_valid)
+				goto fail;
+
+			card_info_len = status_change_ind_ptr->card_status.card_info_len;
+			for (i = 0; i < card_info_len; i++) {
+				if(UIM_CARD_STATE_PRESENT_V01 !=
+				    status_change_ind_ptr->card_status.card_info[i].card_state) {
+					wpa_printf(MSG_DEBUG, "eap_proxy: %s SIM card removed. flush pmksa entries.", __func__);
+					eap_proxy->eapol_cb->eap_proxy_notify_sim_status(eap_proxy->ctx, SIM_STATE_ERROR);
+					break; /* only one flush will do */
+				}
+			}
+			break;
+		default:
+			wpa_printf(MSG_DEBUG, "eap_proxy: Unknown QMI Indicaiton %lu", msg_id);
+			break;
+		}
+	}
+fail:
+	os_free(decoded_payload);
+	return;
 }
 
 static Boolean wpa_qmi_register_auth_inds(struct eap_proxy_sm *eap_proxy)
