@@ -341,4 +341,8 @@ enum wpa_radio_work_band {
 	BAND_60_GHZ = BIT(2),
 };
 
+enum eap_proxy_sim_state {
+	SIM_STATE_ERROR,
+};
+
 #endif /* DEFS_H */
