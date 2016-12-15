@@ -484,6 +484,10 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 		wpa_s->test_failure = atoi(value);
 	} else if (os_strcasecmp(cmd, "p2p_go_csa_on_inv") == 0) {
 		wpa_s->p2p_go_csa_on_inv = !!atoi(value);
+	} else if (os_strcasecmp(cmd, "ignore_assoc_disallow") == 0) {
+		wpa_s->ignore_assoc_disallow = !!atoi(value);
+	} else if (os_strcasecmp(cmd, "reject_btm_req_reason") == 0) {
+		wpa_s->reject_btm_req_reason = atoi(value);
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifndef CONFIG_NO_CONFIG_BLOBS
 	} else if (os_strcmp(cmd, "blob") == 0) {
@@ -497,6 +501,8 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 	} else if (os_strcasecmp(cmd, "mbo_cell_capa") == 0) {
 		wpas_mbo_update_cell_capa(wpa_s, atoi(value));
 #endif /* CONFIG_MBO */
+	} else if (os_strcasecmp(cmd, "tdls_trigger_control") == 0) {
+		ret = wpa_drv_set_tdls_mode(wpa_s, atoi(value));
 	} else {
 		value[-1] = '=';
 		ret = wpa_config_process_global(wpa_s->conf, cmd, -1);
@@ -6384,6 +6390,7 @@ static int get_anqp(struct wpa_supplicant *wpa_s, char *dst)
 	u16 id[MAX_ANQP_INFO_ID];
 	size_t num_id = 0;
 	u32 subtypes = 0;
+	int get_cell_pref = 0;
 
 	used = hwaddr_aton2(dst, dst_addr);
 	if (used < 0)
@@ -6401,6 +6408,15 @@ static int get_anqp(struct wpa_supplicant *wpa_s, char *dst)
 #else /* CONFIG_HS20 */
 			return -1;
 #endif /* CONFIG_HS20 */
+		} else if (os_strncmp(pos, "mbo:", 4) == 0) {
+#ifdef CONFIG_MBO
+			int num = atoi(pos + 4);
+			if (num != MBO_ANQP_SUBTYPE_CELL_CONN_PREF)
+				return -1;
+			get_cell_pref = 1;
+#else /* CONFIG_MBO */
+			return -1;
+#endif /* CONFIG_MBO */
 		} else {
 			id[num_id] = atoi(pos);
 			if (id[num_id])
@@ -6415,7 +6431,8 @@ static int get_anqp(struct wpa_supplicant *wpa_s, char *dst)
 	if (num_id == 0)
 		return -1;
 
-	return anqp_send_req(wpa_s, dst_addr, id, num_id, subtypes);
+	return anqp_send_req(wpa_s, dst_addr, id, num_id, subtypes,
+			     get_cell_pref);
 }
 
 
@@ -7179,6 +7196,8 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 	wpa_s->extra_roc_dur = 0;
 	wpa_s->test_failure = WPAS_TEST_FAILURE_NONE;
 	wpa_s->p2p_go_csa_on_inv = 0;
+	wpa_s->ignore_assoc_disallow = 0;
+	wpa_s->reject_btm_req_reason = 0;
 	wpa_sm_set_test_assoc_ie(wpa_s->wpa, NULL);
 #endif /* CONFIG_TESTING_OPTIONS */
 
@@ -8357,10 +8376,7 @@ static int wpas_ctrl_iface_mac_rand_scan(struct wpa_supplicant *wpa_s,
 			}
 		} else if (wpa_s->sched_scanning &&
 			   (type & MAC_ADDR_RAND_SCHED_SCAN)) {
-			/* simulate timeout to restart the sched scan */
-			wpa_s->sched_scan_timed_out = 1;
-			wpa_s->prev_sched_ssid = NULL;
-			wpa_supplicant_cancel_sched_scan(wpa_s);
+			wpas_scan_restart_sched_scan(wpa_s);
 		}
 		return 0;
 	}
@@ -8386,12 +8402,8 @@ static int wpas_ctrl_iface_mac_rand_scan(struct wpa_supplicant *wpa_s,
 		wpas_mac_addr_rand_scan_set(wpa_s, MAC_ADDR_RAND_SCHED_SCAN,
 					    addr, mask);
 
-		if (wpa_s->sched_scanning && !wpa_s->pno) {
-			/* simulate timeout to restart the sched scan */
-			wpa_s->sched_scan_timed_out = 1;
-			wpa_s->prev_sched_ssid = NULL;
-			wpa_supplicant_cancel_sched_scan(wpa_s);
-		}
+		if (wpa_s->sched_scanning && !wpa_s->pno)
+			wpas_scan_restart_sched_scan(wpa_s);
 	}
 
 	if (type & MAC_ADDR_RAND_PNO) {

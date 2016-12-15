@@ -14,6 +14,7 @@
 
 #include "utils/common.h"
 #include "common/ieee802_11_defs.h"
+#include "common/gas.h"
 #include "config.h"
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
@@ -68,14 +69,13 @@ static void wpas_mbo_non_pref_chan_attr_body(struct wpa_supplicant *wpa_s,
 
 	wpabuf_put_u8(mbo, wpa_s->non_pref_chan[start].preference);
 	wpabuf_put_u8(mbo, wpa_s->non_pref_chan[start].reason);
-	wpabuf_put_u8(mbo, wpa_s->non_pref_chan[start].reason_detail);
 }
 
 
 static void wpas_mbo_non_pref_chan_attr(struct wpa_supplicant *wpa_s,
 					struct wpabuf *mbo, u8 start, u8 end)
 {
-	size_t size = end - start + 4;
+	size_t size = end - start + 3;
 
 	if (size + 2 > wpabuf_tailroom(mbo))
 		return;
@@ -100,7 +100,7 @@ static void wpas_mbo_non_pref_chan_subelement(struct wpa_supplicant *wpa_s,
 					      struct wpabuf *mbo, u8 start,
 					      u8 end)
 {
-	size_t size = end - start + 8;
+	size_t size = end - start + 7;
 
 	if (size + 2 > wpabuf_tailroom(mbo))
 		return;
@@ -131,7 +131,6 @@ static void wpas_mbo_non_pref_chan_attrs(struct wpa_supplicant *wpa_s,
 		if (!non_pref ||
 		    non_pref->oper_class != start_pref->oper_class ||
 		    non_pref->reason != start_pref->reason ||
-		    non_pref->reason_detail != start_pref->reason_detail ||
 		    non_pref->preference != start_pref->preference) {
 			if (subelement)
 				wpas_mbo_non_pref_chan_subelement(wpa_s, mbo,
@@ -250,9 +249,9 @@ static int wpa_non_pref_chan_is_eq(struct wpa_mbo_non_pref_channel *a,
  *
  * In MBO IE non-preferred channel subelement we can put many channels in an
  * attribute if they are in the same operating class and have the same
- * preference, reason, and reason detail. To make it easy for the functions that
- * build the IE attributes and WNM Request subelements, save the channels sorted
- * by their oper_class, reason, and reason_detail.
+ * preference and reason. To make it easy for the functions that build
+ * the IE attributes and WNM Request subelements, save the channels sorted
+ * by their oper_class and reason.
  */
 static int wpa_non_pref_chan_cmp(const void *_a, const void *_b)
 {
@@ -262,8 +261,6 @@ static int wpa_non_pref_chan_cmp(const void *_a, const void *_b)
 		return a->oper_class - b->oper_class;
 	if (a->reason != b->reason)
 		return a->reason - b->reason;
-	if (a->reason_detail != b->reason_detail)
-		return a->reason_detail - b->reason_detail;
 	return a->preference - b->preference;
 }
 
@@ -298,7 +295,6 @@ int wpas_mbo_update_non_pref_chan(struct wpa_supplicant *wpa_s,
 		unsigned int _chan;
 		unsigned int _preference;
 		unsigned int _reason;
-		unsigned int _reason_detail;
 
 		if (num == size) {
 			size = size ? size * 2 : 1;
@@ -314,13 +310,11 @@ int wpas_mbo_update_non_pref_chan(struct wpa_supplicant *wpa_s,
 
 		chan = &chans[num];
 
-		ret = sscanf(token, "%u:%u:%u:%u:%u", &_oper_class,
-			     &_chan, &_preference, &_reason,
-			     &_reason_detail);
-		if ((ret != 4 && ret != 5) ||
+		ret = sscanf(token, "%u:%u:%u:%u", &_oper_class,
+			     &_chan, &_preference, &_reason);
+		if (ret != 4 ||
 		    _oper_class > 255 || _chan > 255 ||
-		    _preference > 255 || _reason > 65535 ||
-		    (ret == 5 && _reason_detail > 255)) {
+		    _preference > 255 || _reason > 65535 ) {
 			wpa_printf(MSG_ERROR, "Invalid non-pref chan input %s",
 				   token);
 			goto fail;
@@ -329,7 +323,6 @@ int wpas_mbo_update_non_pref_chan(struct wpa_supplicant *wpa_s,
 		chan->chan = _chan;
 		chan->preference = _preference;
 		chan->reason = _reason;
-		chan->reason_detail = ret == 4 ? 0 : _reason_detail;
 
 		if (wpas_mbo_validate_non_pref_chan(chan->oper_class,
 						    chan->chan, chan->reason)) {
@@ -517,8 +510,8 @@ static enum chan_allowed verify_160mhz(struct hostapd_hw_modes *mode,
 }
 
 
-enum chan_allowed verify_channel(struct hostapd_hw_modes *mode, u8 channel,
-				 u8 bw)
+static enum chan_allowed verify_channel(struct hostapd_hw_modes *mode,
+					u8 channel, u8 bw)
 {
 	unsigned int flag = 0;
 	enum chan_allowed res, res2;
@@ -533,9 +526,26 @@ enum chan_allowed verify_channel(struct hostapd_hw_modes *mode, u8 channel,
 			return NOT_ALLOWED;
 		res2 = allow_channel(mode, channel + 4, NULL);
 	} else if (bw == BW80) {
-		res2 = verify_80mhz(mode, channel);
+		/*
+		 * channel is a center channel and as such, not necessarily a
+		 * valid 20 MHz channels. Override earlier allow_channel()
+		 * result and use only the 80 MHz specific version.
+		 */
+		res2 = res = verify_80mhz(mode, channel);
 	} else if (bw == BW160) {
-		res2 = verify_160mhz(mode, channel);
+		/*
+		 * channel is a center channel and as such, not necessarily a
+		 * valid 20 MHz channels. Override earlier allow_channel()
+		 * result and use only the 160 MHz specific version.
+		 */
+		res2 = res = verify_160mhz(mode, channel);
+	} else if (bw == BW80P80) {
+		/*
+		 * channel is a center channel and as such, not necessarily a
+		 * valid 20 MHz channels. Override earlier allow_channel()
+		 * result and use only the 80 MHz specific version.
+		 */
+		res2 = res = verify_80mhz(mode, channel);
 	}
 
 	if (res == NOT_ALLOWED || res2 == NOT_ALLOWED)
@@ -551,38 +561,63 @@ static int wpas_op_class_supported(struct wpa_supplicant *wpa_s,
 	int chan;
 	size_t i;
 	struct hostapd_hw_modes *mode;
+	int found;
 
 	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, op_class->mode);
 	if (!mode)
 		return 0;
 
-	if (op_class->op_class == 128 || op_class->op_class == 130) {
+	if (op_class->op_class == 128) {
 		u8 channels[] = { 42, 58, 106, 122, 138, 155 };
 
 		for (i = 0; i < ARRAY_SIZE(channels); i++) {
 			if (verify_channel(mode, channels[i], op_class->bw) ==
-			    NOT_ALLOWED)
-				return 0;
+			    ALLOWED)
+				return 1;
 		}
 
-		return 1;
+		return 0;
 	}
 
 	if (op_class->op_class == 129) {
-		if (verify_channel(mode, 50, op_class->bw) == NOT_ALLOWED ||
-		    verify_channel(mode, 114, op_class->bw) == NOT_ALLOWED)
-			return 0;
-
-		return 1;
+		/* Check if either 160 MHz channels is allowed */
+		return verify_channel(mode, 50, op_class->bw) == ALLOWED ||
+			verify_channel(mode, 114, op_class->bw) == ALLOWED;
 	}
 
+	if (op_class->op_class == 130) {
+		/* Need at least two non-contiguous 80 MHz segments */
+		found = 0;
+
+		if (verify_channel(mode, 42, op_class->bw) == ALLOWED ||
+		    verify_channel(mode, 58, op_class->bw) == ALLOWED)
+			found++;
+		if (verify_channel(mode, 106, op_class->bw) == ALLOWED ||
+		    verify_channel(mode, 122, op_class->bw) == ALLOWED ||
+		    verify_channel(mode, 138, op_class->bw) == ALLOWED)
+			found++;
+		if (verify_channel(mode, 106, op_class->bw) == ALLOWED &&
+		    verify_channel(mode, 138, op_class->bw) == ALLOWED)
+			found++;
+		if (verify_channel(mode, 155, op_class->bw) == ALLOWED)
+			found++;
+
+		if (found >= 2)
+			return 1;
+
+		return 0;
+	}
+
+	found = 0;
 	for (chan = op_class->min_chan; chan <= op_class->max_chan;
 	     chan += op_class->inc) {
-		if (verify_channel(mode, chan, op_class->bw) == NOT_ALLOWED)
-			return 0;
+		if (verify_channel(mode, chan, op_class->bw) == ALLOWED) {
+			found = 1;
+			break;
+		}
 	}
 
-	return 1;
+	return found;
 }
 
 
@@ -770,4 +805,32 @@ void wpas_mbo_update_cell_capa(struct wpa_supplicant *wpa_s, u8 mbo_cell_capa)
 
 	wpas_mbo_send_wnm_notification(wpa_s, cell_capa, 7);
 	wpa_supplicant_set_default_scan_ies(wpa_s);
+}
+
+
+struct wpabuf * mbo_build_anqp_buf(struct wpa_supplicant *wpa_s,
+				   struct wpa_bss *bss)
+{
+	struct wpabuf *anqp_buf;
+	u8 *len_pos;
+
+	if (!wpa_bss_get_vendor_ie(bss, MBO_IE_VENDOR_TYPE)) {
+		wpa_printf(MSG_INFO, "MBO: " MACSTR
+			   " does not support MBO - cannot request MBO ANQP elements from it",
+			   MAC2STR(bss->bssid));
+		return NULL;
+	}
+
+	anqp_buf = wpabuf_alloc(10);
+	if (!anqp_buf)
+		return NULL;
+
+	len_pos = gas_anqp_add_element(anqp_buf, ANQP_VENDOR_SPECIFIC);
+	wpabuf_put_be24(anqp_buf, OUI_WFA);
+	wpabuf_put_u8(anqp_buf, MBO_ANQP_OUI_TYPE);
+
+	wpabuf_put_u8(anqp_buf, MBO_ANQP_SUBTYPE_CELL_CONN_PREF);
+	gas_anqp_set_element_len(anqp_buf, len_pos);
+
+	return anqp_buf;
 }
