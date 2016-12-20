@@ -101,8 +101,9 @@ static Boolean wpa_qmi_ssr = FALSE;
 static void eap_proxy_qmi_deinit(struct eap_proxy_sm *eap_proxy);
 static void eap_proxy_eapol_sm_set_bool(struct eap_proxy_sm *sm,
                          enum eapol_bool_var var, Boolean value);
-struct eap_proxy_sm * eap_proxy_init(void *eapol_ctx, struct eapol_callbacks *eapol_cb,
-               void *msg_ctx);
+struct eap_proxy_sm *
+eap_proxy_init(void *eapol_ctx, const struct eapol_callbacks *eapol_cb,
+	       void *msg_ctx);
 static Boolean eap_proxy_eapol_sm_get_bool(struct eap_proxy_sm *sm,
                                         enum eapol_bool_var var);
 
@@ -888,7 +889,7 @@ static void eap_proxy_schedule_thread(void *eloop_ctx, void *timeout_ctx)
 }
 
 struct eap_proxy_sm *
-eap_proxy_init(void *eapol_ctx, struct eapol_callbacks *eapol_cb,
+eap_proxy_init(void *eapol_ctx, const struct eapol_callbacks *eapol_cb,
                void *msg_ctx)
 {
         int qmiErrorCode;
