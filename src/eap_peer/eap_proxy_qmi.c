@@ -221,7 +221,7 @@ static void wpa_qmi_client_indication_cb
 
 			card_info_len = status_change_ind_ptr->card_status.card_info_len;
 			for (i = 0; i < card_info_len; i++) {
-				if(UIM_CARD_STATE_PRESENT_V01 !=
+				if(UIM_CARD_STATE_ABSENT_V01 ==
 				    status_change_ind_ptr->card_status.card_info[i].card_state) {
 					wpa_printf(MSG_DEBUG, "eap_proxy: %s SIM card removed. flush pmksa entries.", __func__);
 					eap_proxy->eapol_cb->eap_proxy_notify_sim_status(eap_proxy->ctx, SIM_STATE_ERROR);
