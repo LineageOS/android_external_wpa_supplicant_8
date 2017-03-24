@@ -51,10 +51,13 @@ typedef int stack_index_t;
 #endif /* OPENSSL_NO_TLSEXT */
 #endif /* SSL_set_tlsext_status_type */
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L || \
+     defined(LIBRESSL_VERSION_NUMBER)) &&    \
+    !defined(BORINGSSL_API_VERSION)
 /*
  * SSL_get_client_random() and SSL_get_server_random() were added in OpenSSL
- * 1.1.0. Provide compatibility wrappers for older versions.
+ * 1.1.0 and newer BoringSSL revisions. Provide compatibility wrappers for
+ * older versions.
  */
 
 static size_t SSL_get_client_random(const SSL *ssl, unsigned char *out,
