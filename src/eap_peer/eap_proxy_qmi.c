@@ -1602,16 +1602,16 @@ eap_proxy_packet_update(struct eap_proxy_sm *eap_proxy, u8 *eapReqData,
 
 static void dump_buff(u8 *buff, int len)
 {
-        int i ;
+        wpa_printf(MSG_ERROR, "eap_proxy: ---- EAP Buffer----LEN %d",len);
 
-        wpa_printf(MSG_ERROR, "eap_proxy: ---- EAP Buffer----LEN %d\n",len);
-        for (i = 0; i < len; i++) {
-                if (0 == i%8)
-                        wpa_printf(MSG_DEBUG, " \n");
-                wpa_printf(MSG_ERROR, "eap_proxy: 0x%x  ", buff[i]);
+        while (len > 32) {
+                wpa_hexdump(MSG_DEBUG, "eap_proxy:", buff, 32);
+                buff += 32;
+                len -= 32;
         }
-        return;
+        wpa_hexdump(MSG_DEBUG, "eap_proxy: ", buff, len);
 }
+
 static char bin_to_hexchar(u8 ch)
 {
         if (ch < 0x0a) {
