@@ -947,7 +947,6 @@ static void eap_proxy_qmi_deinit(struct eap_proxy_sm *eap_proxy)
                 } else {
                         wpa_printf (MSG_ERROR, "eap_proxy: session not started"
                                 " for client = %d\n", index+1);
-                        continue;
                 }
 
                 if ((TRUE == eap_proxy->qmi_uim_svc_client_initialized[index]))  {
@@ -961,13 +960,15 @@ static void eap_proxy_qmi_deinit(struct eap_proxy_sm *eap_proxy)
                         eap_proxy->qmi_uim_svc_client_initialized[index] = FALSE;
                 }
 
-                qmiRetCode = qmi_client_release(eap_proxy->qmi_auth_svc_client_ptr[index]);
-                if (QMI_NO_ERR != qmiRetCode) {
-                        wpa_printf (MSG_ERROR, "eap_proxy: Unable to Releas the connection"
-                                        " to auth service for client=%d; error_ret=%d\n;",
-                                        index+1, qmiRetCode);
-                }  else {
-                        wpa_printf(MSG_ERROR, "eap_proxy: Released QMI EAP service client\n");
+                if (NULL != eap_proxy->qmi_auth_svc_client_ptr[index]) {
+                        qmiRetCode = qmi_client_release(eap_proxy->qmi_auth_svc_client_ptr[index]);
+                        if (QMI_NO_ERR != qmiRetCode) {
+                                wpa_printf (MSG_ERROR, "eap_proxy: Unable to Releas the connection"
+                                                " to auth service for client=%d; error_ret=%d\n;",
+                                                index+1, qmiRetCode);
+                        }  else {
+                                wpa_printf(MSG_ERROR, "eap_proxy: Released QMI EAP service client\n");
+                        }
                 }
 
         }
