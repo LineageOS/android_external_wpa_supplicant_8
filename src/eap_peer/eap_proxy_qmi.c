@@ -898,12 +898,6 @@ eap_proxy_init(void *eapol_ctx, const struct eapol_callbacks *eapol_cb,
         }
 
         eap_proxy->proxy_state = EAP_PROXY_DISABLED;
-        eap_proxy->qmi_state = QMI_STATE_IDLE;
-        eap_proxy->key = NULL;
-        eap_proxy->iskey_valid = FALSE;
-        eap_proxy->is_state_changed = FALSE;
-        eap_proxy->isEap = FALSE;
-        eap_proxy->eap_type = EAP_TYPE_NONE;
 
         /* delay the qmi client initialization after the eloop_run starts,
         * in order to avoid the case of daemonize enabled, which exits the
