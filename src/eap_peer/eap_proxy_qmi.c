@@ -680,7 +680,12 @@ void wpa_qmi_handle_ssr(qmi_client_type user_handle, qmi_client_error_type error
         wpa_printf(MSG_DEBUG, "eap_proxy: %s ", __func__);
 
         wpa_qmi_ssr = TRUE;
-        eloop_register_timeout(0, 0, wpa_qmi_register_notification, eap_proxy, NULL);
+        if (eap_proxy->qmi_ssr_in_progress) {
+                wpa_printf(MSG_DEBUG, "eap_proxy: qmi_ssr_in_progress for eap_proxy=%p Skip another.", eap_proxy);
+        } else {
+                eap_proxy->qmi_ssr_in_progress = TRUE;
+                eloop_register_timeout(0, 0, wpa_qmi_register_notification, eap_proxy, NULL);
+        }
 }
 
 static void eap_proxy_post_init(struct eap_proxy_sm *eap_proxy)
@@ -813,6 +818,7 @@ static void eap_proxy_post_init(struct eap_proxy_sm *eap_proxy)
                 return;
         }
 
+        eap_proxy->qmi_ssr_in_progress = FALSE;
         eap_proxy->proxy_state = EAP_PROXY_IDLE;
         eap_proxy_eapol_sm_set_bool(eap_proxy, EAPOL_eapSuccess, FALSE);
         eap_proxy_eapol_sm_set_bool(eap_proxy, EAPOL_eapFail, FALSE);
