@@ -856,21 +856,22 @@ SupplicantStatus P2pIface::setListenChannelInternal(
 SupplicantStatus P2pIface::setDisallowedFrequenciesInternal(
     const std::vector<FreqRange>& ranges)
 {
-	if (ranges.size() == 0) {
-		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
-	}
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	using DestT = struct wpa_freq_range_list::wpa_freq_range;
-	DestT* freq_ranges =
-	    static_cast<DestT*>(os_malloc(sizeof(DestT) * ranges.size()));
-	if (!freq_ranges) {
-		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
-	}
-	uint32_t i = 0;
-	for (const auto& range : ranges) {
-		freq_ranges[i].min = range.min;
-		freq_ranges[i].max = range.max;
-		i++;
+	DestT* freq_ranges = nullptr;
+	// Empty ranges is used to enable all frequencies.
+	if (ranges.size() != 0) {
+		freq_ranges =
+		    static_cast<DestT*>(os_malloc(sizeof(DestT) * ranges.size()));
+		if (!freq_ranges) {
+			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+		}
+		uint32_t i = 0;
+		for (const auto& range : ranges) {
+			freq_ranges[i].min = range.min;
+			freq_ranges[i].max = range.max;
+			i++;
+		}
 	}
 
 	os_free(wpa_s->global->p2p_disallow_freq.range);

@@ -30,7 +30,7 @@ constexpr char kUmtsAuthRegex[] = "UMTS-AUTH:([0-9a-f]+):([0-9a-f]+)";
 constexpr size_t kGsmRandLenBytes = GSM_RAND_LEN;
 constexpr size_t kUmtsRandLenBytes = EAP_AKA_RAND_LEN;
 constexpr size_t kUmtsAutnLenBytes = EAP_AKA_AUTN_LEN;
-
+constexpr u8 kZeroBssid[6] = {0, 0, 0, 0, 0, 0};
 /**
  * Check if the provided |wpa_supplicant| structure represents a P2P iface or
  * not.
@@ -1323,22 +1323,21 @@ void HidlManager::notifyP2pSdResponse(
 void HidlManager::notifyApStaAuthorized(
     struct wpa_supplicant *wpa_s, const u8 *sta, const u8 *p2p_dev_addr)
 {
-	if (!wpa_s || !wpa_s->parent || !sta || !p2p_dev_addr)
+	if (!wpa_s || !wpa_s->parent || !sta)
 		return;
 	if (p2p_iface_object_map_.find(wpa_s->parent->ifname) ==
 	    p2p_iface_object_map_.end())
 		return;
-
 	callWithEachP2pIfaceCallback(
 	    wpa_s->parent->ifname, std::bind(
 			       &ISupplicantP2pIfaceCallback::onStaAuthorized,
-			       std::placeholders::_1, sta, p2p_dev_addr));
+			       std::placeholders::_1, sta, p2p_dev_addr ? p2p_dev_addr : kZeroBssid));
 }
 
 void HidlManager::notifyApStaDeauthorized(
     struct wpa_supplicant *wpa_s, const u8 *sta, const u8 *p2p_dev_addr)
 {
-	if (!wpa_s || !wpa_s->parent || !sta || !p2p_dev_addr)
+	if (!wpa_s || !wpa_s->parent || !sta)
 		return;
 	if (p2p_iface_object_map_.find(wpa_s->parent->ifname) ==
 	    p2p_iface_object_map_.end())
@@ -1347,7 +1346,7 @@ void HidlManager::notifyApStaDeauthorized(
 	callWithEachP2pIfaceCallback(
 	    wpa_s->parent->ifname, std::bind(
 			       &ISupplicantP2pIfaceCallback::onStaDeauthorized,
-			       std::placeholders::_1, sta, p2p_dev_addr));
+			       std::placeholders::_1, sta, p2p_dev_addr ? p2p_dev_addr : kZeroBssid));
 }
 
 void HidlManager::notifyExtRadioWorkStart(

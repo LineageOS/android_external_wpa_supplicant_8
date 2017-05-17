@@ -638,7 +638,7 @@ SupplicantStatus StaIface::initiateTdlsDiscoverInternal(
 		ret = wpa_drv_tdls_oper(wpa_s, TDLS_DISCOVERY_REQ, peer);
 	}
 	if (ret) {
-		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+		wpa_printf(MSG_INFO, "StaIface: TDLS discover failed: %d", ret);
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
@@ -657,7 +657,7 @@ SupplicantStatus StaIface::initiateTdlsSetupInternal(
 		ret = wpa_drv_tdls_oper(wpa_s, TDLS_SETUP, peer);
 	}
 	if (ret) {
-		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+		wpa_printf(MSG_INFO, "StaIface: TDLS setup failed: %d", ret);
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
@@ -676,7 +676,7 @@ SupplicantStatus StaIface::initiateTdlsTeardownInternal(
 		ret = wpa_drv_tdls_oper(wpa_s, TDLS_TEARDOWN, peer);
 	}
 	if (ret) {
-		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+		wpa_printf(MSG_INFO, "StaIface: TDLS teardown failed: %d", ret);
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
 }

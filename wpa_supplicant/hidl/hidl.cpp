@@ -589,7 +589,7 @@ void wpas_hidl_notify_p2p_sd_response(
 void wpas_hidl_notify_ap_sta_authorized(
     struct wpa_supplicant *wpa_s, const u8 *sta, const u8 *p2p_dev_addr)
 {
-	if (!wpa_s || !sta || !p2p_dev_addr)
+	if (!wpa_s || !sta)
 		return;
 
 	wpa_printf(
@@ -607,7 +607,7 @@ void wpas_hidl_notify_ap_sta_authorized(
 void wpas_hidl_notify_ap_sta_deauthorized(
     struct wpa_supplicant *wpa_s, const u8 *sta, const u8 *p2p_dev_addr)
 {
-	if (!wpa_s || !sta || !p2p_dev_addr)
+	if (!wpa_s || !sta)
 		return;
 
 	wpa_printf(
