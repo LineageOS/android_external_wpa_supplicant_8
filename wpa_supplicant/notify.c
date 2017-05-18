@@ -23,7 +23,7 @@
 #include "p2p_supplicant.h"
 #include "sme.h"
 #include "notify.h"
-#include "hidl/hidl.h"
+#include "hidl.h"
 
 int wpas_notify_supplicant_initialized(struct wpa_global *global)
 {

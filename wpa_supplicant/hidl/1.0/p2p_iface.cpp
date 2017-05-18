@@ -24,6 +24,7 @@ const char kConfigMethodStrDisplay[] = "display";
 const char kConfigMethodStrKeypad[] = "keypad";
 constexpr char kSetMiracastMode[] = "MIRACAST ";
 constexpr uint8_t kWfdDeviceInfoSubelemId = 0;
+constexpr char kWfdDeviceInfoSubelemLenHexStr[] = "0006";
 
 using android::hardware::wifi::supplicant::V1_0::ISupplicantP2pIface;
 uint8_t convertHidlMiracastModeToInternal(
@@ -1138,14 +1139,16 @@ SupplicantStatus P2pIface::setWfdDeviceInfoInternal(
     const std::array<uint8_t, 6>& info)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
-	uint32_t wfd_device_info_hex_len = info.size() * 2 + 1;
-	std::vector<char> wfd_device_info_hex(wfd_device_info_hex_len);
+	std::vector<char> wfd_device_info_hex(info.size() * 2 + 1);
 	wpa_snprintf_hex(
 	    wfd_device_info_hex.data(), wfd_device_info_hex.size(), info.data(),
 	    info.size());
+	// |wifi_display_subelem_set| expects the first 2 bytes
+	// to hold the lenght of the subelement. In this case it's
+	// fixed to 6, so prepend that.
 	std::string wfd_device_info_set_cmd_str =
 	    std::to_string(kWfdDeviceInfoSubelemId) + " " +
-	    wfd_device_info_hex.data();
+	    kWfdDeviceInfoSubelemLenHexStr + wfd_device_info_hex.data();
 	std::vector<char> wfd_device_info_set_cmd(
 	    wfd_device_info_set_cmd_str.c_str(),
 	    wfd_device_info_set_cmd_str.c_str() +

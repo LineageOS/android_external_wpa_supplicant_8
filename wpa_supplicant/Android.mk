@@ -1681,20 +1681,23 @@ LOCAL_MODULE := libwpa_hidl
 LOCAL_CPPFLAGS := $(L_CPPFLAGS)
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_C_INCLUDES := $(INCLUDES)
+HIDL_INTERFACE_VERSION = 1.0
 LOCAL_SRC_FILES := \
-    hidl/hidl.cpp \
-    hidl/hidl_manager.cpp \
-    hidl/iface_config_utils.cpp \
-    hidl/p2p_iface.cpp \
-    hidl/p2p_network.cpp \
-    hidl/sta_iface.cpp \
-    hidl/sta_network.cpp \
-    hidl/supplicant.cpp
+    hidl/$(HIDL_INTERFACE_VERSION)/hidl.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/hidl_manager.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/iface_config_utils.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/p2p_iface.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/p2p_network.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/sta_iface.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/sta_network.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/supplicant.cpp
 LOCAL_SHARED_LIBRARIES := \
-    android.hardware.wifi.supplicant@1.0 \
+    android.hardware.wifi.supplicant@$(HIDL_INTERFACE_VERSION) \
     libhidlbase \
     libhidltransport \
     libhwbinder \
     libutils
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+    $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
 include $(BUILD_STATIC_LIBRARY)
 endif # WPA_SUPPLICANT_USE_HIDL == y
