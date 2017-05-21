@@ -682,6 +682,7 @@ std::pair<SupplicantStatus, std::string> P2pIface::connectInternal(
 	if (go_intent > 15) {
 		return {{SupplicantStatusCode::FAILURE_ARGS_INVALID, ""}, {}};
 	}
+	int go_intent_signed = join_existing_group ? -1 : go_intent;
 	p2p_wps_method wps_method = {};
 	switch (provision_method) {
 	case WpsProvisionMethod::PBC:
@@ -694,9 +695,10 @@ std::pair<SupplicantStatus, std::string> P2pIface::connectInternal(
 		wps_method = WPS_PIN_KEYPAD;
 		break;
 	}
+	const char* pin = pre_selected_pin.length() > 0 ? pre_selected_pin.data() : nullptr;
 	int new_pin = wpas_p2p_connect(
-	    wpa_s, peer_address.data(), pre_selected_pin.data(), wps_method,
-	    persistent, false, join_existing_group, false, go_intent, 0, 0, -1,
+	    wpa_s, peer_address.data(), pin, wps_method,
+	    persistent, false, join_existing_group, false, go_intent_signed, 0, 0, -1,
 	    false, false, false, VHT_CHANWIDTH_USE_HT, nullptr, 0);
 	if (new_pin < 0) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
@@ -985,8 +987,11 @@ std::pair<SupplicantStatus, uint64_t> P2pIface::requestServiceDiscoveryInternal(
 	if (!query_buf) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
+	const uint8_t* dst_addr = is_zero_ether_addr(peer_address.data())
+				      ? nullptr
+				      : peer_address.data();
 	uint64_t identifier =
-	    wpas_p2p_sd_request(wpa_s, peer_address.data(), query_buf.get());
+	    wpas_p2p_sd_request(wpa_s, dst_addr, query_buf.get());
 	if (identifier == 0) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
