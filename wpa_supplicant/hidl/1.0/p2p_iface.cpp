@@ -2,6 +2,7 @@
  * hidl interface for wpa_supplicant daemon
  * Copyright (c) 2004-2016, Jouni Malinen <j@w1.fi>
  * Copyright (c) 2004-2016, Roshan Pius <rpius@google.com>
+ * Copyright (C) 2017 Sony Mobile Communications Inc.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -14,6 +15,7 @@
 #include "p2p_iface.h"
 
 extern "C" {
+#include "ap.h"
 #include "wps_supplicant.h"
 #include "wifi_display.h"
 }
@@ -1035,6 +1037,14 @@ SupplicantStatus P2pIface::startWpsPbcInternal(
 	}
 	const uint8_t* bssid_addr =
 	    is_zero_ether_addr(bssid.data()) ? nullptr : bssid.data();
+#ifdef CONFIG_AP
+	if (wpa_group_s->ap_iface) {
+		if (wpa_supplicant_ap_wps_pbc(wpa_group_s, bssid_addr, NULL)) {
+			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+		}
+		return {SupplicantStatusCode::SUCCESS, ""};
+	}
+#endif /* CONFIG_AP */
 	if (wpas_wps_start_pbc(wpa_group_s, bssid_addr, 0)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
