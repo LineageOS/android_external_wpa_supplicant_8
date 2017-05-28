@@ -1059,6 +1059,15 @@ SupplicantStatus P2pIface::startWpsPinKeypadInternal(
 	if (!wpa_group_s) {
 		return {SupplicantStatusCode::FAILURE_IFACE_UNKNOWN, ""};
 	}
+#ifdef CONFIG_AP
+	if (wpa_group_s->ap_iface) {
+		if (wpa_supplicant_ap_wps_pin(
+				wpa_group_s, nullptr, pin.c_str(), nullptr, 0, 0) < 0) {
+			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+		}
+		return {SupplicantStatusCode::SUCCESS, ""};
+	}
+#endif /* CONFIG_AP */
 	if (wpas_wps_start_pin(
 		wpa_group_s, nullptr, pin.c_str(), 0, DEV_PW_DEFAULT)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
