@@ -14,7 +14,7 @@ service hostapd /vendor/bin/hostapd \
         /data/misc/wifi/hostapd.conf
     class main
     user wifi
-    group wifi
+    group wifi net_raw net_admin
     writepid /data/misc/wifi/hostapd.pid
     disabled
     oneshot
