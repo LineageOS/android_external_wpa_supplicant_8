@@ -255,6 +255,14 @@ struct wpa_params {
 	 */
 	int match_iface_count;
 #endif /* CONFIG_MATCH_IFACE */
+#ifdef CONFIG_HIDL
+	/**
+	 * hidl_service_name - Service name to use when registering
+	 * with HIDL. For supporting multiple instances of
+	 * wpa_supplicant over HIDL
+	 */
+	char *hidl_service_name;
+#endif /* CONFIG_HIDL */
 };
 
 struct p2p_srv_bonjour {

@@ -7190,6 +7190,11 @@ struct wpa_global * wpa_supplicant_init(struct wpa_params *params)
 		params->wpa_debug_show_keys;
 	wpa_debug_timestamp = global->params.wpa_debug_timestamp =
 		params->wpa_debug_timestamp;
+#ifdef CONFIG_HIDL
+	if (params->hidl_service_name)
+		global->params.hidl_service_name =
+			os_strdup(params->hidl_service_name);
+#endif /* CONFIG_HIDL */
 
 	wpa_printf(MSG_DEBUG, "wpa_supplicant v%s", VERSION_STR);
 
@@ -7337,6 +7342,9 @@ void wpa_supplicant_deinit(struct wpa_global *global)
 #ifdef CONFIG_P2P
 	os_free(global->params.conf_p2p_dev);
 #endif /* CONFIG_P2P */
+#ifdef CONFIG_HIDL
+	os_free(global->params.hidl_service_name);
+#endif /* CONFIG_HIDL */
 
 	os_free(global->p2p_disallow_freq.range);
 	os_free(global->p2p_go_avoid_freq.range);
