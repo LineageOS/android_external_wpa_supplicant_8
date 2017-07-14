@@ -1856,6 +1856,7 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 	int new_assoc = 1;
 	struct ieee80211_ht_capabilities ht_cap;
 	struct ieee80211_vht_capabilities vht_cap;
+	int set = 1;
 
 	if (len < IEEE80211_HDRLEN + (reassoc ? sizeof(mgmt->u.reassoc_resp) :
 				      sizeof(mgmt->u.assoc_resp))) {
@@ -1921,8 +1922,17 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 	 * Remove the STA entry in order to make sure the STA PS state gets
 	 * cleared and configuration gets updated in case of reassociation back
 	 * to the same AP.
+	 *
+	 * Skip this if the STA has already completed FT reassociation and the
+	 * TK has been configured since the TX/RX PN must not be reset to 0 for
+	 * the same key.
 	 */
-	hostapd_drv_sta_remove(hapd, sta->addr);
+	if(!(sta->flags & WLAN_STA_AUTHORIZED) ||
+	   !(wpa_auth_sta_ft_tk_already_set(sta->wpa_sm))) {
+		hostapd_drv_sta_remove(hapd, sta->addr);
+		wpa_auth_sm_event(sta->wpa_sm, WPA_DRV_STA_REMOVED);
+		set = 0;
+	}
 
 #ifdef CONFIG_IEEE80211N
 	if (sta->flags & WLAN_STA_HT)
