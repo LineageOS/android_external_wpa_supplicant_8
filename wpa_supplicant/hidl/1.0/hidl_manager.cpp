@@ -904,7 +904,7 @@ void HidlManager::notifyDisconnectReason(struct wpa_supplicant *wpa_s)
 		&ISupplicantStaIfaceCallback::onDisconnected,
 		std::placeholders::_1, bssid, wpa_s->disconnect_reason < 0,
 		static_cast<ISupplicantStaIfaceCallback::ReasonCode>(
-		    wpa_s->disconnect_reason)));
+		    abs(wpa_s->disconnect_reason))));
 }
 
 /**
