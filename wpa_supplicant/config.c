@@ -1816,6 +1816,24 @@ static char * wpa_config_write_mesh_basic_rates(const struct parse_data *data,
 #endif /* CONFIG_MESH */
 
 
+static int wpa_config_parse_peerkey(const struct parse_data *data,
+				    struct wpa_ssid *ssid, int line,
+				    const char *value)
+{
+	wpa_printf(MSG_INFO, "NOTE: Obsolete peerkey parameter ignored");
+	return 0;
+}
+
+
+#ifndef NO_CONFIG_WRITE
+static char * wpa_config_write_peerkey(const struct parse_data *data,
+				       struct wpa_ssid *ssid)
+{
+	return NULL;
+}
+#endif /* NO_CONFIG_WRITE */
+
+
 /* Helper macros for network block parser */
 
 #ifdef OFFSET
@@ -1990,7 +2008,7 @@ static const struct parse_data ssid_fields[] = {
 #ifdef CONFIG_IEEE80211W
 	{ INT_RANGE(ieee80211w, 0, 2) },
 #endif /* CONFIG_IEEE80211W */
-	{ INT_RANGE(peerkey, 0, 1) },
+	{ FUNC(peerkey) /* obsolete - removed */ },
 	{ INT_RANGE(mixed_cell, 0, 1) },
 	{ INT_RANGE(frequency, 0, 65000) },
 	{ INT_RANGE(fixed_freq, 0, 1) },
