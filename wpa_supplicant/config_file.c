@@ -706,7 +706,6 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(frequency);
 	write_int(f, "proactive_key_caching", ssid->proactive_key_caching, -1);
 	INT(disabled);
-	INT(peerkey);
 #ifdef CONFIG_IEEE80211W
 	write_int(f, "ieee80211w", ssid->ieee80211w,
 		  MGMT_FRAME_PROTECTION_DEFAULT);

@@ -722,13 +722,6 @@ static int wpa_cli_cmd_bss_flush(struct wpa_ctrl *ctrl, int argc, char *argv[])
 }
 
 
-static int wpa_cli_cmd_stkstart(struct wpa_ctrl *ctrl, int argc,
-				char *argv[])
-{
-	return wpa_cli_cmd(ctrl, "STKSTART", 1, argc, argv);
-}
-
-
 static int wpa_cli_cmd_ft_ds(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
 	return wpa_cli_cmd(ctrl, "FT_DS", 1, argc, argv);
@@ -2591,9 +2584,6 @@ static struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "bss_flush", wpa_cli_cmd_bss_flush, NULL,
 	  cli_cmd_flag_none,
 	  "<value> = set BSS flush age (0 by default)" },
-	{ "stkstart", wpa_cli_cmd_stkstart, NULL,
-	  cli_cmd_flag_none,
-	  "<addr> = request STK negotiation with <addr>" },
 	{ "ft_ds", wpa_cli_cmd_ft_ds, wpa_cli_complete_bss,
 	  cli_cmd_flag_none,
 	  "<addr> = request over-the-DS FT with <addr>" },
