@@ -427,7 +427,8 @@ static void wpa_supplicant_process_1_of_4(struct wpa_sm *sm,
 	/* Calculate PTK which will be stored as a temporary PTK until it has
 	 * been verified when processing message 3/4. */
 	ptk = &sm->tptk;
-	wpa_derive_ptk(sm, src_addr, key, ptk);
+	if (wpa_derive_ptk(sm, src_addr, key, ptk) < 0)
+		goto failed;
 	/* Supplicant: swap tx/rx Mic keys */
 	os_memcpy(buf, ptk->u.auth.tx_mic_key, 8);
 	os_memcpy(ptk->u.auth.tx_mic_key, ptk->u.auth.rx_mic_key, 8);
@@ -2171,8 +2172,8 @@ void wpa_sm_set_pmk_from_pmksa(struct wpa_sm *sm)
 		os_memcpy(sm->pmk, sm->cur_pmksa->pmk, sm->pmk_len);
 	} else {
 		wpa_printf(MSG_DEBUG, "WPA: No current PMKSA - clear PMK");
-		sm->pmk_len = PMK_LEN;
-		os_memset(sm->pmk, 0, PMK_LEN);
+		sm->pmk_len = 0;
+		os_memset(sm->pmk, 0, PMK_LEN_MAX);
 	}
 }
 
