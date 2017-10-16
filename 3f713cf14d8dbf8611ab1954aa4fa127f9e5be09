@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "key": {
+        "uuid": "d5c32140_2e1f30e6",
+        "filename": "src/ap/wpa_auth.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 1488,
+      "author": {
+        "id": 18237
+      },
+      "writtenOn": "2017-10-16T12:51:07Z",
+      "side": 0,
+      "message": "I merged this slightly differently:\nhttps://github.com/BtbN/android_external_wpa_supplicant_8/commit/983e27e53eac48102507311bc8ff3e873f3130a8#diff-fb7e5628de4e36d47c5f21b690abdd44L1487\n\nNot sure which is more correct, I might have merged too much?",
+      "revId": "3f713cf14d8dbf8611ab1954aa4fa127f9e5be09",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": false
+    }
+  ]
+}
