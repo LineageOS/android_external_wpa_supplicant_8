@@ -34,6 +34,24 @@
       "revId": "3f713cf14d8dbf8611ab1954aa4fa127f9e5be09",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
       "unresolved": false
+    },
+    {
+      "key": {
+        "uuid": "57b519e4_f6696870",
+        "filename": "src/ap/wpa_auth.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 1488,
+      "author": {
+        "id": 3671
+      },
+      "writtenOn": "2017-10-16T14:04:08Z",
+      "side": 0,
+      "message": "https://github.com/invisiblek/android_external_wpa_supplicant_8/commits/cm-14.1_krack2\n\nHas the commit mentioned, which allows this chunk to be patched cleanly. I\u0027m fine either way.",
+      "parentUuid": "289b3a24_ca9bd716",
+      "revId": "3f713cf14d8dbf8611ab1954aa4fa127f9e5be09",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": false
     }
   ]
 }
