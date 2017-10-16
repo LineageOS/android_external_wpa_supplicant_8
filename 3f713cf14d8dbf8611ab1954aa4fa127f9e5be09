@@ -16,6 +16,24 @@
       "revId": "3f713cf14d8dbf8611ab1954aa4fa127f9e5be09",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
       "unresolved": false
+    },
+    {
+      "key": {
+        "uuid": "289b3a24_ca9bd716",
+        "filename": "src/ap/wpa_auth.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 1488,
+      "author": {
+        "id": 3671
+      },
+      "writtenOn": "2017-10-16T13:44:45Z",
+      "side": 0,
+      "message": "Well, if we go that route, we should backport this first: https://w1.fi/cgit/hostap/commit/?id\u003dcaab23f192085e6c8e47c41fc1ae9f795d1cbe86",
+      "parentUuid": "d5c32140_2e1f30e6",
+      "revId": "3f713cf14d8dbf8611ab1954aa4fa127f9e5be09",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": false
     }
   ]
 }
