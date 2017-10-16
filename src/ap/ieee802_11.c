@@ -1774,6 +1774,7 @@ static int add_associated_sta(struct hostapd_data *hapd,
 {
 	struct ieee80211_ht_capabilities ht_cap;
 	struct ieee80211_vht_capabilities vht_cap;
+	int set = 1;
 
 	/*
 	 * Remove the STA entry to ensure the STA PS state gets cleared and
@@ -1781,9 +1782,18 @@ static int add_associated_sta(struct hostapd_data *hapd,
 	 * FT-over-the-DS, where a station re-associates back to the same AP but
 	 * skips the authentication flow, or if working with a driver that
 	 * does not support full AP client state.
+	 *
+	 * Skip this if the STA has already completed FT reassociation and the
+	 * TK has been configured since the TX/RX PN must not be reset to 0 for
+	 * the same key.
 	 */
-	if (!sta->added_unassoc)
+	if (!sta->added_unassoc &&
+	    (!(sta->flags & WLAN_STA_AUTHORIZED) ||
+	     !wpa_auth_sta_ft_tk_already_set(sta->wpa_sm))) {
 		hostapd_drv_sta_remove(hapd, sta->addr);
+		wpa_auth_sm_event(sta->wpa_sm, WPA_DRV_STA_REMOVED);
+		set = 0;
+	}
 
 #ifdef CONFIG_IEEE80211N
 	if (sta->flags & WLAN_STA_HT)
@@ -1805,11 +1815,11 @@ static int add_associated_sta(struct hostapd_data *hapd,
 			    sta->flags & WLAN_STA_HT ? &ht_cap : NULL,
 			    sta->flags & WLAN_STA_VHT ? &vht_cap : NULL,
 			    sta->flags | WLAN_STA_ASSOC, sta->qosinfo,
-			    sta->vht_opmode, sta->added_unassoc)) {
+			    sta->vht_opmode, set)) {
 		hostapd_logger(hapd, sta->addr,
 			       HOSTAPD_MODULE_IEEE80211, HOSTAPD_LEVEL_NOTICE,
 			       "Could not %s STA to kernel driver",
-			       sta->added_unassoc ? "set" : "add");
+			       set ? "set" : "add");
 
 		if (sta->added_unassoc) {
 			hostapd_drv_sta_remove(hapd, sta->addr);
@@ -2883,8 +2893,16 @@ void ieee802_11_mgmt_cb(struct hostapd_data *hapd, const u8 *buf, size_t len,
 
 #ifdef CONFIG_TESTING_OPTIONS
 	if (hapd->ext_mgmt_frame_handling) {
-		wpa_msg(hapd->msg_ctx, MSG_INFO, "MGMT-TX-STATUS stype=%u ok=%d",
-			stype, ok);
+		size_t hex_len = 2 * len + 1;
+		char *hex = os_malloc(hex_len);
+
+		if (hex) {
+			wpa_snprintf_hex(hex, hex_len, buf, len);
+			wpa_msg(hapd->msg_ctx, MSG_INFO,
+				"MGMT-TX-STATUS stype=%u ok=%d buf=%s",
+				stype, ok, hex);
+			os_free(hex);
+		}
 		return;
 	}
 #endif /* CONFIG_TESTING_OPTIONS */

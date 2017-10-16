@@ -286,15 +286,10 @@ ifdef CONFIG_TDLS_TESTING
 CFLAGS += -DCONFIG_TDLS_TESTING
 endif
 
-ifdef CONFIG_PEERKEY
-CFLAGS += -DCONFIG_PEERKEY
-endif
-
 ifndef CONFIG_NO_WPA
 OBJS += ../src/rsn_supp/wpa.o
 OBJS += ../src/rsn_supp/preauth.o
 OBJS += ../src/rsn_supp/pmksa_cache.o
-OBJS += ../src/rsn_supp/peerkey.o
 OBJS += ../src/rsn_supp/wpa_ie.o
 OBJS += ../src/common/wpa_common.o
 NEED_AES=y
@@ -906,9 +901,6 @@ OBJS += ../src/ap/wpa_auth_ie.o
 OBJS += ../src/ap/pmksa_cache_auth.o
 ifdef CONFIG_IEEE80211R
 OBJS += ../src/ap/wpa_auth_ft.o
-endif
-ifdef CONFIG_PEERKEY
-OBJS += ../src/ap/peerkey_auth.o
 endif
 endif
 
