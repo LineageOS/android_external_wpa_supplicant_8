@@ -1,0 +1,38 @@
+{
+  "comments": [
+    {
+      "key": {
+        "uuid": "7be9d03a_070dd85a",
+        "filename": "src/ap/wpa_auth.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 1741,
+      "author": {
+        "id": 16219
+      },
+      "writtenOn": "2017-10-19T15:49:09Z",
+      "side": 1,
+      "message": "I think this is not needed as WPA_DRV_STA_REMOVED isn\u0027t set anywhere.\nI\u0027ve checked patch for 2.4 version from Debian and they don\u0027t have this part of code at all.\n\nYou can download it from: http://security.debian.org/debian-security/pool/updates/main/w/wpa/wpa_2.4-1+deb9u1.debian.tar.xz\n\nDiff is in:\ndebian/patches/2017-1/0001-hostapd-Avoid-key-reinstallation-in-FT-handshake.patch",
+      "revId": "415fc9298cf3ccfb89b52b823e059b3e5142aa73",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": false
+    },
+    {
+      "key": {
+        "uuid": "db3007b0_137b400d",
+        "filename": "src/ap/wpa_auth.h",
+        "patchSetId": 1
+      },
+      "lineNbr": 257,
+      "author": {
+        "id": 16219
+      },
+      "writtenOn": "2017-10-19T15:49:09Z",
+      "side": 1,
+      "message": "See comment at wpa_auth.c:1741",
+      "revId": "415fc9298cf3ccfb89b52b823e059b3e5142aa73",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": false
+    }
+  ]
+}
