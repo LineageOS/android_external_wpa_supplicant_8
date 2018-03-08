@@ -661,14 +661,8 @@ int main(int argc, char *argv[])
 	interfaces.reload_config = hostapd_reload_config;
 	interfaces.config_read_cb = hostapd_config_read;
 	interfaces.for_each_interface = hostapd_for_each_interface;
-#ifdef CONFIG_CTRL_IFACE_HIDL
-	// No per-netdev setup for HIDL control interface.
-	interfaces.ctrl_iface_init = NULL;
-	interfaces.ctrl_iface_deinit = NULL;
-#else /* CONFIG_CTRL_IFACE_HIDL */
 	interfaces.ctrl_iface_init = hostapd_ctrl_iface_init;
 	interfaces.ctrl_iface_deinit = hostapd_ctrl_iface_deinit;
-#endif /* CONFIG_CTRL_IFACE_HIDL */
 	interfaces.driver_init = hostapd_driver_init;
 	interfaces.global_iface_path = NULL;
 	interfaces.global_iface_name = NULL;
@@ -908,9 +902,8 @@ int main(int argc, char *argv[])
 		wpa_printf(MSG_ERROR, "Failed to initialize HIDL interface");
 		goto out;
 	}
-#else /* CONFIG_CTRL_IFACE_HIDL */
-	hostapd_global_ctrl_iface_init(&interfaces);
 #endif /* CONFIG_CTRL_IFACE_HIDL */
+	hostapd_global_ctrl_iface_init(&interfaces);
 
 	if (hostapd_global_run(&interfaces, daemonize, pid_file)) {
 		wpa_printf(MSG_ERROR, "Failed to start eloop");
@@ -922,9 +915,8 @@ int main(int argc, char *argv[])
  out:
 #ifdef CONFIG_CTRL_IFACE_HIDL
 	hostapd_hidl_deinit(&interfaces);
-#else /* CONFIG_CTRL_IFACE_HIDL */
-	hostapd_global_ctrl_iface_deinit(&interfaces);
 #endif /* CONFIG_CTRL_IFACE_HIDL */
+	hostapd_global_ctrl_iface_deinit(&interfaces);
 	/* Deinitialize all interfaces */
 	for (i = 0; i < interfaces.count; i++) {
 		if (!interfaces.iface[i])
