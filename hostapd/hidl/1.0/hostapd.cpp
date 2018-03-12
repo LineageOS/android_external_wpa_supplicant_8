@@ -138,19 +138,26 @@ std::string CreateHostapdConfig(
 
 	// Hw Mode String
 	std::string hw_mode_as_string;
+	std::string ht_cap_vht_oper_chwidth_as_string;
 	switch (iface_params.channelParams.band) {
 	case IHostapd::Band::BAND_2_4_GHZ:
 		hw_mode_as_string = "hw_mode=g";
 		break;
 	case IHostapd::Band::BAND_5_GHZ:
-		hw_mode_as_string = "hw_mode=a\n"
-		    "ht_capab=[HT40+]\n"
-		    "vht_oper_chwidth=1";
+		hw_mode_as_string = "hw_mode=a";
+		if (iface_params.channelParams.enableAcs) {
+			ht_cap_vht_oper_chwidth_as_string =
+			    "ht_capab=[HT40+]\n"
+			    "vht_oper_chwidth=1";
+		}
 		break;
 	case IHostapd::Band::BAND_ANY:
-		hw_mode_as_string = "hw_mode=any\n"
-		    "ht_capab=[HT40+]\n"
-		    "vht_oper_chwidth=1";
+		hw_mode_as_string = "hw_mode=any";
+		if (iface_params.channelParams.enableAcs) {
+			ht_cap_vht_oper_chwidth_as_string =
+			    "ht_capab=[HT40+]\n"
+			    "vht_oper_chwidth=1";
+		}
 		break;
 	default:
 		wpa_printf(MSG_ERROR, "Invalid band");
@@ -169,6 +176,7 @@ std::string CreateHostapdConfig(
 	    "ieee80211n=%d\n"
 	    "ieee80211ac=%d\n"
 	    "%s\n"
+	    "%s\n"
 	    "ignore_broadcast_ssid=%d\n"
 	    "wowlan_triggers=any\n"
 	    "%s\n",
@@ -176,8 +184,8 @@ std::string CreateHostapdConfig(
 	    channel_config_as_string.c_str(),
 	    iface_params.hwModeParams.enable80211N ? 1 : 0,
 	    iface_params.hwModeParams.enable80211AC ? 1 : 0,
-	    hw_mode_as_string.c_str(), nw_params.isHidden ? 1 : 0,
-	    encryption_config_as_string.c_str());
+	    hw_mode_as_string.c_str(), ht_cap_vht_oper_chwidth_as_string.c_str(),
+	    nw_params.isHidden ? 1 : 0, encryption_config_as_string.c_str());
 }
 }  // namespace
 
