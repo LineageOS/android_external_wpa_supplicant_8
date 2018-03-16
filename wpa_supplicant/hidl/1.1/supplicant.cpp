@@ -62,7 +62,7 @@ int copyFile(
 /**
  * Copy |src_file_path| to |dest_file_path| if it exists.
  *
- * Returns 1 if |src_file_path| does not exists,
+ * Returns 1 if |src_file_path| does not exist or not accessible,
  * Returns -1 if the copy fails.
  * Returns 0 if the copy succeeds.
  */
@@ -70,7 +70,8 @@ int copyFileIfItExists(
     const std::string& src_file_path, const std::string& dest_file_path)
 {
 	int ret = access(src_file_path.c_str(), R_OK);
-	if ((ret != 0) && (errno == ENOENT)) {
+	// Sepolicy denial (2018+ device) will return EACCESS instead of ENOENT.
+	if ((ret != 0) && ((errno == ENOENT) || (errno == EACCES))) {
 		return 1;
 	}
 	ret = copyFile(src_file_path, dest_file_path);
