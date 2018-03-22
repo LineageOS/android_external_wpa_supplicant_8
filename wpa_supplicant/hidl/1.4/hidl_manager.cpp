@@ -480,8 +480,26 @@ int HidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 			    wpa_s->ifname);
 			return 1;
 		}
+#ifdef SUPPLICANT_VENDOR_HIDL
+                wpa_printf(MSG_INFO,"Mapping to vendor P2P iface");
+                if (addHidlObjectToMap<VendorP2pIface>(
+                        wpa_s->ifname,
+                        new VendorP2pIface(wpa_s->global, wpa_s->ifname),
+                        vendor_p2p_iface_object_map_)) {
+                        wpa_printf(
+                            MSG_ERROR,
+                            "Failed to register Vendor P2P interface with HIDL "
+                            "control: %s",
+                            wpa_s->ifname);
+                        return 1;
+                }
+#endif
 		p2p_iface_callbacks_map_[wpa_s->ifname] =
 		    std::vector<android::sp<ISupplicantP2pIfaceCallback>>();
+#ifdef SUPPLICANT_VENDOR_HIDL
+                vendor_p2p_iface_callbacks_map_[wpa_s->ifname] =
+                    std::vector<android::sp<ISupplicantVendorP2PIfaceCallback>>();
+#endif
 	} else {
 		if (addHidlObjectToMap<StaIface>(
 			wpa_s->ifname,
@@ -494,6 +512,20 @@ int HidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 			    wpa_s->ifname);
 			return 1;
 		}
+#ifdef SUPPLICANT_VENDOR_HIDL
+                wpa_printf(MSG_INFO,"Mapping to vendor sta iface");
+                if (addHidlObjectToMap<VendorStaIface>(
+                        wpa_s->ifname,
+                        new VendorStaIface(wpa_s->global, wpa_s->ifname),
+                        vendor_sta_iface_object_map_)) {
+                        wpa_printf(
+                            MSG_ERROR,
+                            "Failed to register Vendor STA interface with HIDL "
+                            "control: %s",
+                            wpa_s->ifname);
+                        return 1;
+                }
+#endif
 		sta_iface_callbacks_map_[wpa_s->ifname] =
 		    std::vector<android::sp<ISupplicantStaIfaceCallback>>();
 		// Turn on Android specific customizations for STA interfaces
@@ -514,6 +546,10 @@ int HidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		// session
 		wpa_s->conf->gas_rand_mac_addr = 1;
 		wpa_s->conf->gas_rand_addr_lifetime = 0;
+#ifdef SUPPLICANT_VENDOR_HIDL
+                vendor_sta_iface_callbacks_map_[wpa_s->ifname] =
+                        std::vector<android::sp<ISupplicantVendorStaIfaceCallback>>();
+#endif
 	}
 
 	// Invoke the |onInterfaceCreated| method on all registered callbacks.
@@ -545,6 +581,20 @@ int HidlManager::unregisterInterface(struct wpa_supplicant *wpa_s)
 	if (success) {  // assumed to be P2P
 		success = !removeAllIfaceCallbackHidlObjectsFromMap(
 		    death_notifier_, wpa_s->ifname, p2p_iface_callbacks_map_);
+#ifdef SUPPLICANT_VENDOR_HIDL
+                wpa_printf(MSG_INFO,"Try to unregister vendor p2 interface");
+                if(removeHidlObjectFromMap(
+                   wpa_s->ifname, vendor_p2p_iface_object_map_)) {
+                        wpa_printf(MSG_ERROR,
+                                   "Failed to unregister vendor p2p interface"
+                                   "with HIDL control: %s", wpa_s->ifname);
+                } else {
+                        if(removeAllIfaceCallbackHidlObjectsFromMap(
+                           death_notifier_, wpa_s->ifname,
+                           vendor_p2p_iface_callbacks_map_))
+                        wpa_printf(MSG_ERROR,"Failed to remove VendorIface p2p callback");
+                }
+#endif
 	} else {  // assumed to be STA
 		success = !removeHidlObjectFromMap(
 		    wpa_s->ifname, sta_iface_object_map_);
@@ -552,6 +602,20 @@ int HidlManager::unregisterInterface(struct wpa_supplicant *wpa_s)
 			success = !removeAllIfaceCallbackHidlObjectsFromMap(
 			    death_notifier_, wpa_s->ifname, sta_iface_callbacks_map_);
 		}
+#ifdef SUPPLICANT_VENDOR_HIDL
+                wpa_printf(MSG_INFO,"Try to unregister vendor interface");
+                if(removeHidlObjectFromMap(
+                   wpa_s->ifname, vendor_sta_iface_object_map_)) {
+                        wpa_printf(MSG_ERROR,
+                                   "Failed to unregister vendor interface"
+                                   "with HIDL control: %s", wpa_s->ifname);
+                } else {
+                        if(removeAllIfaceCallbackHidlObjectsFromMap(
+                           death_notifier_, wpa_s->ifname,
+                           vendor_sta_iface_callbacks_map_))
+                        wpa_printf(MSG_ERROR,"Failed to remove VendorIface callback");
+                }
+#endif
 	}
 	if (!success) {
 		wpa_printf(
@@ -621,6 +685,19 @@ int HidlManager::registerNetwork(
 			    ssid->id);
 			return 1;
 		}
+#ifdef SUPPLICANT_VENDOR_HIDL
+                if (addHidlObjectToMap<VendorStaNetwork>(
+                        network_key,
+                        new VendorStaNetwork(wpa_s->global, wpa_s->ifname, ssid->id),
+                        vendor_sta_network_object_map_)) {
+                        wpa_printf(
+                            MSG_ERROR,
+                            "Failed to register Vendor STA network with HIDL "
+                            "control: %d",
+                            ssid->id);
+                        return 1;
+                }
+#endif
 		sta_network_callbacks_map_[network_key] =
 		    std::vector<android::sp<ISupplicantStaNetworkCallback>>();
 		// Invoke the |onNetworkAdded| method on all registered
@@ -684,6 +761,18 @@ int HidlManager::unregisterNetwork(
 			    ssid->id);
 			return 1;
 		}
+#ifdef SUPPLICANT_VENDOR_HIDL
+                wpa_printf(MSG_INFO,"Try to unregister vendor STA network");
+                if (removeHidlObjectFromMap(
+                        network_key, vendor_sta_network_object_map_)) {
+                        wpa_printf(
+                            MSG_ERROR,
+                            "Failed to unregister Vendor STA network with HIDL "
+                            "control: %d",
+                            ssid->id);
+                        return 1;
+                }
+#endif
 		if (removeAllNetworkCallbackHidlObjectsFromMap(
 			death_notifier_, network_key, sta_network_callbacks_map_))
 			return 1;
@@ -2498,6 +2587,313 @@ void HidlManager::callWithEachStaNetworkCallbackDerived(
 {
 	callWithEachNetworkCallbackDerived(ifname, network_id, method, sta_network_callbacks_map_);
 }
+
+#ifdef SUPPLICANT_VENDOR_HIDL
+// Method for vendor.qti.hardware.wifi.supplicant@2.0 HAL interface
+
+int HidlManager::registerVendorHidlService(struct wpa_global *global)
+{
+	::android::status_t status;
+
+	// Create the vendor hidl service object and register it.
+	supplicantvendor_object_ = new SupplicantVendor(global);
+	if (global->params.hidl_service_name) {
+		wpa_printf(MSG_DEBUG, "hidl_register vendor service name %s",
+			   global->params.hidl_service_name);
+		status = supplicantvendor_object_->registerAsService(global->params.hidl_service_name);
+	} else {
+		wpa_printf(MSG_DEBUG, "hidl_register vendor service name default");
+		status = supplicantvendor_object_->registerAsService();
+	}
+
+	if (status != android::NO_ERROR) {
+		wpa_printf(MSG_ERROR,"Failed to Register Vendor HIDL service");
+		return 1;
+	}
+	wpa_printf(MSG_INFO,"Register Vendor HIDL default service");
+	return 0;
+}
+
+/**
+ * Retrieve the |ISupplicantVendorStaIface| hidl object reference using the provided
+ * ifname.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param iface_object Hidl reference corresponding to the iface.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int HidlManager::getVendorStaIfaceHidlObjectByIfname(
+    const std::string &ifname, android::sp<ISupplicantVendorStaIface> *iface_object)
+{
+	if (ifname.empty() || !iface_object)
+		return 1;
+
+	auto iface_object_iter = vendor_sta_iface_object_map_.find(ifname);
+	if (iface_object_iter == vendor_sta_iface_object_map_.end())
+		return 1;
+
+	*iface_object = iface_object_iter->second;
+	return 0;
+}
+
+/**
+ * Retrieve the |ISupplicantStaNetwork| hidl object reference using the provided
+ * ifname and network_id.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param network_id ID of the corresponding network.
+ * @param network_object Hidl reference corresponding to the network.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int HidlManager::getVendorStaNetworkHidlObjectByIfnameAndNetworkId(
+    const std::string &ifname, int network_id,
+    android::sp<ISupplicantVendorStaNetwork> *network_object)
+{
+	if (ifname.empty() || network_id < 0 || !network_object)
+		return 1;
+
+	// Generate the key to be used to lookup the network.
+	const std::string network_key =
+	    getNetworkObjectMapKey(ifname, network_id);
+
+	auto network_object_iter = vendor_sta_network_object_map_.find(network_key);
+	if (network_object_iter == vendor_sta_network_object_map_.end())
+		return 1;
+
+	*network_object = network_object_iter->second;
+	return 0;
+}
+
+/**
+ * Add a new vendor iface callback hidl object reference to our
+ * interface callback list.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param vendorcallback Hidl reference of the callback object.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int HidlManager::addVendorStaIfaceCallbackHidlObject(
+    const std::string &ifname,
+    const android::sp<ISupplicantVendorStaIfaceCallback> &callback)
+{
+	return addIfaceCallbackHidlObjectToMap(death_notifier_,
+	    ifname, callback, vendor_sta_iface_callbacks_map_);
+}
+
+/**
+ * Removes the provided vendor iface callback hidl object reference from
+ * our interface callback list.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param vendor callback Hidl reference of the callback object.
+ */
+void HidlManager::removeVendorStaIfaceCallbackHidlObject(
+    const std::string &ifname,
+    const android::sp<ISupplicantVendorStaIfaceCallback> &callback)
+{
+	return removeIfaceCallbackHidlObjectFromMap(
+	    ifname, callback, vendor_sta_iface_callbacks_map_);
+}
+
+/**
+ * Helper function to check if there is any callback of type
+ * ISupplicantVendorStaIfaceCallback is registered for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ */
+bool HidlManager::checkForVendorStaIfaceCallback(const std::string &ifname)
+{
+        if (ifname.empty())
+                return false;
+
+        auto iface_callback_map_iter = vendor_sta_iface_callbacks_map_.find(ifname);
+        if (iface_callback_map_iter == vendor_sta_iface_callbacks_map_.end())
+                return false;
+        const auto &iface_callback_list = iface_callback_map_iter->second;
+        for (const auto &callback : iface_callback_list) {
+                android::sp<ISupplicantVendorStaIfaceCallback> vendorCallback = callback;
+                if (vendorCallback != nullptr)
+                        return true;
+        }
+	wpa_printf(MSG_ERROR, "No VendorStaIfaceCallback is register");
+        return false;
+}
+
+/**
+ * Helper fucntion to invoke the provided vendor callback method on all the
+ * registered vendor iface callback hidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required hidl method from
+ * |ISupplicantVendorIfaceCallback|.
+ */
+void HidlManager::callWithEachVendorStaIfaceCallback(
+    const std::string &ifname,
+    const std::function<Return<void>(android::sp<ISupplicantVendorStaIfaceCallback>)>
+	&method)
+{
+	callWithEachIfaceCallback(ifname, method, vendor_sta_iface_callbacks_map_);
+}
+
+/**
+ * Retrieve the |ISupplicantVendorStaIface| hidl object reference using the provided
+ * ifname.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param iface_object Hidl reference corresponding to the iface.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int HidlManager::getVendorP2pIfaceHidlObjectByIfname(
+    const std::string &ifname, android::sp<ISupplicantVendorP2PIface> *iface_object)
+{
+	if (ifname.empty() || !iface_object)
+		return 1;
+
+	auto iface_object_iter = vendor_p2p_iface_object_map_.find(ifname);
+	if (iface_object_iter == vendor_p2p_iface_object_map_.end())
+		return 1;
+
+	*iface_object = iface_object_iter->second;
+	return 0;
+}
+
+/**
+ * Add a new vendor iface callback hidl object reference to our
+ * p2p interface callback list.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param vendorcallback Hidl reference of the p2p callback object.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int HidlManager::addVendorP2pIfaceCallbackHidlObject(
+    const std::string &ifname,
+    const android::sp<ISupplicantVendorP2PIfaceCallback> &callback)
+{
+	return addIfaceCallbackHidlObjectToMap(death_notifier_,
+	    ifname, callback, vendor_p2p_iface_callbacks_map_);
+}
+
+/**
+ * Removes the provided vendor iface callback hidl object reference from
+ * our interface callback list.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param vendor callback Hidl reference of the p2p callback object.
+ */
+void HidlManager::removeVendorP2pIfaceCallbackHidlObject(
+    const std::string &ifname,
+    const android::sp<ISupplicantVendorP2PIfaceCallback> &callback)
+{
+	return removeIfaceCallbackHidlObjectFromMap(
+	    ifname, callback, vendor_p2p_iface_callbacks_map_);
+}
+/**
+ * Helper function to check if there is any callback of type
+ * ISupplicantVendorP2PIfaceCallback is registered for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ */
+bool HidlManager::checkForVendorP2pIfaceCallback(const std::string &ifname)
+{
+        if (ifname.empty())
+                return false;
+
+        auto iface_callback_map_iter = vendor_p2p_iface_callbacks_map_.find(ifname);
+        if (iface_callback_map_iter == vendor_p2p_iface_callbacks_map_.end())
+                return false;
+        const auto &iface_callback_list = iface_callback_map_iter->second;
+        for (const auto &callback : iface_callback_list) {
+                android::sp<ISupplicantVendorP2PIfaceCallback> vendorCallback = callback;
+                if (vendorCallback != nullptr)
+                        return true;
+        }
+	wpa_printf(MSG_ERROR, "No VendorP2pIfaceCallback is register");
+        return false;
+}
+/**
+ * Helper fucntion to invoke the provided p2p vendor callback method on all the
+ * registered vendor p2p iface callback hidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required hidl method from
+ * |ISupplicantVendorP2PIfaceCallback|.
+ */
+void HidlManager::callWithEachVendorP2pIfaceCallback(
+    const std::string &ifname,
+    const std::function<Return<void>(android::sp<ISupplicantVendorP2PIfaceCallback>)>
+	&method)
+{
+	callWithEachIfaceCallback(ifname, method, vendor_p2p_iface_callbacks_map_);
+}
+
+/* Implement Vendor Iface for DPP callbacks */
+void HidlManager::notifyDppAuthSuccess(
+    struct wpa_supplicant *wpa_s, int initiator)
+{
+	if (!wpa_s)
+		return;
+
+	if (vendor_sta_iface_object_map_.find(wpa_s->ifname) ==
+	    vendor_sta_iface_object_map_.end())
+		return;
+
+	if (checkForVendorStaIfaceCallback(wpa_s->ifname) == true) {
+		callWithEachVendorStaIfaceCallback(
+		    wpa_s->ifname, std::bind(
+		       &ISupplicantVendorStaIfaceCallback::onDppAuthSuccess,
+		       std::placeholders::_1, initiator ? true : false));
+	}
+}
+
+void HidlManager::notifyDppConf(
+    struct wpa_supplicant *wpa_s, u8 type, u8* ssid, u8 ssid_len,
+    const char *connector, struct wpabuf *c_sign, struct wpabuf *net_access,
+    uint32_t net_access_expiry, const char *passphrase, uint32_t psk_set, u8 *psk)
+{
+	if (!wpa_s)
+		return;
+
+	if (vendor_sta_iface_object_map_.find(wpa_s->ifname) ==
+	    vendor_sta_iface_object_map_.end())
+		return;
+
+	std::vector<uint8_t> hidl_ssid;
+	std::vector<uint8_t> hidl_c_sign;
+	std::vector<uint8_t> hidl_net_access;
+	std::vector<uint8_t> hidl_psk;
+	if (type == 2 /* RECEIVE */) {
+		if (ssid_len)
+			hidl_ssid.assign(ssid, ssid + ssid_len);
+
+		if (c_sign)
+		    hidl_c_sign = misc_utils::convertWpaBufToVector(c_sign);
+
+		if (net_access)
+		    hidl_net_access = misc_utils::convertWpaBufToVector(net_access);
+
+		if (psk_set)
+			hidl_psk.assign(psk, psk + PMK_LEN);
+	}
+
+	if (checkForVendorStaIfaceCallback(wpa_s->ifname) == true) {
+		callWithEachVendorStaIfaceCallback(
+		    wpa_s->ifname, std::bind(
+		       &ISupplicantVendorStaIfaceCallback::onDppConf,
+		       std::placeholders::_1, type, hidl_ssid, connector,
+		       hidl_c_sign, hidl_net_access, net_access_expiry,
+		       passphrase, hidl_psk));
+	}
+}
+#endif
 }  // namespace implementation
 }  // namespace V1_4
 }  // namespace supplicant

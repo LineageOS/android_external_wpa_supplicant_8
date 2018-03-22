@@ -4671,7 +4671,7 @@ static int ctrl_iface_get_capability_freq(struct wpa_supplicant *wpa_s,
 }
 
 
-static int wpa_supplicant_ctrl_iface_get_capability(
+int wpa_supplicant_ctrl_iface_get_capability(
 	struct wpa_supplicant *wpa_s, const char *_field, char *buf,
 	size_t buflen)
 {

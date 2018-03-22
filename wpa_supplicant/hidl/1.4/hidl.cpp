@@ -69,6 +69,9 @@ struct wpas_hidl_priv *wpas_hidl_init(struct wpa_global *global)
 	if (hidl_manager->registerHidlService(global)) {
 		goto err;
 	}
+#ifdef SUPPLICANT_VENDOR_HIDL
+        hidl_manager->registerVendorHidlService(global);
+#endif
 	// We may not need to store this hidl manager reference in the
 	// global data strucure because we've made it a singleton class.
 	priv->hidl_manager = (void *)hidl_manager;
@@ -700,6 +703,14 @@ void wpas_hidl_notify_dpp_config_sent(struct wpa_supplicant *wpa_s)
 void wpas_hidl_notify_dpp_auth_success(struct wpa_supplicant *wpa_s)
 {
 	wpas_hidl_notify_dpp_progress(wpa_s, DppProgressCode::AUTHENTICATION_SUCCESS);
+#ifdef SUPPLICANT_VENDOR_HIDL
+        wpa_printf(MSG_DEBUG, "Notifying DPP Auth Success to hidl control.");
+
+        HidlManager *hidl_manager = HidlManager::getInstance();
+        if (!hidl_manager)
+                return;
+        hidl_manager->notifyDppAuthSuccess(wpa_s, 0 /*Irrelivent to user*/);
+#endif
 }
 
 void wpas_hidl_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s)

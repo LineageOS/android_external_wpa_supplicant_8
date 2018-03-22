@@ -1538,6 +1538,12 @@ L_CFLAGS += -DCONFIG_HIDL -DCONFIG_CTRL_IFACE_HIDL
 HIDL_INTERFACE_VERSION := 1.4
 endif
 
+ifdef CONFIG_SUPPLICANT_VENDOR_HIDL
+SUPPLICANT_VENDOR_HIDL=y
+SUPPLICANT_VENDOR_HIDL_VERSION=2.2
+L_CFLAGS += -DSUPPLICANT_VENDOR_HIDL
+endif
+
 ifdef CONFIG_READLINE
 OBJS_c += src/utils/edit_readline.c
 LIBS_c += -lncurses -lreadline
@@ -1801,6 +1807,11 @@ LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.1
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.2
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.3
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.4
+ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.0
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.1
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.2
+endif
 LOCAL_SHARED_LIBRARIES += libhidlbase libutils libbase
 LOCAL_STATIC_LIBRARIES += libwpa_hidl
 LOCAL_VINTF_FRAGMENTS := hidl/$(HIDL_INTERFACE_VERSION)/android.hardware.wifi.supplicant.xml
@@ -1870,6 +1881,13 @@ LOCAL_SRC_FILES := \
     hidl/$(HIDL_INTERFACE_VERSION)/sta_iface.cpp \
     hidl/$(HIDL_INTERFACE_VERSION)/sta_network.cpp \
     hidl/$(HIDL_INTERFACE_VERSION)/supplicant.cpp
+ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
+LOCAL_SRC_FILES += \
+    hidl/$(HIDL_INTERFACE_VERSION)/vendorsta_iface.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/vendorsta_network.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/vendorp2p_iface.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/supplicantvendor.cpp
+endif
 LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.supplicant@1.0 \
     android.hardware.wifi.supplicant@1.1 \
@@ -1881,6 +1899,12 @@ LOCAL_SHARED_LIBRARIES := \
     libutils \
     liblog \
     libssl
+ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
+LOCAL_SHARED_LIBRARIES += \
+    vendor.qti.hardware.wifi.supplicant@2.0 \
+    vendor.qti.hardware.wifi.supplicant@2.1 \
+    vendor.qti.hardware.wifi.supplicant@2.2
+endif
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
 include $(BUILD_STATIC_LIBRARY)
