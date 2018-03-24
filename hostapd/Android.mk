@@ -1072,7 +1072,7 @@ else
 OBJS_c += src/utils/edit_simple.c
 endif
 
-ifeq ($(filter gce_x86 gce_x86_64 calypso, $(TARGET_DEVICE)),)
+ifeq ($(filter gce_x86 gce_x86_64 calypso generic_x86 generic_x86_64 generic generic_arm64, $(TARGET_DEVICE)),)
 ifdef CONFIG_CTRL_IFACE_HIDL
 HOSTAPD_USE_HIDL=y
 L_CFLAGS += -DCONFIG_CTRL_IFACE_HIDL
