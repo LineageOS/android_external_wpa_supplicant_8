@@ -1380,6 +1380,32 @@ void HidlManager::notifyExtRadioWorkTimeout(
 		std::placeholders::_1, id));
 }
 
+void HidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
+{
+	typedef ISupplicantStaIfaceCallback::EapErrorCode EapErrorCode;
+
+	if (!wpa_s)
+		return;
+
+	switch (static_cast<EapErrorCode>(error_code)) {
+		case EapErrorCode::SIM_GENERAL_FAILURE_AFTER_AUTH:
+		case EapErrorCode::SIM_TEMPORARILY_DENIED:
+		case EapErrorCode::SIM_NOT_SUBSCRIBED:
+		case EapErrorCode::SIM_GENERAL_FAILURE_BEFORE_AUTH:
+		case EapErrorCode::SIM_VENDOR_SPECIFIC_EXPIRED_CERT:
+			break;
+		default:
+			return;
+	}
+
+	callWithEachStaIfaceCallback(
+	    wpa_s->ifname,
+	    std::bind(
+		&ISupplicantStaIfaceCallback::onEapFailure_1_1,
+		std::placeholders::_1,
+		static_cast<EapErrorCode>(error_code)));
+}
+
 /**
  * Retrieve the |ISupplicantP2pIface| hidl object reference using the provided
  * ifname.

@@ -15,8 +15,8 @@
 
 #include <android-base/macros.h>
 
-#include <android/hardware/wifi/supplicant/1.0/ISupplicantStaIface.h>
-#include <android/hardware/wifi/supplicant/1.0/ISupplicantStaIfaceCallback.h>
+#include <android/hardware/wifi/supplicant/1.1/ISupplicantStaIface.h>
+#include <android/hardware/wifi/supplicant/1.1/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetwork.h>
 
 extern "C" {
@@ -71,6 +71,9 @@ public:
 	    SupplicantNetworkId id, getNetwork_cb _hidl_cb) override;
 	Return<void> listNetworks(listNetworks_cb _hidl_cb) override;
 	Return<void> registerCallback(
+	    const sp<android::hardware::wifi::supplicant::V1_0::ISupplicantStaIfaceCallback>
+	    & callback, registerCallback_cb _hidl_cb) override;
+	Return<void> registerCallback_1_1(
 	    const sp<ISupplicantStaIfaceCallback>& callback,
 	    registerCallback_cb _hidl_cb) override;
 	Return<void> reassociate(reassociate_cb _hidl_cb) override;
@@ -168,6 +171,9 @@ private:
 	std::pair<SupplicantStatus, std::vector<SupplicantNetworkId>>
 	listNetworksInternal();
 	SupplicantStatus registerCallbackInternal(
+	    const sp<android::hardware::wifi::supplicant::V1_0::ISupplicantStaIfaceCallback>
+	    & callback);
+	SupplicantStatus registerCallbackInternal_1_1(
 	    const sp<ISupplicantStaIfaceCallback>& callback);
 	SupplicantStatus reassociateInternal();
 	SupplicantStatus reconnectInternal();

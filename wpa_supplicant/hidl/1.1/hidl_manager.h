@@ -16,7 +16,7 @@
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pNetworkCallback.h>
-#include <android/hardware/wifi/supplicant/1.0/ISupplicantStaIfaceCallback.h>
+#include <android/hardware/wifi/supplicant/1.1/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetworkCallback.h>
 
 #include "p2p_iface.h"
@@ -122,6 +122,8 @@ public:
 	void notifyApStaDeauthorized(
 	    struct wpa_supplicant *wpa_s, const u8 *sta,
 	    const u8 *p2p_dev_addr);
+	void notifyEapError(
+	    struct wpa_supplicant *wpa_s, int error_code);
 
 	// Methods called from hidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
