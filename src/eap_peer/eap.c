@@ -2027,7 +2027,7 @@ static void eap_sm_parseEapReq(struct eap_sm *sm, const struct wpabuf *req)
 		eap_notify_status(sm, "completion", "failure");
 
 		/* Get the error code from method */
-		if (sm->m->get_error_code) {
+		if (sm->m && sm->m->get_error_code) {
 			error_code = sm->m->get_error_code(sm->eap_method_priv);
 			if (error_code != NO_EAP_METHOD_ERROR)
 				eap_report_error(sm, error_code);
