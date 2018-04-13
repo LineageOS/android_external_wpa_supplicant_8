@@ -39,6 +39,8 @@ namespace supplicant {
 namespace V1_1 {
 namespace implementation {
 using namespace android::hardware::wifi::supplicant::V1_0;
+using namespace android::hardware::wifi::supplicant::V1_1;
+using V1_0::ISupplicantStaIfaceCallback;
 
 /**
  * HidlManager is responsible for managing the lifetime of all
@@ -189,6 +191,10 @@ private:
 	    const std::string &ifname,
 	    const std::function<android::hardware::Return<void>(
 		android::sp<ISupplicantStaIfaceCallback>)> &method);
+	void callWithEachStaIfaceCallback_1_1(
+	    const std::string &ifname,
+	    const std::function<android::hardware::Return<void>(
+		android::sp<V1_1::ISupplicantStaIfaceCallback>)> &method);
 	void callWithEachP2pNetworkCallback(
 	    const std::string &ifname, int network_id,
 	    const std::function<android::hardware::Return<void>(

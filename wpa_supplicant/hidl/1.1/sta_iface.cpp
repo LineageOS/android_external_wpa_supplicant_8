@@ -159,6 +159,10 @@ namespace V1_1 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 
+using namespace android::hardware::wifi::supplicant::V1_0;
+using namespace android::hardware::wifi::supplicant::V1_1;
+using V1_0::ISupplicantStaIfaceCallback;
+
 StaIface::StaIface(struct wpa_global *wpa_global, const char ifname[])
     : wpa_global_(wpa_global), ifname_(ifname), is_valid_(true)
 {
@@ -215,7 +219,7 @@ Return<void> StaIface::listNetworks(listNetworks_cb _hidl_cb)
 }
 
 Return<void> StaIface::registerCallback(
-    const sp<android::hardware::wifi::supplicant::V1_0::ISupplicantStaIfaceCallback>
+    const sp<ISupplicantStaIfaceCallback>
     & callback, registerCallback_cb _hidl_cb)
 {
 	return validateAndCall(
@@ -224,12 +228,13 @@ Return<void> StaIface::registerCallback(
 }
 
 Return<void> StaIface::registerCallback_1_1(
-    const sp<ISupplicantStaIfaceCallback> &callback,
+    const sp<V1_1::ISupplicantStaIfaceCallback> &callback,
     registerCallback_cb _hidl_cb)
 {
+	sp<V1_0::ISupplicantStaIfaceCallback> callback_1_0 =  callback;
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
-	    &StaIface::registerCallbackInternal_1_1, _hidl_cb, callback);
+	    &StaIface::registerCallbackInternal, _hidl_cb, callback_1_0);
 }
 
 Return<void> StaIface::reassociate(reassociate_cb _hidl_cb)
@@ -579,12 +584,6 @@ StaIface::listNetworksInternal()
 }
 
 SupplicantStatus StaIface::registerCallbackInternal(
-    const sp<android::hardware::wifi::supplicant::V1_0::ISupplicantStaIfaceCallback> &callback)
-{
-	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
-}
-
-SupplicantStatus StaIface::registerCallbackInternal_1_1(
     const sp<ISupplicantStaIfaceCallback> &callback)
 {
 	HidlManager *hidl_manager = HidlManager::getInstance();

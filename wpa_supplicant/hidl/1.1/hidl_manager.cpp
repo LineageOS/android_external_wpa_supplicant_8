@@ -287,6 +287,34 @@ void callWithEachIfaceCallback(
 	}
 }
 
+template <class CallbackTypeV1_0, class CallbackTypeV1_1>
+void callWithEachIfaceCallback_1_1(
+    const std::string &ifname,
+    const std::function<
+	android::hardware::Return<void>(android::sp<CallbackTypeV1_1>)> &method,
+    const std::map<const std::string, std::vector<android::sp<CallbackTypeV1_0>>>
+	&callbacks_map)
+{
+	if (ifname.empty())
+		return;
+
+	auto iface_callback_map_iter = callbacks_map.find(ifname);
+	if (iface_callback_map_iter == callbacks_map.end())
+		return;
+	const auto &iface_callback_list = iface_callback_map_iter->second;
+	for (const auto &callback : iface_callback_list) {
+		android::sp<CallbackTypeV1_1> callback_1_1 =
+		    CallbackTypeV1_1::castFrom(callback);
+		if (callback_1_1 == nullptr)
+			continue;
+
+		if (!method(callback_1_1).isOk()) {
+			wpa_printf(
+			    MSG_ERROR, "Failed to invoke HIDL iface callback");
+		}
+	}
+}
+
 template <class CallbackType>
 void callWithEachNetworkCallback(
     const std::string &ifname, int network_id,
@@ -371,6 +399,10 @@ namespace wifi {
 namespace supplicant {
 namespace V1_1 {
 namespace implementation {
+
+using namespace android::hardware::wifi::supplicant::V1_0;
+using namespace android::hardware::wifi::supplicant::V1_1;
+using V1_0::ISupplicantStaIfaceCallback;
 
 HidlManager *HidlManager::instance_ = NULL;
 
@@ -1382,7 +1414,7 @@ void HidlManager::notifyExtRadioWorkTimeout(
 
 void HidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
 {
-	typedef ISupplicantStaIfaceCallback::EapErrorCode EapErrorCode;
+	typedef V1_1::ISupplicantStaIfaceCallback::EapErrorCode EapErrorCode;
 
 	if (!wpa_s)
 		return;
@@ -1398,10 +1430,10 @@ void HidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
 			return;
 	}
 
-	callWithEachStaIfaceCallback(
+	callWithEachStaIfaceCallback_1_1(
 	    wpa_s->ifname,
 	    std::bind(
-		&ISupplicantStaIfaceCallback::onEapFailure_1_1,
+		&V1_1::ISupplicantStaIfaceCallback::onEapFailure_1_1,
 		std::placeholders::_1,
 		static_cast<EapErrorCode>(error_code)));
 }
@@ -1732,6 +1764,23 @@ void HidlManager::callWithEachP2pIfaceCallback(
 	&method)
 {
 	callWithEachIfaceCallback(ifname, method, p2p_iface_callbacks_map_);
+}
+
+/**
+ * Helper fucntion to invoke the provided callback method on all the
+ * registered V1.1 iface callback hidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required hidl method from
+ * |V1_1::ISupplicantIfaceCallback|.
+ */
+void HidlManager::callWithEachStaIfaceCallback_1_1(
+    const std::string &ifname,
+    const std::function<Return<void>
+	(android::sp<V1_1::ISupplicantStaIfaceCallback>)> &method)
+{
+	callWithEachIfaceCallback_1_1(ifname, method, sta_iface_callbacks_map_);
 }
 
 /**
