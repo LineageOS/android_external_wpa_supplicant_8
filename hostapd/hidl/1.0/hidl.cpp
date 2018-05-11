@@ -40,7 +40,6 @@ int hostapd_hidl_init(struct hapd_interfaces *interfaces)
 {
 	wpa_printf(MSG_DEBUG, "Initing hidl control");
 
-	IPCThreadState::self()->disableBackgroundScheduling(true);
 	IPCThreadState::self()->setupPolling(&hidl_fd);
 	if (hidl_fd < 0)
 		goto err;
