@@ -194,6 +194,14 @@ struct wpa_ssid {
 	char *sae_password;
 
 	/**
+	 * sae_password_id - SAE password identifier
+	 *
+	 * This parameter can be used to identify a specific SAE password. If
+	 * not included, the default SAE password is used instead.
+	 */
+	char *sae_password_id;
+
+	/**
 	 * ext_psk - PSK/passphrase name in external storage
 	 *
 	 * If this is set, PSK/passphrase will be fetched from external storage
@@ -497,7 +505,7 @@ struct wpa_ssid {
 
 	int vht;
 
-	u8 max_oper_chwidth;
+	int max_oper_chwidth;
 
 	unsigned int vht_center_freq1;
 	unsigned int vht_center_freq2;
@@ -804,6 +812,19 @@ struct wpa_ssid {
 
 #ifdef CONFIG_HS20
 	int update_identifier;
+
+	/**
+	 * roaming_consortium_selection - Roaming Consortium Selection
+	 *
+	 * The matching Roaming Consortium OI that was used to generate this
+	 * network profile.
+	 */
+	u8 *roaming_consortium_selection;
+
+	/**
+	 * roaming_consortium_selection_len - roaming_consortium_selection len
+	 */
+	size_t roaming_consortium_selection_len;
 #endif /* CONFIG_HS20 */
 
 	unsigned int wps_run;
@@ -889,13 +910,23 @@ struct wpa_ssid {
 	/**
 	 * owe_group - OWE DH Group
 	 *
-	 * 0 = use default (19)
+	 * 0 = use default (19) first and then try all supported groups one by
+	 *	one if AP rejects the selected group
 	 * 1-65535 DH Group to use for OWE
 	 *
 	 * Groups 19 (NIST P-256), 20 (NIST P-384), and 21 (NIST P-521) are
 	 * currently supported.
 	 */
 	int owe_group;
+
+	/**
+	 * owe_only - OWE-only mode (disable transition mode)
+	 *
+	 * 0 = enable transition mode (allow connection to either OWE or open
+	 *	BSS)
+	 * 1 = disable transition mode (allow connection only with OWE)
+	 */
+	int owe_only;
 };
 
 #endif /* CONFIG_SSID_H */

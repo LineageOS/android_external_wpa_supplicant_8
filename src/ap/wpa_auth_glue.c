@@ -59,6 +59,7 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 #ifdef CONFIG_IEEE80211W
 	wconf->ieee80211w = conf->ieee80211w;
 	wconf->group_mgmt_cipher = conf->group_mgmt_cipher;
+	wconf->sae_require_mfp = conf->sae_require_mfp;
 #endif /* CONFIG_IEEE80211W */
 #ifdef CONFIG_IEEE80211R_AP
 	wconf->ssid_len = conf->ssid.ssid_len;
@@ -75,6 +76,7 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 	}
 	os_memcpy(wconf->r1_key_holder, conf->r1_key_holder, FT_R1KH_ID_LEN);
 	wconf->r0_key_lifetime = conf->r0_key_lifetime;
+	wconf->r1_max_key_lifetime = conf->r1_max_key_lifetime;
 	wconf->reassociation_deadline = conf->reassociation_deadline;
 	wconf->rkh_pos_timeout = conf->rkh_pos_timeout;
 	wconf->rkh_neg_timeout = conf->rkh_neg_timeout;
@@ -364,10 +366,10 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
 			sta->last_tk_len = key_len;
 		}
 #ifdef CONFIG_IEEE80211W
-	} else if (alg == WPA_CIPHER_AES_128_CMAC ||
-		   alg == WPA_CIPHER_BIP_GMAC_128 ||
-		   alg == WPA_CIPHER_BIP_GMAC_256 ||
-		   alg == WPA_CIPHER_BIP_CMAC_256) {
+	} else if (alg == WPA_ALG_IGTK ||
+		   alg == WPA_ALG_BIP_GMAC_128 ||
+		   alg == WPA_ALG_BIP_GMAC_256 ||
+		   alg == WPA_ALG_BIP_CMAC_256) {
 		hapd->last_igtk_alg = alg;
 		hapd->last_igtk_key_idx = idx;
 		if (key)
@@ -834,6 +836,244 @@ hostapd_wpa_auth_add_sta(void *ctx, const u8 *sta_addr)
 }
 
 
+static int hostapd_wpa_auth_set_vlan(void *ctx, const u8 *sta_addr,
+				     struct vlan_description *vlan)
+{
+	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
+
+	sta = ap_get_sta(hapd, sta_addr);
+	if (!sta || !sta->wpa_sm)
+		return -1;
+
+	if (vlan->notempty &&
+	    !hostapd_vlan_valid(hapd->conf->vlan, vlan)) {
+		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+			       HOSTAPD_LEVEL_INFO,
+			       "Invalid VLAN %d%s received from FT",
+			       vlan->untagged, vlan->tagged[0] ? "+" : "");
+		return -1;
+	}
+
+	if (ap_sta_set_vlan(hapd, sta, vlan) < 0)
+		return -1;
+	/* Configure wpa_group for GTK but ignore error due to driver not
+	 * knowing this STA. */
+	ap_sta_bind_vlan(hapd, sta);
+
+	if (sta->vlan_id)
+		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+			       HOSTAPD_LEVEL_INFO, "VLAN ID %d", sta->vlan_id);
+
+	return 0;
+}
+
+
+static int hostapd_wpa_auth_get_vlan(void *ctx, const u8 *sta_addr,
+				     struct vlan_description *vlan)
+{
+	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
+
+	sta = ap_get_sta(hapd, sta_addr);
+	if (!sta)
+		return -1;
+
+	if (sta->vlan_desc)
+		*vlan = *sta->vlan_desc;
+	else
+		os_memset(vlan, 0, sizeof(*vlan));
+
+	return 0;
+}
+
+
+static int
+hostapd_wpa_auth_set_identity(void *ctx, const u8 *sta_addr,
+			      const u8 *identity, size_t identity_len)
+{
+	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
+
+	sta = ap_get_sta(hapd, sta_addr);
+	if (!sta)
+		return -1;
+
+	os_free(sta->identity);
+	sta->identity = NULL;
+
+	if (sta->eapol_sm) {
+		os_free(sta->eapol_sm->identity);
+		sta->eapol_sm->identity = NULL;
+		sta->eapol_sm->identity_len = 0;
+	}
+
+	if (!identity_len)
+		return 0;
+
+	/* sta->identity is NULL terminated */
+	sta->identity = os_zalloc(identity_len + 1);
+	if (!sta->identity)
+		return -1;
+	os_memcpy(sta->identity, identity, identity_len);
+
+	if (sta->eapol_sm) {
+		sta->eapol_sm->identity = os_zalloc(identity_len);
+		if (!sta->eapol_sm->identity)
+			return -1;
+		os_memcpy(sta->eapol_sm->identity, identity, identity_len);
+		sta->eapol_sm->identity_len = identity_len;
+	}
+
+	return 0;
+}
+
+
+static size_t
+hostapd_wpa_auth_get_identity(void *ctx, const u8 *sta_addr, const u8 **buf)
+{
+	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
+	size_t len;
+	char *identity;
+
+	sta = ap_get_sta(hapd, sta_addr);
+	if (!sta)
+		return 0;
+
+	*buf = ieee802_1x_get_identity(sta->eapol_sm, &len);
+	if (*buf && len)
+		return len;
+
+	if (!sta->identity) {
+		*buf = NULL;
+		return 0;
+	}
+
+	identity = sta->identity;
+	len = os_strlen(identity);
+	*buf = (u8 *) identity;
+
+	return len;
+}
+
+
+static int
+hostapd_wpa_auth_set_radius_cui(void *ctx, const u8 *sta_addr,
+				const u8 *radius_cui, size_t radius_cui_len)
+{
+	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
+
+	sta = ap_get_sta(hapd, sta_addr);
+	if (!sta)
+		return -1;
+
+	os_free(sta->radius_cui);
+	sta->radius_cui = NULL;
+
+	if (sta->eapol_sm) {
+		wpabuf_free(sta->eapol_sm->radius_cui);
+		sta->eapol_sm->radius_cui = NULL;
+	}
+
+	if (!radius_cui)
+		return 0;
+
+	/* sta->radius_cui is NULL terminated */
+	sta->radius_cui = os_zalloc(radius_cui_len + 1);
+	if (!sta->radius_cui)
+		return -1;
+	os_memcpy(sta->radius_cui, radius_cui, radius_cui_len);
+
+	if (sta->eapol_sm) {
+		sta->eapol_sm->radius_cui = wpabuf_alloc_copy(radius_cui,
+							      radius_cui_len);
+		if (!sta->eapol_sm->radius_cui)
+			return -1;
+	}
+
+	return 0;
+}
+
+
+static size_t
+hostapd_wpa_auth_get_radius_cui(void *ctx, const u8 *sta_addr, const u8 **buf)
+{
+	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
+	struct wpabuf *b;
+	size_t len;
+	char *radius_cui;
+
+	sta = ap_get_sta(hapd, sta_addr);
+	if (!sta)
+		return 0;
+
+	b = ieee802_1x_get_radius_cui(sta->eapol_sm);
+	if (b) {
+		len = wpabuf_len(b);
+		*buf = wpabuf_head(b);
+		return len;
+	}
+
+	if (!sta->radius_cui) {
+		*buf = NULL;
+		return 0;
+	}
+
+	radius_cui = sta->radius_cui;
+	len = os_strlen(radius_cui);
+	*buf = (u8 *) radius_cui;
+
+	return len;
+}
+
+
+static void hostapd_wpa_auth_set_session_timeout(void *ctx, const u8 *sta_addr,
+						 int session_timeout)
+{
+	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
+
+	sta = ap_get_sta(hapd, sta_addr);
+	if (!sta)
+		return;
+
+	if (session_timeout) {
+		os_get_reltime(&sta->session_timeout);
+		sta->session_timeout.sec += session_timeout;
+		sta->session_timeout_set = 1;
+		ap_sta_session_timeout(hapd, sta, session_timeout);
+	} else {
+		sta->session_timeout_set = 0;
+		ap_sta_no_session_timeout(hapd, sta);
+	}
+}
+
+
+static int hostapd_wpa_auth_get_session_timeout(void *ctx, const u8 *sta_addr)
+{
+	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
+	struct os_reltime now, remaining;
+
+	sta = ap_get_sta(hapd, sta_addr);
+	if (!sta || !sta->session_timeout_set)
+		return 0;
+
+	os_get_reltime(&now);
+	if (os_reltime_before(&sta->session_timeout, &now)) {
+		/* already expired, return >0 as timeout was set */
+		return 1;
+	}
+
+	os_reltime_sub(&sta->session_timeout, &now, &remaining);
+
+	return (remaining.sec > 0) ? remaining.sec : 1;
+}
+
+
 static void hostapd_rrb_receive(void *ctx, const u8 *src_addr, const u8 *buf,
 				size_t len)
 {
@@ -953,6 +1193,14 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 		.send_ft_action = hostapd_wpa_auth_send_ft_action,
 		.add_sta = hostapd_wpa_auth_add_sta,
 		.add_tspec = hostapd_wpa_auth_add_tspec,
+		.set_vlan = hostapd_wpa_auth_set_vlan,
+		.get_vlan = hostapd_wpa_auth_get_vlan,
+		.set_identity = hostapd_wpa_auth_set_identity,
+		.get_identity = hostapd_wpa_auth_get_identity,
+		.set_radius_cui = hostapd_wpa_auth_set_radius_cui,
+		.get_radius_cui = hostapd_wpa_auth_get_radius_cui,
+		.set_session_timeout = hostapd_wpa_auth_set_session_timeout,
+		.get_session_timeout = hostapd_wpa_auth_get_session_timeout,
 #endif /* CONFIG_IEEE80211R_AP */
 	};
 	const u8 *wpa_ie;

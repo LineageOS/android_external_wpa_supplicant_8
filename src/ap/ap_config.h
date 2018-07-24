@@ -160,6 +160,8 @@ struct hostapd_eap_user {
 	} methods[EAP_MAX_METHODS];
 	u8 *password;
 	size_t password_len;
+	u8 *salt;
+	size_t salt_len; /* non-zero when password is salted */
 	int phase2;
 	int force_version;
 	unsigned int wildcard_prefix:1;
@@ -169,6 +171,7 @@ struct hostapd_eap_user {
 	unsigned int macacl:1;
 	int ttls_auth; /* EAP_TTLS_AUTH_* bitfield */
 	struct hostapd_radius_attr *accept_attr;
+	u32 t_c_timestamp;
 };
 
 struct hostapd_radius_attr {
@@ -201,6 +204,12 @@ struct hostapd_lang_string {
 	u8 name[252];
 };
 
+struct hostapd_venue_url {
+	u8 venue_number;
+	u8 url_len;
+	u8 url[254];
+};
+
 #define MAX_NAI_REALMS 10
 #define MAX_NAI_REALMLEN 255
 #define MAX_NAI_EAP_METHODS 5
@@ -230,6 +239,12 @@ struct fils_realm {
 	char realm[];
 };
 
+struct sae_password_entry {
+	struct sae_password_entry *next;
+	char *password;
+	char *identifier;
+	u8 peer_addr[ETH_ALEN];
+};
 
 /**
  * struct hostapd_bss_config - Per-BSS configuration
@@ -248,7 +263,8 @@ struct hostapd_bss_config {
 	int max_num_sta; /* maximum number of STAs in station table */
 
 	int dtim_period;
-	int bss_load_update_period;
+	unsigned int bss_load_update_period;
+	unsigned int chan_util_avg_period;
 
 	int ieee802_1x; /* use IEEE 802.1X */
 	int eapol_version;
@@ -325,6 +341,7 @@ struct hostapd_bss_config {
 		PSK_RADIUS_REQUIRED = 2
 	} wpa_psk_radius;
 	int wpa_pairwise;
+	int group_cipher; /* wpa_group value override from configuation */
 	int wpa_group;
 	int wpa_group_rekey;
 	int wpa_group_rekey_set;
@@ -342,7 +359,7 @@ struct hostapd_bss_config {
 	/* IEEE 802.11r - Fast BSS Transition */
 	u8 mobility_domain[MOBILITY_DOMAIN_ID_LEN];
 	u8 r1_key_holder[FT_R1KH_ID_LEN];
-	u32 r0_key_lifetime;
+	u32 r0_key_lifetime; /* PMK-R0 lifetime seconds */
 	int rkh_pos_timeout;
 	int rkh_neg_timeout;
 	int rkh_pull_timeout; /* ms */
@@ -353,6 +370,7 @@ struct hostapd_bss_config {
 	int pmk_r1_push;
 	int ft_over_ds;
 	int ft_psk_generate_local;
+	int r1_max_key_lifetime;
 #endif /* CONFIG_IEEE80211R_AP */
 
 	char *ctrl_interface; /* directory for UNIX domain sockets */
@@ -479,6 +497,7 @@ struct hostapd_bss_config {
 	int time_advertisement;
 	char *time_zone;
 	int wnm_sleep_mode;
+	int wnm_sleep_mode_no_keys;
 	int bss_transition;
 
 	/* IEEE 802.11u - Interworking */
@@ -500,6 +519,10 @@ struct hostapd_bss_config {
 	/* IEEE 802.11u - Venue Name duples */
 	unsigned int venue_name_count;
 	struct hostapd_lang_string *venue_name;
+
+	/* Venue URL duples */
+	unsigned int venue_url_count;
+	struct hostapd_venue_url *venue_url;
 
 	/* IEEE 802.11u - Network Authentication Type */
 	u8 *network_auth_type;
@@ -566,9 +589,14 @@ struct hostapd_bss_config {
 		struct hostapd_lang_string *service_desc;
 	} *hs20_osu_providers, *last_osu;
 	size_t hs20_osu_providers_count;
+	char **hs20_operator_icon;
+	size_t hs20_operator_icon_count;
 	unsigned int hs20_deauth_req_timeout;
 	char *subscr_remediation_url;
 	u8 subscr_remediation_method;
+	char *t_c_filename;
+	u32 t_c_timestamp;
+	char *t_c_server_url;
 #endif /* CONFIG_HS20 */
 
 	u8 wps_rf_bands; /* RF bands for WPS (WPS_RF_*) */
@@ -581,8 +609,10 @@ struct hostapd_bss_config {
 	struct wpabuf *assocresp_elements;
 
 	unsigned int sae_anti_clogging_threshold;
+	unsigned int sae_sync;
+	int sae_require_mfp;
 	int *sae_groups;
-	char *sae_password;
+	struct sae_password_entry *sae_passwords;
 
 	char *wowlan_triggers; /* Wake-on-WLAN triggers */
 
@@ -796,6 +826,11 @@ struct hostapd_config {
 	struct he_phy_capabilities_info he_phy_capab;
 	struct he_operation he_op;
 #endif /* CONFIG_IEEE80211AX */
+
+	/* VHT enable/disable config from CHAN_SWITCH */
+#define CH_SWITCH_VHT_ENABLED BIT(0)
+#define CH_SWITCH_VHT_DISABLED BIT(1)
+	unsigned int ch_switch_vht_config;
 };
 
 

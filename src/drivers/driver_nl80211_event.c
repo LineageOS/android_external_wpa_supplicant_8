@@ -131,6 +131,11 @@ static const char * nl80211_command_to_string(enum nl80211_commands cmd)
 	C2S(NL80211_CMD_SET_QOS_MAP)
 	C2S(NL80211_CMD_ADD_TX_TS)
 	C2S(NL80211_CMD_DEL_TX_TS)
+	C2S(NL80211_CMD_WIPHY_REG_CHANGE)
+	C2S(NL80211_CMD_PORT_AUTHORIZED)
+	C2S(NL80211_CMD_EXTERNAL_AUTH)
+	C2S(NL80211_CMD_STA_OPMODE_CHANGED)
+	C2S(NL80211_CMD_CONTROL_PORT_FRAME)
 	default:
 		return "NL80211_CMD_UNKNOWN";
 	}
@@ -673,7 +678,7 @@ static void mlme_event_mgmt_tx_status(struct wpa_driver_nl80211_data *drv,
 
 		cookie_val = nla_get_u64(cookie);
 		wpa_printf(MSG_DEBUG, "nl80211: Action TX status:"
-			   " cookie=0%llx%s (ack=%d)",
+			   " cookie=0x%llx%s (ack=%d)",
 			   (long long unsigned int) cookie_val,
 			   cookie_val == drv->send_action_cookie ?
 			   " (match)" : " (unknown)", ack != NULL);
@@ -1590,6 +1595,9 @@ static void nl80211_radar_event(struct wpa_driver_nl80211_data *drv,
 		wpa_supplicant_event(drv->ctx, EVENT_DFS_PRE_CAC_EXPIRED,
 				     &data);
 		break;
+	case NL80211_RADAR_CAC_STARTED:
+		wpa_supplicant_event(drv->ctx, EVENT_DFS_CAC_STARTED, &data);
+		break;
 	default:
 		wpa_printf(MSG_DEBUG, "nl80211: Unknown radar event %d "
 			   "received", event_type);
@@ -2175,6 +2183,146 @@ static void nl80211_reg_change_event(struct wpa_driver_nl80211_data *drv,
 }
 
 
+static void nl80211_external_auth(struct wpa_driver_nl80211_data *drv,
+				  struct nlattr **tb)
+{
+	union wpa_event_data event;
+	enum nl80211_external_auth_action act;
+
+	if (!tb[NL80211_ATTR_AKM_SUITES] ||
+	    !tb[NL80211_ATTR_EXTERNAL_AUTH_ACTION] ||
+	    !tb[NL80211_ATTR_BSSID] ||
+	    !tb[NL80211_ATTR_SSID])
+		return;
+
+	os_memset(&event, 0, sizeof(event));
+	act = nla_get_u32(tb[NL80211_ATTR_EXTERNAL_AUTH_ACTION]);
+	switch (act) {
+	case NL80211_EXTERNAL_AUTH_START:
+		event.external_auth.action = EXT_AUTH_START;
+		break;
+	case NL80211_EXTERNAL_AUTH_ABORT:
+		event.external_auth.action = EXT_AUTH_ABORT;
+		break;
+	default:
+		return;
+	}
+
+	event.external_auth.key_mgmt_suite =
+		nla_get_u32(tb[NL80211_ATTR_AKM_SUITES]);
+
+	event.external_auth.ssid_len = nla_len(tb[NL80211_ATTR_SSID]);
+	if (event.external_auth.ssid_len > SSID_MAX_LEN)
+		return;
+	os_memcpy(event.external_auth.ssid, nla_data(tb[NL80211_ATTR_SSID]),
+		  event.external_auth.ssid_len);
+
+	os_memcpy(event.external_auth.bssid, nla_data(tb[NL80211_ATTR_BSSID]),
+		  ETH_ALEN);
+
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: External auth action: %u, AKM: 0x%x",
+		   event.external_auth.action,
+		   event.external_auth.key_mgmt_suite);
+	wpa_supplicant_event(drv->ctx, EVENT_EXTERNAL_AUTH, &event);
+}
+
+
+static void nl80211_port_authorized(struct wpa_driver_nl80211_data *drv,
+				    struct nlattr **tb)
+{
+	const u8 *addr;
+
+	if (!tb[NL80211_ATTR_MAC] ||
+	    nla_len(tb[NL80211_ATTR_MAC]) != ETH_ALEN) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Ignore port authorized event without BSSID");
+		return;
+	}
+
+	addr = nla_data(tb[NL80211_ATTR_MAC]);
+	if (os_memcmp(addr, drv->bssid, ETH_ALEN) != 0) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Ignore port authorized event for " MACSTR
+			   " (not the currently connected BSSID " MACSTR ")",
+			   MAC2STR(addr), MAC2STR(drv->bssid));
+		return;
+	}
+
+	wpa_supplicant_event(drv->ctx, EVENT_PORT_AUTHORIZED, NULL);
+}
+
+
+static void nl80211_sta_opmode_change_event(struct wpa_driver_nl80211_data *drv,
+					    struct nlattr **tb)
+{
+	union wpa_event_data ed;
+	u8 smps_mode, max_bw;
+
+	if (!tb[NL80211_ATTR_MAC] ||
+	    (!tb[NL80211_ATTR_CHANNEL_WIDTH] &&
+	     !tb[NL80211_ATTR_SMPS_MODE] &&
+	     !tb[NL80211_ATTR_NSS]))
+		return;
+
+	ed.sta_opmode.smps_mode = SMPS_INVALID;
+	ed.sta_opmode.chan_width = CHAN_WIDTH_UNKNOWN;
+	ed.sta_opmode.rx_nss = 0xff;
+	ed.sta_opmode.addr = nla_data(tb[NL80211_ATTR_MAC]);
+
+	if (tb[NL80211_ATTR_SMPS_MODE]) {
+		smps_mode = nla_get_u32(tb[NL80211_ATTR_SMPS_MODE]);
+		switch (smps_mode) {
+		case NL80211_SMPS_OFF:
+			ed.sta_opmode.smps_mode = SMPS_OFF;
+			break;
+		case NL80211_SMPS_STATIC:
+			ed.sta_opmode.smps_mode = SMPS_STATIC;
+			break;
+		case NL80211_SMPS_DYNAMIC:
+			ed.sta_opmode.smps_mode = SMPS_DYNAMIC;
+			break;
+		default:
+			ed.sta_opmode.smps_mode = SMPS_INVALID;
+			break;
+		}
+	}
+
+	if (tb[NL80211_ATTR_CHANNEL_WIDTH]) {
+		max_bw = nla_get_u32(tb[NL80211_ATTR_CHANNEL_WIDTH]);
+		switch (max_bw) {
+		case NL80211_CHAN_WIDTH_20_NOHT:
+			ed.sta_opmode.chan_width = CHAN_WIDTH_20_NOHT;
+			break;
+		case NL80211_CHAN_WIDTH_20:
+			ed.sta_opmode.chan_width = CHAN_WIDTH_20;
+			break;
+		case NL80211_CHAN_WIDTH_40:
+			ed.sta_opmode.chan_width = CHAN_WIDTH_40;
+			break;
+		case NL80211_CHAN_WIDTH_80:
+			ed.sta_opmode.chan_width = CHAN_WIDTH_80;
+			break;
+		case NL80211_CHAN_WIDTH_80P80:
+			ed.sta_opmode.chan_width = CHAN_WIDTH_80P80;
+			break;
+		case NL80211_CHAN_WIDTH_160:
+			ed.sta_opmode.chan_width = CHAN_WIDTH_160;
+			break;
+		default:
+			ed.sta_opmode.chan_width = CHAN_WIDTH_UNKNOWN;
+			break;
+
+		}
+	}
+
+	if (tb[NL80211_ATTR_NSS])
+		ed.sta_opmode.rx_nss = nla_get_u8(tb[NL80211_ATTR_NSS]);
+
+	wpa_supplicant_event(drv->ctx, EVENT_STATION_OPMODE_CHANGED, &ed);
+}
+
+
 static void do_process_drv_event(struct i802_bss *bss, int cmd,
 				 struct nlattr **tb)
 {
@@ -2328,6 +2476,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 		nl80211_cqm_event(drv, tb);
 		break;
 	case NL80211_CMD_REG_CHANGE:
+	case NL80211_CMD_WIPHY_REG_CHANGE:
 		nl80211_reg_change_event(drv, tb);
 		break;
 	case NL80211_CMD_REG_BEACON_HINT:
@@ -2373,6 +2522,12 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 	case NL80211_CMD_NEW_PEER_CANDIDATE:
 		nl80211_new_peer_candidate(drv, tb);
 		break;
+	case NL80211_CMD_PORT_AUTHORIZED:
+		nl80211_port_authorized(drv, tb);
+		break;
+	case NL80211_CMD_STA_OPMODE_CHANGED:
+		nl80211_sta_opmode_change_event(drv, tb);
+		break;
 	default:
 		wpa_dbg(drv->ctx, MSG_DEBUG, "nl80211: Ignored unknown event "
 			"(cmd=%d)", cmd);
@@ -2387,10 +2542,11 @@ int process_global_event(struct nl_msg *msg, void *arg)
 	struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
 	struct nlattr *tb[NL80211_ATTR_MAX + 1];
 	struct wpa_driver_nl80211_data *drv, *tmp;
-	int ifidx = -1;
+	int ifidx = -1, wiphy_idx = -1, wiphy_idx_rx = -1;
 	struct i802_bss *bss;
 	u64 wdev_id = 0;
 	int wdev_id_set = 0;
+	int wiphy_idx_set = 0;
 
 	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
 		  genlmsg_attrlen(gnlh, 0), NULL);
@@ -2400,13 +2556,19 @@ int process_global_event(struct nl_msg *msg, void *arg)
 	else if (tb[NL80211_ATTR_WDEV]) {
 		wdev_id = nla_get_u64(tb[NL80211_ATTR_WDEV]);
 		wdev_id_set = 1;
+	} else if (tb[NL80211_ATTR_WIPHY]) {
+		wiphy_idx_rx = nla_get_u32(tb[NL80211_ATTR_WIPHY]);
+		wiphy_idx_set = 1;
 	}
 
 	dl_list_for_each_safe(drv, tmp, &global->interfaces,
 			      struct wpa_driver_nl80211_data, list) {
 		for (bss = drv->first_bss; bss; bss = bss->next) {
-			if ((ifidx == -1 && !wdev_id_set) ||
+			if (wiphy_idx_set)
+				wiphy_idx = nl80211_get_wiphy_index(bss);
+			if ((ifidx == -1 && !wiphy_idx_set && !wdev_id_set) ||
 			    ifidx == bss->ifindex ||
+			    (wiphy_idx_set && wiphy_idx == wiphy_idx_rx) ||
 			    (wdev_id_set && bss->wdev_id_set &&
 			     wdev_id == bss->wdev_id)) {
 				do_process_drv_event(bss, gnlh->cmd, tb);
@@ -2450,6 +2612,9 @@ int process_bss_event(struct nl_msg *msg, void *arg)
 		break;
 	case NL80211_CMD_UNEXPECTED_4ADDR_FRAME:
 		nl80211_spurious_frame(bss, tb, 1);
+		break;
+	case NL80211_CMD_EXTERNAL_AUTH:
+		nl80211_external_auth(bss->drv, tb);
 		break;
 	default:
 		wpa_printf(MSG_DEBUG, "nl80211: Ignored unknown event "

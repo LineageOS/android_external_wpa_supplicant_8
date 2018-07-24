@@ -345,6 +345,7 @@ int radio_add_work(struct wpa_supplicant *wpa_s, unsigned int freq,
 void radio_work_done(struct wpa_radio_work *work);
 void radio_remove_works(struct wpa_supplicant *wpa_s,
 			const char *type, int remove_all);
+void radio_remove_pending_work(struct wpa_supplicant *wpa_s, void *ctx);
 void radio_work_check_next(struct wpa_supplicant *wpa_s);
 struct wpa_radio_work *
 radio_work_pending(struct wpa_supplicant *wpa_s, const char *type);
@@ -751,6 +752,7 @@ struct wpa_supplicant {
 	int set_ap_uapsd;
 	int ap_uapsd;
 	int auth_alg;
+	u16 last_owe_group;
 
 #ifdef CONFIG_SME
 	struct {
@@ -788,6 +790,8 @@ struct wpa_supplicant {
 		struct wpabuf *sae_token;
 		int sae_group_index;
 		unsigned int sae_pmksa_caching:1;
+		u16 seq_num;
+		struct external_auth ext_auth;
 #endif /* CONFIG_SAE */
 	} sme;
 #endif /* CONFIG_SME */
@@ -897,6 +901,7 @@ struct wpa_supplicant {
 
 	unsigned int p2p_auto_join:1;
 	unsigned int p2p_auto_pd:1;
+	unsigned int p2p_go_do_acs:1;
 	unsigned int p2p_persistent_group:1;
 	unsigned int p2p_fallback_to_go_neg:1;
 	unsigned int p2p_pd_before_go_neg:1;
@@ -912,6 +917,7 @@ struct wpa_supplicant {
 	unsigned int p2p_disable_ip_addr_req:1;
 	unsigned int p2ps_method_config_any:1;
 	unsigned int p2p_cli_probe:1;
+	enum hostapd_hw_mode p2p_go_acs_band;
 	int p2p_persistent_go_freq;
 	int p2p_persistent_id;
 	int p2p_go_intent;
@@ -1178,6 +1184,8 @@ struct wpa_supplicant {
 	/* RIC elements for FT protocol */
 	struct wpabuf *ric_ies;
 
+	int last_auth_timeout_sec;
+
 #ifdef CONFIG_DPP
 	struct dl_list dpp_bootstrap; /* struct dpp_bootstrap_info */
 	struct dl_list dpp_configurator; /* struct dpp_configurator */
@@ -1190,7 +1198,9 @@ struct wpa_supplicant {
 	int dpp_qr_mutual;
 	int dpp_netrole_ap;
 	int dpp_auth_ok_on_ack;
+	int dpp_in_response_listen;
 	int dpp_gas_client;
+	int dpp_gas_dialog_token;
 	u8 dpp_intro_bssid[ETH_ALEN];
 	void *dpp_intro_network;
 	struct dpp_pkex *dpp_pkex;
@@ -1199,6 +1209,13 @@ struct wpa_supplicant {
 	char *dpp_pkex_identifier;
 	char *dpp_pkex_auth_cmd;
 	char *dpp_configurator_params;
+	struct os_reltime dpp_last_init;
+	struct os_reltime dpp_init_iter_start;
+	unsigned int dpp_init_max_tries;
+	unsigned int dpp_init_retry_time;
+	unsigned int dpp_resp_wait_time;
+	unsigned int dpp_resp_max_tries;
+	unsigned int dpp_resp_retry_time;
 #ifdef CONFIG_TESTING_OPTIONS
 	char *dpp_config_obj_override;
 	char *dpp_discovery_override;
@@ -1206,6 +1223,11 @@ struct wpa_supplicant {
 	unsigned int dpp_ignore_netaccesskey_mismatch:1;
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_DPP */
+
+#ifdef CONFIG_FILS
+	unsigned int disable_fils:1;
+#endif /* CONFIG_FILS */
+	unsigned int ieee80211ac:1;
 };
 
 
@@ -1238,6 +1260,7 @@ void wpa_supplicant_initiate_eapol(struct wpa_supplicant *wpa_s);
 void wpa_clear_keys(struct wpa_supplicant *wpa_s, const u8 *addr);
 void wpa_supplicant_req_auth_timeout(struct wpa_supplicant *wpa_s,
 				     int sec, int usec);
+void wpas_auth_timeout_restart(struct wpa_supplicant *wpa_s, int sec_diff);
 void wpa_supplicant_reinit_autoscan(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 			      enum wpa_states state);
@@ -1471,5 +1494,8 @@ int wpas_ctrl_iface_get_pref_freq_list_override(struct wpa_supplicant *wpa_s,
 						enum wpa_driver_if_type if_type,
 						unsigned int *num,
 						unsigned int *freq_list);
+
+int wpa_is_fils_supported(struct wpa_supplicant *wpa_s);
+int wpa_is_fils_sk_pfs_supported(struct wpa_supplicant *wpa_s);
 
 #endif /* WPA_SUPPLICANT_I_H */

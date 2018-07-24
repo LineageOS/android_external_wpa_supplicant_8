@@ -225,6 +225,7 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx)
 			*pos |= 0x40; /* Bit 70 - FTM responder */
 		if (hapd->conf->ftm_initiator)
 			*pos |= 0x80; /* Bit 71 - FTM initiator */
+		break;
 	case 9: /* Bits 72-79 */
 #ifdef CONFIG_FILS
 		if ((hapd->conf->wpa & WPA_PROTO_RSN) &&
@@ -445,7 +446,7 @@ u8 * hostapd_eid_time_zone(struct hostapd_data *hapd, u8 *eid)
 {
 	size_t len;
 
-	if (hapd->conf->time_advertisement != 2)
+	if (hapd->conf->time_advertisement != 2 || !hapd->conf->time_zone)
 		return eid;
 
 	len = os_strlen(hapd->conf->time_zone);
@@ -605,6 +606,67 @@ u8 hostapd_mbo_ie_len(struct hostapd_data *hapd)
 }
 
 #endif /* CONFIG_MBO */
+
+
+#ifdef CONFIG_OWE
+static int hostapd_eid_owe_trans_enabled(struct hostapd_data *hapd)
+{
+	return hapd->conf->owe_transition_ssid_len > 0 &&
+		!is_zero_ether_addr(hapd->conf->owe_transition_bssid);
+}
+#endif /* CONFIG_OWE */
+
+
+size_t hostapd_eid_owe_trans_len(struct hostapd_data *hapd)
+{
+#ifdef CONFIG_OWE
+	if (!hostapd_eid_owe_trans_enabled(hapd))
+		return 0;
+	return 6 + ETH_ALEN + 1 + hapd->conf->owe_transition_ssid_len;
+#else /* CONFIG_OWE */
+	return 0;
+#endif /* CONFIG_OWE */
+}
+
+
+u8 * hostapd_eid_owe_trans(struct hostapd_data *hapd, u8 *eid,
+				  size_t len)
+{
+#ifdef CONFIG_OWE
+	u8 *pos = eid;
+	size_t elen;
+
+	if (hapd->conf->owe_transition_ifname[0] &&
+	    !hostapd_eid_owe_trans_enabled(hapd))
+		hostapd_owe_trans_get_info(hapd);
+
+	if (!hostapd_eid_owe_trans_enabled(hapd))
+		return pos;
+
+	elen = hostapd_eid_owe_trans_len(hapd);
+	if (len < elen) {
+		wpa_printf(MSG_DEBUG,
+			   "OWE: Not enough room in the buffer for OWE IE");
+		return pos;
+	}
+
+	*pos++ = WLAN_EID_VENDOR_SPECIFIC;
+	*pos++ = elen - 2;
+	WPA_PUT_BE24(pos, OUI_WFA);
+	pos += 3;
+	*pos++ = OWE_OUI_TYPE;
+	os_memcpy(pos, hapd->conf->owe_transition_bssid, ETH_ALEN);
+	pos += ETH_ALEN;
+	*pos++ = hapd->conf->owe_transition_ssid_len;
+	os_memcpy(pos, hapd->conf->owe_transition_ssid,
+		  hapd->conf->owe_transition_ssid_len);
+	pos += hapd->conf->owe_transition_ssid_len;
+
+	return pos;
+#else /* CONFIG_OWE */
+	return eid;
+#endif /* CONFIG_OWE */
+}
 
 
 void ap_copy_sta_supp_op_classes(struct sta_info *sta,

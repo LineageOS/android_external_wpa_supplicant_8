@@ -244,10 +244,6 @@ NEED_SHA256=y
 NEED_AES_OMAC1=y
 endif
 
-ifdef CONFIG_IEEE80211R_AP
-CONFIG_IEEE80211R=y
-endif
-
 ifdef CONFIG_IEEE80211R
 L_CFLAGS += -DCONFIG_IEEE80211R
 OBJS += src/rsn_supp/wpa_ft.c
@@ -715,6 +711,7 @@ L_CFLAGS += -DEAP_PWD
 OBJS += src/eap_peer/eap_pwd.c src/eap_common/eap_pwd_common.c
 CONFIG_IEEE8021X_EAPOL=y
 NEED_SHA256=y
+NEED_ECC=y
 endif
 
 ifdef CONFIG_EAP_EKE
@@ -959,10 +956,6 @@ NEED_AES_WRAP=y
 OBJS += src/ap/wpa_auth.c
 OBJS += src/ap/wpa_auth_ie.c
 OBJS += src/ap/pmksa_cache_auth.c
-ifdef CONFIG_IEEE80211R_AP
-L_CFLAGS += -DCONFIG_IEEE80211R_AP
-OBJS += src/ap/wpa_auth_ft.c
-endif
 endif
 
 ifdef CONFIG_ACS
@@ -1069,21 +1062,32 @@ L_CFLAGS += -DTLS_DEFAULT_CIPHERS=\"$(CONFIG_TLS_DEFAULT_CIPHERS)\"
 endif
 
 ifeq ($(CONFIG_TLS), gnutls)
+ifndef CONFIG_CRYPTO
+# default to libgcrypt
+CONFIG_CRYPTO=gnutls
+endif
 ifdef TLS_FUNCS
 OBJS += src/crypto/tls_gnutls.c
 LIBS += -lgnutls -lgpg-error
 endif
-OBJS += src/crypto/crypto_gnutls.c
-OBJS_p += src/crypto/crypto_gnutls.c
+OBJS += src/crypto/crypto_$(CONFIG_CRYPTO).c
+OBJS_p += src/crypto/crypto_$(CONFIG_CRYPTO).c
 ifdef NEED_FIPS186_2_PRF
 OBJS += src/crypto/fips_prf_internal.c
 OBJS += src/crypto/sha1-internal.c
 endif
+ifeq ($(CONFIG_CRYPTO), gnutls)
 LIBS += -lgcrypt
 LIBS_p += -lgcrypt
-CONFIG_INTERNAL_SHA256=y
 CONFIG_INTERNAL_RC4=y
 CONFIG_INTERNAL_DH_GROUP5=y
+endif
+ifeq ($(CONFIG_CRYPTO), nettle)
+LIBS += -lnettle -lgmp
+LIBS_p += -lnettle -lgmp
+CONFIG_INTERNAL_RC4=y
+CONFIG_INTERNAL_DH_GROUP5=y
+endif
 endif
 
 ifeq ($(CONFIG_TLS), internal)
@@ -1271,7 +1275,9 @@ endif
 SHA1OBJS =
 ifdef NEED_SHA1
 ifneq ($(CONFIG_TLS), openssl)
+ifneq ($(CONFIG_TLS), gnutls)
 SHA1OBJS += src/crypto/sha1.c
+endif
 endif
 SHA1OBJS += src/crypto/sha1-prf.c
 ifdef CONFIG_INTERNAL_SHA1
@@ -1298,7 +1304,9 @@ endif
 MD5OBJS =
 ifndef CONFIG_FIPS
 ifneq ($(CONFIG_TLS), openssl)
+ifneq ($(CONFIG_TLS), gnutls)
 MD5OBJS += src/crypto/md5.c
+endif
 endif
 endif
 ifdef NEED_MD5
@@ -1338,7 +1346,9 @@ SHA256OBJS = # none by default
 ifdef NEED_SHA256
 L_CFLAGS += -DCONFIG_SHA256
 ifneq ($(CONFIG_TLS), openssl)
+ifneq ($(CONFIG_TLS), gnutls)
 SHA256OBJS += src/crypto/sha256.c
+endif
 endif
 SHA256OBJS += src/crypto/sha256-prf.c
 ifdef CONFIG_INTERNAL_SHA256
@@ -1372,14 +1382,18 @@ endif
 ifdef NEED_SHA384
 L_CFLAGS += -DCONFIG_SHA384
 ifneq ($(CONFIG_TLS), openssl)
+ifneq ($(CONFIG_TLS), gnutls)
 OBJS += src/crypto/sha384.c
+endif
 endif
 OBJS += src/crypto/sha384-prf.c
 endif
 ifdef NEED_SHA512
 L_CFLAGS += -DCONFIG_SHA512
 ifneq ($(CONFIG_TLS), openssl)
+ifneq ($(CONFIG_TLS), gnutls)
 OBJS += src/crypto/sha512.c
+endif
 endif
 OBJS += src/crypto/sha512-prf.c
 endif

@@ -141,8 +141,9 @@ static int wpa_config_validate_network(struct wpa_ssid *ssid, int line)
 		ssid->p2p_persistent_group = 1;
 
 	if ((ssid->group_cipher & WPA_CIPHER_CCMP) &&
-	    !(ssid->pairwise_cipher & WPA_CIPHER_CCMP) &&
-	    !(ssid->pairwise_cipher & WPA_CIPHER_NONE)) {
+	    !(ssid->pairwise_cipher & (WPA_CIPHER_CCMP | WPA_CIPHER_CCMP_256 |
+				       WPA_CIPHER_GCMP | WPA_CIPHER_GCMP_256 |
+				       WPA_CIPHER_NONE))) {
 		/* Group cipher cannot be stronger than the pairwise cipher. */
 		wpa_printf(MSG_DEBUG, "Line %d: removed CCMP from group cipher"
 			   " list since it was not allowed for pairwise "
@@ -464,7 +465,8 @@ struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp)
 
 #ifndef WPA_IGNORE_CONFIG_ERRORS
 	if (errors) {
-		wpa_config_free(config);
+		if (config != cfgp)
+			wpa_config_free(config);
 		config = NULL;
 		head = NULL;
 	}
@@ -747,6 +749,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	write_psk(f, ssid);
 	INT(mem_only_psk);
 	STR(sae_password);
+	STR(sae_password_id);
 	write_proto(f, ssid);
 	write_key_mgmt(f, ssid);
 	INT_DEF(bg_scan_period, DEFAULT_BG_SCAN_PERIOD);
@@ -855,6 +858,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 #endif /* CONFIG_MACSEC */
 #ifdef CONFIG_HS20
 	INT(update_identifier);
+	STR(roaming_consortium_selection);
 #endif /* CONFIG_HS20 */
 	write_int(f, "mac_addr", ssid->mac_addr, -1);
 #ifdef CONFIG_MESH
@@ -875,6 +879,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(dpp_csign);
 #endif /* CONFIG_DPP */
 	INT(owe_group);
+	INT(owe_only);
 #ifdef CONFIG_HT_OVERRIDES
 	INT_DEF(disable_ht, DEFAULT_DISABLE_HT);
 	INT_DEF(disable_ht40, DEFAULT_DISABLE_HT40);
@@ -1035,6 +1040,20 @@ static void wpa_config_write_cred(FILE *f, struct wpa_cred *cred)
 			fprintf(f, "%02x",
 				cred->required_roaming_consortium[i]);
 		fprintf(f, "\n");
+	}
+
+	if (cred->num_roaming_consortiums) {
+		size_t j;
+
+		fprintf(f, "\troaming_consortiums=\"");
+		for (i = 0; i < cred->num_roaming_consortiums; i++) {
+			if (i > 0)
+				fprintf(f, ",");
+			for (j = 0; j < cred->roaming_consortiums_len[i]; j++)
+				fprintf(f, "%02x",
+					cred->roaming_consortiums[i][j]);
+		}
+		fprintf(f, "\"\n");
 	}
 
 	if (cred->sim_num != DEFAULT_USER_SELECTED_SIM)
@@ -1280,6 +1299,8 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		fprintf(f, "filter_rssi=%d\n", config->filter_rssi);
 	if (config->max_num_sta != DEFAULT_MAX_NUM_STA)
 		fprintf(f, "max_num_sta=%u\n", config->max_num_sta);
+	if (config->ap_isolate != DEFAULT_AP_ISOLATE)
+		fprintf(f, "ap_isolate=%u\n", config->ap_isolate);
 	if (config->disassoc_low_ack)
 		fprintf(f, "disassoc_low_ack=%d\n", config->disassoc_low_ack);
 #ifdef CONFIG_HS20

@@ -94,12 +94,14 @@ static void eap_notify_status(struct eap_sm *sm, const char *status,
 		sm->eapol_cb->notify_status(sm->eapol_ctx, status, parameter);
 }
 
+
 static void eap_report_error(struct eap_sm *sm, int error_code)
 {
 	wpa_printf(MSG_DEBUG, "EAP: Error notification: %d", error_code);
 	if (sm->eapol_cb->notify_eap_error)
 		sm->eapol_cb->notify_eap_error(sm->eapol_ctx, error_code);
 }
+
 
 static void eap_sm_free_key(struct eap_sm *sm)
 {
@@ -1940,7 +1942,6 @@ static void eap_sm_parseEapReq(struct eap_sm *sm, const struct wpabuf *req)
 	const struct eap_hdr *hdr;
 	size_t plen;
 	const u8 *pos;
-        int error_code;
 
 	sm->rxReq = sm->rxResp = sm->rxSuccess = sm->rxFailure = FALSE;
 	sm->reqId = 0;
@@ -2028,6 +2029,8 @@ static void eap_sm_parseEapReq(struct eap_sm *sm, const struct wpabuf *req)
 
 		/* Get the error code from method */
 		if (sm->m && sm->m->get_error_code) {
+			int error_code;
+
 			error_code = sm->m->get_error_code(sm->eap_method_priv);
 			if (error_code != NO_EAP_METHOD_ERROR)
 				eap_report_error(sm, error_code);

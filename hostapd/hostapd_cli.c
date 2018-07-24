@@ -1408,6 +1408,20 @@ static int hostapd_cli_cmd_dpp_auth_init(struct wpa_ctrl *ctrl, int argc,
 }
 
 
+static int hostapd_cli_cmd_dpp_listen(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return hostapd_cli_cmd(ctrl, "DPP_LISTEN", 1, argc, argv);
+}
+
+
+static int hostapd_cli_cmd_dpp_stop_listen(struct wpa_ctrl *ctrl, int argc,
+				       char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "DPP_STOP_LISTEN");
+}
+
+
 static int hostapd_cli_cmd_dpp_configurator_add(struct wpa_ctrl *ctrl, int argc,
 						char *argv[])
 {
@@ -1419,6 +1433,13 @@ static int hostapd_cli_cmd_dpp_configurator_remove(struct wpa_ctrl *ctrl,
 						   int argc, char *argv[])
 {
 	return hostapd_cli_cmd(ctrl, "DPP_CONFIGURATOR_REMOVE", 1, argc, argv);
+}
+
+
+static int hostapd_cli_cmd_dpp_configurator_get_key(struct wpa_ctrl *ctrl,
+						    int argc, char *argv[])
+{
+	return hostapd_cli_cmd(ctrl, "DPP_CONFIGURATOR_GET_KEY", 1, argc, argv);
 }
 
 
@@ -1436,6 +1457,27 @@ static int hostapd_cli_cmd_dpp_pkex_remove(struct wpa_ctrl *ctrl, int argc,
 }
 
 #endif /* CONFIG_DPP */
+
+
+static int hostapd_cli_cmd_accept_macacl(struct wpa_ctrl *ctrl, int argc,
+					 char *argv[])
+{
+	return hostapd_cli_cmd(ctrl, "ACCEPT_ACL", 1, argc, argv);
+}
+
+
+static int hostapd_cli_cmd_deny_macacl(struct wpa_ctrl *ctrl, int argc,
+				       char *argv[])
+{
+	return hostapd_cli_cmd(ctrl, "DENY_ACL", 1, argc, argv);
+}
+
+
+static int hostapd_cli_cmd_poll_sta(struct wpa_ctrl *ctrl, int argc,
+				    char *argv[])
+{
+	return hostapd_cli_cmd(ctrl, "POLL_STA", 1, argc, argv);
+}
 
 
 struct hostapd_cli_cmd {
@@ -1586,16 +1628,29 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	  "<id> = show DPP bootstrap information" },
 	{ "dpp_auth_init", hostapd_cli_cmd_dpp_auth_init, NULL,
 	  "peer=<id> [own=<id>] = initiate DPP bootstrapping" },
+	{ "dpp_listen", hostapd_cli_cmd_dpp_listen, NULL,
+	  "<freq in MHz> = start DPP listen" },
+	{ "dpp_stop_listen", hostapd_cli_cmd_dpp_stop_listen, NULL,
+	  "= stop DPP listen" },
 	{ "dpp_configurator_add", hostapd_cli_cmd_dpp_configurator_add, NULL,
 	  "[curve=..] [key=..] = add DPP configurator" },
 	{ "dpp_configurator_remove", hostapd_cli_cmd_dpp_configurator_remove,
 	  NULL,
 	  "*|<id> = remove DPP configurator" },
+	{ "dpp_configurator_remove", hostapd_cli_cmd_dpp_configurator_get_key,
+	  NULL,
+	  "<id> = Get DPP configurator's private key" },
 	{ "dpp_pkex_add", hostapd_cli_cmd_dpp_pkex_add, NULL,
 	  "add PKEX code" },
 	{ "dpp_pkex_remove", hostapd_cli_cmd_dpp_pkex_remove, NULL,
 	  "*|<id> = remove DPP pkex information" },
 #endif /* CONFIG_DPP */
+	{ "accept_acl", hostapd_cli_cmd_accept_macacl, NULL,
+	  "=Add/Delete/Show/Clear accept MAC ACL" },
+	{ "deny_acl", hostapd_cli_cmd_deny_macacl, NULL,
+	  "=Add/Delete/Show/Clear deny MAC ACL" },
+	{ "poll_sta", hostapd_cli_cmd_poll_sta, hostapd_complete_stations,
+	  "<addr> = poll a STA to check connectivity with a QoS null frame" },
 	{ NULL, NULL, NULL, NULL }
 };
 

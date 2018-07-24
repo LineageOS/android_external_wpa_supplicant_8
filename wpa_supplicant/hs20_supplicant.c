@@ -119,6 +119,22 @@ void wpas_hs20_add_indication(struct wpabuf *buf, int pps_mo_id)
 }
 
 
+void wpas_hs20_add_roam_cons_sel(struct wpabuf *buf,
+				 const struct wpa_ssid *ssid)
+{
+	if (!ssid->roaming_consortium_selection ||
+	    !ssid->roaming_consortium_selection_len)
+		return;
+
+	wpabuf_put_u8(buf, WLAN_EID_VENDOR_SPECIFIC);
+	wpabuf_put_u8(buf, 4 + ssid->roaming_consortium_selection_len);
+	wpabuf_put_be24(buf, OUI_WFA);
+	wpabuf_put_u8(buf, HS20_ROAMING_CONS_SEL_OUI_TYPE);
+	wpabuf_put_data(buf, ssid->roaming_consortium_selection,
+			ssid->roaming_consortium_selection_len);
+}
+
+
 int is_hs20_network(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 		    struct wpa_bss *bss)
 {
@@ -249,7 +265,7 @@ int hs20_anqp_send_req(struct wpa_supplicant *wpa_s, const u8 *dst, u32 stypes,
 	if (buf == NULL)
 		return -1;
 
-	res = gas_query_req(wpa_s->gas, dst, freq, buf, anqp_resp_cb, wpa_s);
+	res = gas_query_req(wpa_s->gas, dst, freq, 0, buf, anqp_resp_cb, wpa_s);
 	if (res < 0) {
 		wpa_printf(MSG_DEBUG, "ANQP: Failed to send Query Request");
 		wpabuf_free(buf);
@@ -648,6 +664,16 @@ void hs20_parse_rx_hs20_anqp_resp(struct wpa_supplicant *wpa_s,
 					     wpa_s, NULL);
 			eloop_register_timeout(0, 0, hs20_continue_icon_fetch,
 					       wpa_s, NULL);
+		}
+		break;
+	case HS20_STYPE_OPERATOR_ICON_METADATA:
+		wpa_msg(wpa_s, MSG_INFO, RX_HS20_ANQP MACSTR
+			" Operator Icon Metadata", MAC2STR(sa));
+		wpa_hexdump(MSG_DEBUG, "Operator Icon Metadata", pos, slen);
+		if (anqp) {
+			wpabuf_free(anqp->hs20_operator_icon_metadata);
+			anqp->hs20_operator_icon_metadata =
+				wpabuf_alloc_copy(pos, slen);
 		}
 		break;
 	default:
@@ -1210,6 +1236,18 @@ void hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s, u8 code,
 		wpa_s->current_ssid->disabled_until.sec =
 			now.sec + reauth_delay;
 	}
+}
+
+
+void hs20_rx_t_c_acceptance(struct wpa_supplicant *wpa_s, const char *url)
+{
+	if (!wpa_sm_pmf_enabled(wpa_s->wpa)) {
+		wpa_printf(MSG_DEBUG,
+			   "HS 2.0: Ignore Terms and Conditions Acceptance since PMF was not enabled");
+		return;
+	}
+
+	wpa_msg(wpa_s, MSG_INFO, HS20_T_C_ACCEPTANCE "%s", url);
 }
 
 

@@ -10,6 +10,7 @@
 
 #include "utils/common.h"
 #include "crypto/sha1.h"
+#include "crypto/tls.h"
 #include "radius/radius_client.h"
 #include "common/ieee802_11_defs.h"
 #include "common/eapol_common.h"
@@ -103,11 +104,13 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 	bss->rkh_neg_timeout = 60;
 	bss->rkh_pull_timeout = 1000;
 	bss->rkh_pull_retries = 4;
+	bss->r0_key_lifetime = 1209600;
 #endif /* CONFIG_IEEE80211R_AP */
 
 	bss->radius_das_time_window = 300;
 
 	bss->sae_anti_clogging_threshold = 5;
+	bss->sae_sync = 5;
 
 	bss->gas_frag_limit = 1400;
 
@@ -123,6 +126,11 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 #ifdef CONFIG_MBO
 	bss->mbo_cell_data_conn_pref = -1;
 #endif /* CONFIG_MBO */
+
+	/* Disable TLS v1.3 by default for now to avoid interoperability issue.
+	 * This can be enabled by default once the implementation has been fully
+	 * completed and tested with other implementations. */
+	bss->tls_flags = TLS_CONN_DISABLE_TLSv1_3;
 }
 
 
@@ -407,6 +415,7 @@ void hostapd_config_free_eap_user(struct hostapd_eap_user *user)
 	hostapd_config_free_radius_attr(user->accept_attr);
 	os_free(user->identity);
 	bin_clear_free(user->password, user->password_len);
+	bin_clear_free(user->salt, user->salt_len);
 	os_free(user);
 }
 
@@ -470,6 +479,22 @@ static void hostapd_config_free_fils_realms(struct hostapd_bss_config *conf)
 		os_free(realm);
 	}
 #endif /* CONFIG_FILS */
+}
+
+
+static void hostapd_config_free_sae_passwords(struct hostapd_bss_config *conf)
+{
+	struct sae_password_entry *pw, *tmp;
+
+	pw = conf->sae_passwords;
+	conf->sae_passwords = NULL;
+	while (pw) {
+		tmp = pw;
+		pw = pw->next;
+		str_clear_free(tmp->password);
+		os_free(tmp->identifier);
+		os_free(tmp);
+	}
 }
 
 
@@ -576,6 +601,7 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 
 	os_free(conf->roaming_consortium);
 	os_free(conf->venue_name);
+	os_free(conf->venue_url);
 	os_free(conf->nai_realm_data);
 	os_free(conf->network_auth_type);
 	os_free(conf->anqp_3gpp_cell_net);
@@ -609,7 +635,16 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 		}
 		os_free(conf->hs20_osu_providers);
 	}
+	if (conf->hs20_operator_icon) {
+		size_t i;
+
+		for (i = 0; i < conf->hs20_operator_icon_count; i++)
+			os_free(conf->hs20_operator_icon[i]);
+		os_free(conf->hs20_operator_icon);
+	}
 	os_free(conf->subscr_remediation_url);
+	os_free(conf->t_c_filename);
+	os_free(conf->t_c_server_url);
 #endif /* CONFIG_HS20 */
 
 	wpabuf_free(conf->vendor_elements);
@@ -640,7 +675,7 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 	wpabuf_free(conf->dpp_csign);
 #endif /* CONFIG_DPP */
 
-	os_free(conf->sae_password);
+	hostapd_config_free_sae_passwords(conf);
 
 	os_free(conf);
 }
@@ -936,7 +971,9 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 
 	if (full_config && bss->wps_state && bss->wpa &&
 	    (!(bss->wpa & 2) ||
-	     !(bss->rsn_pairwise & (WPA_CIPHER_CCMP | WPA_CIPHER_GCMP)))) {
+	     !(bss->rsn_pairwise & (WPA_CIPHER_CCMP | WPA_CIPHER_GCMP |
+				    WPA_CIPHER_CCMP_256 |
+				    WPA_CIPHER_GCMP_256)))) {
 		wpa_printf(MSG_INFO, "WPS: WPA/TKIP configuration without "
 			   "WPA2/CCMP/GCMP forced WPS to be disabled");
 		bss->wps_state = 0;
@@ -1046,8 +1083,12 @@ void hostapd_set_security_params(struct hostapd_bss_config *bss,
 
 	if ((bss->wpa & 2) && bss->rsn_pairwise == 0)
 		bss->rsn_pairwise = bss->wpa_pairwise;
-	bss->wpa_group = wpa_select_ap_group_cipher(bss->wpa, bss->wpa_pairwise,
-						    bss->rsn_pairwise);
+	if (bss->group_cipher)
+		bss->wpa_group = bss->group_cipher;
+	else
+		bss->wpa_group = wpa_select_ap_group_cipher(bss->wpa,
+							    bss->wpa_pairwise,
+							    bss->rsn_pairwise);
 	if (!bss->wpa_group_rekey_set)
 		bss->wpa_group_rekey = bss->wpa_group == WPA_CIPHER_TKIP ?
 			600 : 86400;

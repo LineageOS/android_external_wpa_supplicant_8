@@ -148,6 +148,8 @@ static int cred_with_roaming_consortium(struct wpa_supplicant *wpa_s)
 			return 1;
 		if (cred->required_roaming_consortium_len)
 			return 1;
+		if (cred->num_roaming_consortiums)
+			return 1;
 	}
 	return 0;
 }
@@ -312,7 +314,7 @@ static int interworking_anqp_send_req(struct wpa_supplicant *wpa_s,
 	if (buf == NULL)
 		return -1;
 
-	res = gas_query_req(wpa_s->gas, bss->bssid, bss->freq, buf,
+	res = gas_query_req(wpa_s->gas, bss->bssid, bss->freq, 0, buf,
 			    interworking_anqp_resp_cb, wpa_s);
 	if (res < 0) {
 		wpa_msg(wpa_s, MSG_DEBUG, "ANQP: Failed to send Query Request");
@@ -1145,6 +1147,23 @@ static int roaming_consortium_match(const u8 *ie, const struct wpabuf *anqp,
 }
 
 
+static int cred_roaming_consortiums_match(const u8 *ie,
+					  const struct wpabuf *anqp,
+					  const struct wpa_cred *cred)
+{
+	unsigned int i;
+
+	for (i = 0; i < cred->num_roaming_consortiums; i++) {
+		if (roaming_consortium_match(ie, anqp,
+					     cred->roaming_consortiums[i],
+					     cred->roaming_consortiums_len[i]))
+			return 1;
+	}
+
+	return 0;
+}
+
+
 static int cred_no_required_oi_match(struct wpa_cred *cred, struct wpa_bss *bss)
 {
 	const u8 *ie;
@@ -1349,27 +1368,28 @@ static struct wpa_cred * interworking_credentials_available_roaming_consortium(
 {
 	struct wpa_cred *cred, *selected = NULL;
 	const u8 *ie;
+	const struct wpabuf *anqp;
 	int is_excluded = 0;
 
 	ie = wpa_bss_get_ie(bss, WLAN_EID_ROAMING_CONSORTIUM);
+	anqp = bss->anqp ? bss->anqp->roaming_consortium : NULL;
 
-	if (ie == NULL &&
-	    (bss->anqp == NULL || bss->anqp->roaming_consortium == NULL))
+	if (!ie && !anqp)
 		return NULL;
 
 	if (wpa_s->conf->cred == NULL)
 		return NULL;
 
 	for (cred = wpa_s->conf->cred; cred; cred = cred->next) {
-		if (cred->roaming_consortium_len == 0)
+		if (cred->roaming_consortium_len == 0 &&
+		    cred->num_roaming_consortiums == 0)
 			continue;
 
-		if (!roaming_consortium_match(ie,
-					      bss->anqp ?
-					      bss->anqp->roaming_consortium :
-					      NULL,
-					      cred->roaming_consortium,
-					      cred->roaming_consortium_len))
+		if ((cred->roaming_consortium_len == 0 ||
+		     !roaming_consortium_match(ie, anqp,
+					       cred->roaming_consortium,
+					       cred->roaming_consortium_len)) &&
+		    !cred_roaming_consortiums_match(ie, anqp, cred))
 			continue;
 
 		if (cred_no_required_oi_match(cred, bss))
@@ -1535,6 +1555,9 @@ static int interworking_connect_roaming_consortium(
 	struct wpa_bss *bss, int only_add)
 {
 	struct wpa_ssid *ssid;
+	const u8 *ie;
+	const struct wpabuf *anqp;
+	unsigned int i;
 
 	wpa_msg(wpa_s, MSG_DEBUG, "Interworking: Connect with " MACSTR
 		" based on roaming consortium match", MAC2STR(bss->bssid));
@@ -1563,6 +1586,26 @@ static int interworking_connect_roaming_consortium(
 
 	if (interworking_set_hs20_params(wpa_s, ssid) < 0)
 		goto fail;
+
+	ie = wpa_bss_get_ie(bss, WLAN_EID_ROAMING_CONSORTIUM);
+	anqp = bss->anqp ? bss->anqp->roaming_consortium : NULL;
+	for (i = 0; (ie || anqp) && i < cred->num_roaming_consortiums; i++) {
+		if (!roaming_consortium_match(
+			    ie, anqp, cred->roaming_consortiums[i],
+			    cred->roaming_consortiums_len[i]))
+			continue;
+
+		ssid->roaming_consortium_selection =
+			os_malloc(cred->roaming_consortiums_len[i]);
+		if (!ssid->roaming_consortium_selection)
+			goto fail;
+		os_memcpy(ssid->roaming_consortium_selection,
+			  cred->roaming_consortiums[i],
+			  cred->roaming_consortiums_len[i]);
+		ssid->roaming_consortium_selection_len =
+			cred->roaming_consortiums_len[i];
+		break;
+	}
 
 	if (cred->eap_method == NULL) {
 		wpa_msg(wpa_s, MSG_DEBUG,
@@ -2752,7 +2795,7 @@ int anqp_send_req(struct wpa_supplicant *wpa_s, const u8 *dst,
 	if (buf == NULL)
 		return -1;
 
-	res = gas_query_req(wpa_s->gas, dst, freq, buf, anqp_resp_cb, wpa_s);
+	res = gas_query_req(wpa_s->gas, dst, freq, 0, buf, anqp_resp_cb, wpa_s);
 	if (res < 0) {
 		wpa_msg(wpa_s, MSG_DEBUG, "ANQP: Failed to send Query Request");
 		wpabuf_free(buf);
@@ -3155,7 +3198,7 @@ int gas_send_request(struct wpa_supplicant *wpa_s, const u8 *dst,
 	} else
 		wpabuf_put_le16(buf, 0);
 
-	res = gas_query_req(wpa_s->gas, dst, freq, buf, gas_resp_cb, wpa_s);
+	res = gas_query_req(wpa_s->gas, dst, freq, 0, buf, gas_resp_cb, wpa_s);
 	if (res < 0) {
 		wpa_msg(wpa_s, MSG_DEBUG, "GAS: Failed to send Query Request");
 		wpabuf_free(buf);

@@ -32,6 +32,7 @@
 #define DEFAULT_BSS_EXPIRATION_AGE 180
 #define DEFAULT_BSS_EXPIRATION_SCAN_COUNT 2
 #define DEFAULT_MAX_NUM_STA 128
+#define DEFAULT_AP_ISOLATE 0
 #define DEFAULT_ACCESS_NETWORK_TYPE 15
 #define DEFAULT_SCAN_CUR_FREQ 0
 #define DEFAULT_P2P_SEARCH_DELAY 500
@@ -49,6 +50,9 @@
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
 
+
+#define MAX_ROAMING_CONS 36
+#define MAX_ROAMING_CONS_OI_LEN 15
 
 struct wpa_cred {
 	/**
@@ -224,8 +228,41 @@ struct wpa_cred {
 	 */
 	size_t roaming_consortium_len;
 
+	/**
+	 * required_roaming_consortium - Required Roaming Consortium OI
+	 *
+	 * If required_roaming_consortium_len is non-zero, this field contains
+	 * the Roaming Consortium OI that is required to be advertised by the AP
+	 * for the credential to be considered matching.
+	 */
 	u8 required_roaming_consortium[15];
+
+	/**
+	 * required_roaming_consortium_len - Length of required_roaming_consortium
+	 */
 	size_t required_roaming_consortium_len;
+
+	/**
+	 * roaming_consortiums - Roaming Consortium OI(s) memberships
+	 *
+	 * This field contains one or more OIs identifying the roaming
+	 * consortiums of which the provider is a member. The list is sorted
+	 * from the most preferred one to the least preferred one. A match
+	 * between the Roaming Consortium OIs advertised by an AP and the OIs
+	 * in this list indicates that successful authentication is possible.
+	 * (Hotspot 2.0 PerProviderSubscription/<X+>/HomeSP/RoamingConsortiumOI)
+	 */
+	u8 roaming_consortiums[MAX_ROAMING_CONS][MAX_ROAMING_CONS_OI_LEN];
+
+	/**
+	 * roaming_consortiums_len - Length on roaming_consortiums[i]
+	 */
+	size_t roaming_consortiums_len[MAX_ROAMING_CONS];
+
+	/**
+	 * num_roaming_consortiums - Number of entries in roaming_consortiums
+	 */
+	unsigned int num_roaming_consortiums;
 
 	/**
 	 * eap_method - EAP method to use
@@ -843,6 +880,20 @@ struct wpa_config {
 	unsigned int max_num_sta;
 
 	/**
+	 * ap_isolate - Whether to use client isolation feature
+	 *
+	 * Client isolation can be used to prevent low-level bridging of
+	 * frames between associated stations in the BSS. By default,
+	 * this bridging is allowed (ap_isolate=0); except in P2P GO case,
+	 * where p2p_intra_bss parameter is used to determine whether to allow
+	 * intra-BSS forwarding (ap_isolate = !p2p_intra_bss).
+	 *
+	 * 0 = do not enable AP isolation
+	 * 1 = enable AP isolation
+	 */
+	int ap_isolate;
+
+	/**
 	 * freq_list - Array of allowed scan frequencies or %NULL for all
 	 *
 	 * This is an optional zero-terminated array of frequencies in
@@ -864,7 +915,7 @@ struct wpa_config {
 	unsigned int changed_parameters;
 
 	/**
-	 * disassoc_low_ack - Disassocicate stations with massive packet loss
+	 * disassoc_low_ack - Disassociate stations with massive packet loss
 	 */
 	int disassoc_low_ack;
 

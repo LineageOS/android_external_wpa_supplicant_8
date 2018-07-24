@@ -2014,6 +2014,7 @@ static void eapol_sm_notify_status(void *ctx, const char *status,
 		sm->ctx->status_cb(sm->ctx->ctx, status, parameter);
 }
 
+
 static void eapol_sm_notify_eap_error(void *ctx, int error_code)
 {
 	struct eapol_sm *sm = ctx;
@@ -2021,6 +2022,7 @@ static void eapol_sm_notify_eap_error(void *ctx, int error_code)
 	if (sm->ctx->eap_error_cb)
 		sm->ctx->eap_error_cb(sm->ctx->ctx, error_code);
 }
+
 
 #ifdef CONFIG_EAP_PROXY
 

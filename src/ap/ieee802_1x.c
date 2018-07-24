@@ -712,6 +712,41 @@ void ieee802_1x_encapsulate_radius(struct hostapd_data *hapd,
 				goto fail;
 			}
 		}
+
+		if (sta->roaming_consortium &&
+		    !radius_msg_add_wfa(
+			    msg, RADIUS_VENDOR_ATTR_WFA_HS20_ROAMING_CONSORTIUM,
+			    wpabuf_head(sta->roaming_consortium),
+			    wpabuf_len(sta->roaming_consortium))) {
+			wpa_printf(MSG_ERROR,
+				   "Could not add HS 2.0 Roaming Consortium");
+			goto fail;
+		}
+
+		if (hapd->conf->t_c_filename) {
+			be32 timestamp;
+
+			if (!radius_msg_add_wfa(
+				    msg,
+				    RADIUS_VENDOR_ATTR_WFA_HS20_T_C_FILENAME,
+				    (const u8 *) hapd->conf->t_c_filename,
+				    os_strlen(hapd->conf->t_c_filename))) {
+				wpa_printf(MSG_ERROR,
+					   "Could not add HS 2.0 T&C Filename");
+				goto fail;
+			}
+
+			timestamp = host_to_be32(hapd->conf->t_c_timestamp);
+			if (!radius_msg_add_wfa(
+				    msg,
+				    RADIUS_VENDOR_ATTR_WFA_HS20_TIMESTAMP,
+				    (const u8 *) &timestamp,
+				    sizeof(timestamp))) {
+				wpa_printf(MSG_ERROR,
+					   "Could not add HS 2.0 Timestamp");
+				goto fail;
+			}
+		}
 	}
 #endif /* CONFIG_HS20 */
 
@@ -1177,7 +1212,7 @@ void ieee802_1x_new_station(struct hostapd_data *hapd, struct sta_info *sta)
 		sta->eapol_sm->portValid = TRUE;
 		if (sta->eapol_sm->eap)
 			eap_sm_notify_cached(sta->eapol_sm->eap);
-		/* TODO: get vlan_id from R0KH using RRB message */
+		ap_sta_bind_vlan(hapd, sta);
 		return;
 	}
 #endif /* CONFIG_IEEE80211R_AP */
@@ -1587,6 +1622,33 @@ static void ieee802_1x_hs20_session_info(struct hostapd_data *hapd,
 	ap_sta_session_warning_timeout(hapd, sta, warning_time);
 }
 
+
+static void ieee802_1x_hs20_t_c_filtering(struct hostapd_data *hapd,
+					  struct sta_info *sta, u8 *pos,
+					  size_t len)
+{
+	if (len < 4)
+		return; /* Malformed information */
+	wpa_printf(MSG_DEBUG,
+		   "HS 2.0: Terms and Conditions filtering %02x %02x %02x %02x",
+		   pos[0], pos[1], pos[2], pos[3]);
+	hs20_t_c_filtering(hapd, sta, pos[0] & BIT(0));
+}
+
+
+static void ieee802_1x_hs20_t_c_url(struct hostapd_data *hapd,
+				    struct sta_info *sta, u8 *pos, size_t len)
+{
+	os_free(sta->t_c_url);
+	sta->t_c_url = os_malloc(len + 1);
+	if (!sta->t_c_url)
+		return;
+	os_memcpy(sta->t_c_url, pos, len);
+	sta->t_c_url[len] = '\0';
+	wpa_printf(MSG_DEBUG,
+		   "HS 2.0: Terms and Conditions URL %s", sta->t_c_url);
+}
+
 #endif /* CONFIG_HS20 */
 
 
@@ -1633,6 +1695,12 @@ static void ieee802_1x_check_hs20(struct hostapd_data *hapd,
 		case RADIUS_VENDOR_ATTR_WFA_HS20_SESSION_INFO_URL:
 			ieee802_1x_hs20_session_info(hapd, sta, pos, sublen,
 						     session_timeout);
+			break;
+		case RADIUS_VENDOR_ATTR_WFA_HS20_T_C_FILTERING:
+			ieee802_1x_hs20_t_c_filtering(hapd, sta, pos, sublen);
+			break;
+		case RADIUS_VENDOR_ATTR_WFA_HS20_T_C_URL:
+			ieee802_1x_hs20_t_c_url(hapd, sta, pos, sublen);
 			break;
 		}
 	}
@@ -1691,6 +1759,7 @@ ieee802_1x_receive_auth(struct radius_msg *msg, struct radius_msg *req,
 	struct sta_info *sta;
 	u32 session_timeout = 0, termination_action, acct_interim_interval;
 	int session_timeout_set;
+	u32 reason_code;
 	struct eapol_state_machine *sm;
 	int override_eapReq = 0;
 	struct radius_hdr *hdr = radius_msg_get_hdr(msg);
@@ -1816,14 +1885,17 @@ ieee802_1x_receive_auth(struct radius_msg *msg, struct radius_msg *req,
 			break;
 
 		sta->session_timeout_set = !!session_timeout_set;
-		sta->session_timeout = session_timeout;
+		os_get_reltime(&sta->session_timeout);
+		sta->session_timeout.sec += session_timeout;
 
 		/* RFC 3580, Ch. 3.17 */
 		if (session_timeout_set && termination_action ==
-		    RADIUS_TERMINATION_ACTION_RADIUS_REQUEST) {
+		    RADIUS_TERMINATION_ACTION_RADIUS_REQUEST)
 			sm->reAuthPeriod = session_timeout;
-		} else if (session_timeout_set)
+		else if (session_timeout_set)
 			ap_sta_session_timeout(hapd, sta, session_timeout);
+		else
+			ap_sta_no_session_timeout(hapd, sta);
 
 		sm->eap_if->aaaSuccess = TRUE;
 		override_eapReq = 1;
@@ -1839,6 +1911,13 @@ ieee802_1x_receive_auth(struct radius_msg *msg, struct radius_msg *req,
 	case RADIUS_CODE_ACCESS_REJECT:
 		sm->eap_if->aaaFail = TRUE;
 		override_eapReq = 1;
+		if (radius_msg_get_attr_int32(msg, RADIUS_ATTR_WLAN_REASON_CODE,
+					      &reason_code) == 0) {
+			wpa_printf(MSG_DEBUG,
+				   "RADIUS server indicated WLAN-Reason-Code %u in Access-Reject for "
+				   MACSTR, reason_code, MAC2STR(sta->addr));
+			sta->disconnect_reason_code = reason_code;
+		}
 		break;
 	case RADIUS_CODE_ACCESS_CHALLENGE:
 		sm->eap_if->aaaEapReq = TRUE;
@@ -2081,6 +2160,13 @@ static int ieee802_1x_get_eap_user(void *ctx, const u8 *identity,
 			goto out;
 		user->password_len = eap_user->password_len;
 		user->password_hash = eap_user->password_hash;
+		if (eap_user->salt && eap_user->salt_len) {
+			user->salt = os_memdup(eap_user->salt,
+					       eap_user->salt_len);
+			if (!user->salt)
+				goto out;
+			user->salt_len = eap_user->salt_len;
+		}
 	}
 	user->force_version = eap_user->force_version;
 	user->macacl = eap_user->macacl;
@@ -2693,6 +2779,15 @@ static void ieee802_1x_wnm_notif_send(void *eloop_ctx, void *timeout_ctx)
 		hs20_send_wnm_notification_deauth_req(hapd, sta->addr,
 						      sta->hs20_deauth_req);
 	}
+
+	if (sta->hs20_t_c_filtering) {
+		wpa_printf(MSG_DEBUG, "HS 2.0: Send WNM-Notification to "
+			   MACSTR " to indicate Terms and Conditions filtering",
+			   MAC2STR(sta->addr));
+		hs20_send_wnm_notification_t_c(hapd, sta->addr, sta->t_c_url);
+		os_free(sta->t_c_url);
+		sta->t_c_url = NULL;
+	}
 }
 #endif /* CONFIG_HS20 */
 
@@ -2706,6 +2801,7 @@ static void ieee802_1x_finished(struct hostapd_data *hapd,
 	/* TODO: get PMKLifetime from WPA parameters */
 	static const int dot11RSNAConfigPMKLifetime = 43200;
 	unsigned int session_timeout;
+	struct os_reltime now, remaining;
 
 #ifdef CONFIG_HS20
 	if (remediation && !sta->remediation) {
@@ -2716,7 +2812,8 @@ static void ieee802_1x_finished(struct hostapd_data *hapd,
 		sta->remediation_method = 1; /* SOAP-XML SPP */
 	}
 
-	if (success && (sta->remediation || sta->hs20_deauth_req)) {
+	if (success && (sta->remediation || sta->hs20_deauth_req ||
+			sta->hs20_t_c_filtering)) {
 		wpa_printf(MSG_DEBUG, "HS 2.0: Schedule WNM-Notification to "
 			   MACSTR " in 100 ms", MAC2STR(sta->addr));
 		eloop_cancel_timeout(ieee802_1x_wnm_notif_send, hapd, sta);
@@ -2726,10 +2823,13 @@ static void ieee802_1x_finished(struct hostapd_data *hapd,
 #endif /* CONFIG_HS20 */
 
 	key = ieee802_1x_get_key(sta->eapol_sm, &len);
-	if (sta->session_timeout_set)
-		session_timeout = sta->session_timeout;
-	else
+	if (sta->session_timeout_set) {
+		os_get_reltime(&now);
+		os_reltime_sub(&sta->session_timeout, &now, &remaining);
+		session_timeout = (remaining.sec > 0) ? remaining.sec : 1;
+	} else {
 		session_timeout = dot11RSNAConfigPMKLifetime;
+	}
 	if (success && key && len >= PMK_LEN && !sta->remediation &&
 	    !sta->hs20_deauth_requested &&
 	    wpa_auth_pmksa_add(sta->wpa_sm, key, len, session_timeout,

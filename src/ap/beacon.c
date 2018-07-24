@@ -16,6 +16,7 @@
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
 #include "common/hw_features_common.h"
+#include "common/wpa_ctrl.h"
 #include "wps/wps_defs.h"
 #include "p2p/p2p.h"
 #include "hostapd.h"
@@ -30,6 +31,7 @@
 #include "hs20.h"
 #include "dfs.h"
 #include "taxonomy.h"
+#include "ieee802_11_auth.h"
 
 
 #ifdef NEED_AP_MLME
@@ -360,67 +362,6 @@ static u8 * hostapd_eid_supported_op_classes(struct hostapd_data *hapd, u8 *eid)
 	*eid++ = 0;
 
 	return eid;
-}
-
-
-#ifdef CONFIG_OWE
-static int hostapd_eid_owe_trans_enabled(struct hostapd_data *hapd)
-{
-	return hapd->conf->owe_transition_ssid_len > 0 &&
-		!is_zero_ether_addr(hapd->conf->owe_transition_bssid);
-}
-#endif /* CONFIG_OWE */
-
-
-static size_t hostapd_eid_owe_trans_len(struct hostapd_data *hapd)
-{
-#ifdef CONFIG_OWE
-	if (!hostapd_eid_owe_trans_enabled(hapd))
-		return 0;
-	return 6 + ETH_ALEN + 1 + hapd->conf->owe_transition_ssid_len;
-#else /* CONFIG_OWE */
-	return 0;
-#endif /* CONFIG_OWE */
-}
-
-
-static u8 * hostapd_eid_owe_trans(struct hostapd_data *hapd, u8 *eid,
-				  size_t len)
-{
-#ifdef CONFIG_OWE
-	u8 *pos = eid;
-	size_t elen;
-
-	if (hapd->conf->owe_transition_ifname[0] &&
-	    !hostapd_eid_owe_trans_enabled(hapd))
-		hostapd_owe_trans_get_info(hapd);
-
-	if (!hostapd_eid_owe_trans_enabled(hapd))
-		return pos;
-
-	elen = hostapd_eid_owe_trans_len(hapd);
-	if (len < elen) {
-		wpa_printf(MSG_DEBUG,
-			   "OWE: Not enough room in the buffer for OWE IE");
-		return pos;
-	}
-
-	*pos++ = WLAN_EID_VENDOR_SPECIFIC;
-	*pos++ = elen - 2;
-	WPA_PUT_BE24(pos, OUI_WFA);
-	pos += 3;
-	*pos++ = OWE_OUI_TYPE;
-	os_memcpy(pos, hapd->conf->owe_transition_bssid, ETH_ALEN);
-	pos += ETH_ALEN;
-	*pos++ = hapd->conf->owe_transition_ssid_len;
-	os_memcpy(pos, hapd->conf->owe_transition_ssid,
-		  hapd->conf->owe_transition_ssid_len);
-	pos += hapd->conf->owe_transition_ssid_len;
-
-	return pos;
-#else /* CONFIG_OWE */
-	return eid;
-#endif /* CONFIG_OWE */
 }
 
 
@@ -791,6 +732,11 @@ void handle_probe_req(struct hostapd_data *hapd,
 	int ret;
 	u16 csa_offs[2];
 	size_t csa_offs_len;
+	u32 session_timeout, acct_interim_interval;
+	struct vlan_description vlan_id;
+	struct hostapd_sta_wpa_psk_short *psk = NULL;
+	char *identity = NULL;
+	char *radius_cui = NULL;
 
 	if (len < IEEE80211_HDRLEN)
 		return;
@@ -798,6 +744,17 @@ void handle_probe_req(struct hostapd_data *hapd,
 	if (hapd->iconf->track_sta_max_num)
 		sta_track_add(hapd->iface, mgmt->sa, ssi_signal);
 	ie_len = len - IEEE80211_HDRLEN;
+
+	ret = ieee802_11_allowed_address(hapd, mgmt->sa, (const u8 *) mgmt, len,
+					 &session_timeout,
+					 &acct_interim_interval, &vlan_id,
+					 &psk, &identity, &radius_cui, 1);
+	if (ret == HOSTAPD_ACL_REJECT) {
+		wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+			"Ignore Probe Request frame from " MACSTR
+			" due to ACL reject ", MAC2STR(mgmt->sa));
+		return;
+	}
 
 	for (i = 0; hapd->probereq_cb && i < hapd->num_probereq_cb; i++)
 		if (hapd->probereq_cb[i].cb(hapd->probereq_cb[i].ctx,
@@ -992,6 +949,9 @@ void handle_probe_req(struct hostapd_data *hapd,
 		return;
 	}
 #endif /* CONFIG_TESTING_OPTIONS */
+
+	wpa_msg_ctrl(hapd->msg_ctx, MSG_INFO, RX_PROBE_REQUEST "sa=" MACSTR
+		     " signal=%d", MAC2STR(mgmt->sa), ssi_signal);
 
 	resp = hostapd_gen_probe_resp(hapd, mgmt, elems.p2p != NULL,
 				      &resp_len);

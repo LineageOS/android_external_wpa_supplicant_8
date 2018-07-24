@@ -105,6 +105,35 @@ static int valid_fqdn(const char *fqdn)
 }
 
 
+static int android_update_permission(const char *path, mode_t mode)
+{
+#ifdef ANDROID
+	/* we need to change file/folder permission for Android */
+
+	if (!path) {
+		wpa_printf(MSG_ERROR, "file path null");
+		return -1;
+	}
+
+	/* Allow processes running with Group ID as AID_WIFI,
+	 * to read files from SP, SP/<fqdn>, Cert and osu-info directories */
+	if (chown(path, -1, AID_WIFI)) {
+		wpa_printf(MSG_INFO, "CTRL: Could not chown directory: %s",
+			   strerror(errno));
+		return -1;
+	}
+
+	if (chmod(path, mode) < 0) {
+		wpa_printf(MSG_INFO, "CTRL: Could not chmod directory: %s",
+			   strerror(errno));
+		return -1;
+	}
+#endif  /* ANDROID */
+
+	return 0;
+}
+
+
 int osu_get_certificate(struct hs20_osu_client *ctx, xml_node_t *getcert)
 {
 	xml_node_t *node;
@@ -169,6 +198,8 @@ int osu_get_certificate(struct hs20_osu_client *ctx, xml_node_t *getcert)
 	}
 
 	mkdir("Cert", S_IRWXU);
+	android_update_permission("Cert", S_IRWXU | S_IRWXG);
+
 	if (est_load_cacerts(ctx, url) < 0 ||
 	    est_build_csr(ctx, url) < 0 ||
 	    est_simple_enroll(ctx, url, user, pw) < 0)
@@ -578,20 +609,8 @@ int hs20_add_pps_mo(struct hs20_osu_client *ctx, const char *uri,
 		}
 	}
 
-#ifdef ANDROID
-	/* Allow processes running with Group ID as AID_WIFI,
-	 * to read files from SP/<fqdn> directory */
-	if (chown(fname, -1, AID_WIFI)) {
-		wpa_printf(MSG_INFO, "CTRL: Could not chown directory: %s",
-			   strerror(errno));
-		/* Try to continue anyway */
-	}
-	if (chmod(fname, S_IRWXU | S_IRGRP | S_IXGRP) < 0) {
-		wpa_printf(MSG_INFO, "CTRL: Could not chmod directory: %s",
-			   strerror(errno));
-		/* Try to continue anyway */
-	}
-#endif /* ANDROID */
+	android_update_permission("SP", S_IRWXU | S_IRGRP | S_IXGRP);
+	android_update_permission(fname, S_IRWXU | S_IRGRP | S_IXGRP);
 
 	snprintf(fname, fname_len, "SP/%s/pps.xml", fqdn);
 
@@ -1289,7 +1308,9 @@ static void set_pps_cred_home_sp_roaming_consortium_oi(
 	if (str == NULL)
 		return;
 	wpa_printf(MSG_INFO, "- HomeSP/RoamingConsortiumOI = %s", str);
-	/* TODO: Set to wpa_supplicant */
+	if (set_cred_quoted(ctx->ifname, id, "roaming_consortiums",
+			    str) < 0)
+		wpa_printf(MSG_INFO, "Failed to set cred roaming_consortiums");
 	xml_node_get_text_free(ctx->xml, str);
 }
 
@@ -1442,10 +1463,92 @@ static void set_pps_cred_able_to_share(struct hs20_osu_client *ctx, int id,
 }
 
 
+static void set_pps_cred_eap_method_eap_type(struct hs20_osu_client *ctx,
+					     int id, xml_node_t *node)
+{
+	char *str = xml_node_get_text(ctx->xml, node);
+	int type;
+	const char *eap_method = NULL;
+
+	if (!str)
+		return;
+	wpa_printf(MSG_INFO,
+		   "- Credential/UsernamePassword/EAPMethod/EAPType = %s", str);
+	type = atoi(str);
+	switch (type) {
+	case EAP_TYPE_TLS:
+		eap_method = "TLS";
+		break;
+	case EAP_TYPE_TTLS:
+		eap_method = "TTLS";
+		break;
+	case EAP_TYPE_PEAP:
+		eap_method = "PEAP";
+		break;
+	case EAP_TYPE_PWD:
+		eap_method = "PWD";
+		break;
+	}
+	xml_node_get_text_free(ctx->xml, str);
+	if (!eap_method) {
+		wpa_printf(MSG_INFO, "Unknown EAPType value");
+		return;
+	}
+
+	if (set_cred(ctx->ifname, id, "eap", eap_method) < 0)
+		wpa_printf(MSG_INFO, "Failed to set cred eap");
+}
+
+
+static void set_pps_cred_eap_method_inner_method(struct hs20_osu_client *ctx,
+						 int id, xml_node_t *node)
+{
+	char *str = xml_node_get_text(ctx->xml, node);
+	const char *phase2 = NULL;
+
+	if (!str)
+		return;
+	wpa_printf(MSG_INFO,
+		   "- Credential/UsernamePassword/EAPMethod/InnerMethod = %s",
+		   str);
+	if (os_strcmp(str, "PAP") == 0)
+		phase2 = "auth=PAP";
+	else if (os_strcmp(str, "CHAP") == 0)
+		phase2 = "auth=CHAP";
+	else if (os_strcmp(str, "MS-CHAP") == 0)
+		phase2 = "auth=MSCHAP";
+	else if (os_strcmp(str, "MS-CHAP-V2") == 0)
+		phase2 = "auth=MSCHAPV2";
+	xml_node_get_text_free(ctx->xml, str);
+	if (!phase2) {
+		wpa_printf(MSG_INFO, "Unknown InnerMethod value");
+		return;
+	}
+
+	if (set_cred_quoted(ctx->ifname, id, "phase2", phase2) < 0)
+		wpa_printf(MSG_INFO, "Failed to set cred phase2");
+}
+
+
 static void set_pps_cred_eap_method(struct hs20_osu_client *ctx, int id,
 				    xml_node_t *node)
 {
-	wpa_printf(MSG_INFO, "- Credential/UsernamePassword/EAPMethod - TODO");
+	xml_node_t *child;
+	const char *name;
+
+	wpa_printf(MSG_INFO, "- Credential/UsernamePassword/EAPMethod");
+
+	xml_node_for_each_child(ctx->xml, child, node) {
+		xml_node_for_each_check(ctx->xml, child);
+		name = xml_node_get_localname(ctx->xml, child);
+		if (os_strcasecmp(name, "EAPType") == 0)
+			set_pps_cred_eap_method_eap_type(ctx, id, child);
+		else if (os_strcasecmp(name, "InnerMethod") == 0)
+			set_pps_cred_eap_method_inner_method(ctx, id, child);
+		else
+			wpa_printf(MSG_INFO, "Unknown Credential/UsernamePassword/EAPMethod node '%s'",
+				   name);
+	}
 }
 
 
@@ -2346,15 +2449,7 @@ static int cmd_signup(struct hs20_osu_client *ctx, int no_prod_assoc,
 		return -1;
 	}
 
-#ifdef ANDROID
-	/* Allow processes running with Group ID as AID_WIFI
-	 * to read/write files from osu-info directory
-	 */
-	if (chown(fname, -1, AID_WIFI)) {
-		wpa_printf(MSG_INFO, "Could not chown osu-info directory: %s",
-			   strerror(errno));
-	}
-#endif /* ANDROID */
+	android_update_permission(fname, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
 	snprintf(buf, sizeof(buf), "SET osu_dir %s", fname);
 	if (wpa_command(ifname, buf) < 0) {

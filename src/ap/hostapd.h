@@ -57,6 +57,12 @@ struct hapd_interfaces {
 	struct dl_list eth_p_oui; /* OUI Extended EtherType handlers */
 #endif /* CONFIG_ETH_P_OUI */
 	int eloop_initialized;
+
+#ifdef CONFIG_DPP
+	int dpp_init_done;
+	struct dl_list dpp_bootstrap; /* struct dpp_bootstrap_info */
+	struct dl_list dpp_configurator; /* struct dpp_configurator */
+#endif /* CONFIG_DPP */
 };
 
 enum hostapd_chan_status {
@@ -79,6 +85,7 @@ struct hostapd_rate_data {
 };
 
 struct hostapd_frame_info {
+	unsigned int freq;
 	u32 channel;
 	u32 datarate;
 	int ssi_signal; /* dBm */
@@ -257,9 +264,6 @@ struct hostapd_data {
 	unsigned int cs_c_off_ecsa_beacon;
 	unsigned int cs_c_off_ecsa_proberesp;
 
-	/* BSS Load */
-	unsigned int bss_load_update_timeout;
-
 #ifdef CONFIG_P2P
 	struct p2p_data *p2p;
 	struct p2p_group *p2p_group;
@@ -338,13 +342,12 @@ struct hostapd_data {
 	int dhcp_sock; /* UDP socket used with the DHCP server */
 
 #ifdef CONFIG_DPP
-	struct dl_list dpp_bootstrap; /* struct dpp_bootstrap_info */
-	struct dl_list dpp_configurator; /* struct dpp_configurator */
 	int dpp_init_done;
 	struct dpp_authentication *dpp_auth;
 	u8 dpp_allowed_roles;
 	int dpp_qr_mutual;
 	int dpp_auth_ok_on_ack;
+	int dpp_in_response_listen;
 	struct gas_query_ap *gas;
 	struct dpp_pkex *dpp_pkex;
 	struct dpp_bootstrap_info *dpp_pkex_bi;
@@ -352,6 +355,13 @@ struct hostapd_data {
 	char *dpp_pkex_identifier;
 	char *dpp_pkex_auth_cmd;
 	char *dpp_configurator_params;
+	struct os_reltime dpp_last_init;
+	struct os_reltime dpp_init_iter_start;
+	unsigned int dpp_init_max_tries;
+	unsigned int dpp_init_retry_time;
+	unsigned int dpp_resp_wait_time;
+	unsigned int dpp_resp_max_tries;
+	unsigned int dpp_resp_retry_time;
 #ifdef CONFIG_TESTING_OPTIONS
 	char *dpp_config_obj_override;
 	char *dpp_discovery_override;
@@ -497,6 +507,10 @@ struct hostapd_iface {
 	u64 last_channel_time_busy;
 	u8 channel_utilization;
 
+	unsigned int chan_util_samples_sum;
+	unsigned int chan_util_num_sample_periods;
+	unsigned int chan_util_average;
+
 	/* eCSA IE will be added only if operating class is specified */
 	u8 cs_oper_class;
 
@@ -551,6 +565,7 @@ void hostapd_channel_list_updated(struct hostapd_iface *iface, int initiator);
 void hostapd_set_state(struct hostapd_iface *iface, enum hostapd_iface_state s);
 const char * hostapd_state_text(enum hostapd_iface_state s);
 int hostapd_csa_in_progress(struct hostapd_iface *iface);
+void hostapd_chan_switch_vht_config(struct hostapd_data *hapd, int vht_enabled);
 int hostapd_switch_channel(struct hostapd_data *hapd,
 			   struct csa_settings *settings);
 void
@@ -595,6 +610,9 @@ hostapd_get_eap_user(struct hostapd_data *hapd, const u8 *identity,
 
 struct hostapd_data * hostapd_get_iface(struct hapd_interfaces *interfaces,
 					const char *ifname);
+void hostapd_event_sta_opmode_changed(struct hostapd_data *hapd, const u8 *addr,
+				      enum smps_mode smps_mode,
+				      enum chan_width chan_width, u8 rx_nss);
 
 #ifdef CONFIG_FST
 void fst_hostapd_fill_iface_obj(struct hostapd_data *hapd,

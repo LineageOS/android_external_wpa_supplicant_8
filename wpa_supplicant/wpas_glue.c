@@ -1037,12 +1037,14 @@ static void wpa_supplicant_status_cb(void *ctx, const char *status,
 	wpas_notify_eap_status(wpa_s, status, parameter);
 }
 
+
 static void wpa_supplicant_eap_error_cb(void *ctx, int error_code)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
 	wpas_notify_eap_error(wpa_s, error_code);
 }
+
 
 static void wpa_supplicant_set_anon_id(void *ctx, const u8 *id, size_t len)
 {

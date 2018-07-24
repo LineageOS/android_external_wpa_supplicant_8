@@ -31,6 +31,8 @@ struct eap_user {
 	size_t password_len;
 	int password_hash; /* whether password is hashed with
 			    * nt_password_hash() */
+	u8 *salt;
+	size_t salt_len;
 	int phase2;
 	int force_version;
 	unsigned int remediation:1;
@@ -38,6 +40,7 @@ struct eap_user {
 	int ttls_auth; /* bitfield of
 			* EAP_TTLS_AUTH_{PAP,CHAP,MSCHAP,MSCHAPV2} */
 	struct hostapd_radius_attr *accept_attr;
+	u32 t_c_timestamp;
 };
 
 struct eap_eapol_interface {

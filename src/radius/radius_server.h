@@ -233,6 +233,8 @@ struct radius_server_conf {
 
 	char *subscr_remediation_url;
 	u8 subscr_remediation_method;
+
+	char *t_c_server_url;
 };
 
 
@@ -246,5 +248,6 @@ int radius_server_get_mib(struct radius_server_data *data, char *buf,
 			  size_t buflen);
 
 void radius_server_eap_pending_cb(struct radius_server_data *data, void *ctx);
+int radius_server_dac_request(struct radius_server_data *data, const char *req);
 
 #endif /* RADIUS_SERVER_H */

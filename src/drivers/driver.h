@@ -1563,6 +1563,8 @@ struct wpa_driver_capa {
  * functionality but can support only OCE STA-CFON functionality.
  */
 #define WPA_DRIVER_FLAGS_OCE_STA_CFON		0x0020000000000000ULL
+/** Driver supports MFP-optional in the connect command */
+#define WPA_DRIVER_FLAGS_MFP_OPTIONAL		0x0040000000000000ULL
 	u64 flags;
 
 #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
@@ -1692,6 +1694,7 @@ struct hostapd_data;
 #define STA_DRV_DATA_RX_VHT_NSS BIT(5)
 #define STA_DRV_DATA_TX_SHORT_GI BIT(6)
 #define STA_DRV_DATA_RX_SHORT_GI BIT(7)
+#define STA_DRV_DATA_LAST_ACK_RSSI BIT(8)
 
 struct hostap_sta_driver_data {
 	unsigned long rx_packets, tx_packets;
@@ -1704,8 +1707,7 @@ struct hostap_sta_driver_data {
 	unsigned long num_ps_buf_frames;
 	unsigned long tx_retry_failed;
 	unsigned long tx_retry_count;
-	int last_rssi;
-	int last_ack_rssi;
+	s8 last_ack_rssi;
 	s8 signal;
 	u8 rx_vhtmcs;
 	u8 tx_vhtmcs;
@@ -1873,6 +1875,17 @@ enum wnm_oper {
 	WNM_SLEEP_TFS_RESP_IE_SET,  /* AP requests driver to set TFS resp IE
 				     * for a STA */
 	WNM_SLEEP_TFS_IE_DEL        /* AP delete the TFS IE */
+};
+
+/* enum smps_mode - SMPS mode definitions */
+enum smps_mode {
+	SMPS_AUTOMATIC,
+	SMPS_OFF,
+	SMPS_DYNAMIC,
+	SMPS_STATIC,
+
+	/* Keep last */
+	SMPS_INVALID,
 };
 
 /* enum chan_width - Channel width definitions */
@@ -2049,6 +2062,36 @@ enum wpa_drv_update_connect_params_mask {
 	WPA_DRV_UPDATE_ASSOC_IES	= BIT(0),
 	WPA_DRV_UPDATE_FILS_ERP_INFO	= BIT(1),
 	WPA_DRV_UPDATE_AUTH_TYPE	= BIT(2),
+};
+
+/**
+ * struct external_auth - External authentication trigger parameters
+ *
+ * These are used across the external authentication request and event
+ * interfaces.
+ * @action: Action type / trigger for external authentication. Only significant
+ *	for the event interface.
+ * @bssid: BSSID of the peer with which the authentication has to happen. Used
+ *	by both the request and event interface.
+ * @ssid: SSID of the AP. Used by both the request and event interface.
+ * @ssid_len: SSID length in octets.
+ * @key_mgmt_suite: AKM suite of the respective authentication. Optional for
+ *	the request interface.
+ * @status: Status code, %WLAN_STATUS_SUCCESS for successful authentication,
+ *	use %WLAN_STATUS_UNSPECIFIED_FAILURE if wpa_supplicant cannot give
+ *	the real status code for failures. Used only for the request interface
+ *	from user space to the driver.
+ */
+struct external_auth {
+	enum {
+		EXT_AUTH_START,
+		EXT_AUTH_ABORT,
+	} action;
+	u8 bssid[ETH_ALEN];
+	u8 ssid[SSID_MAX_LEN];
+	size_t ssid_len;
+	unsigned int key_mgmt_suite;
+	u16 status;
 };
 
 /**
@@ -3611,6 +3654,17 @@ struct wpa_driver_ops {
 	int (*roaming)(void *priv, int allowed, const u8 *bssid);
 
 	/**
+	 * disable_fils - Enable/disable FILS feature
+	 * @priv: Private driver interface data
+	 * @disable: 0-enable and 1-disable FILS feature
+	 * Returns: 0 on success, -1 on failure
+	 *
+	 * This callback can be used to configure driver and below layers to
+	 * enable/disable all FILS features.
+	 */
+	int (*disable_fils)(void *priv, int disable);
+
+	/**
 	 * set_mac_addr - Set MAC address
 	 * @priv: Private driver interface data
 	 * @addr: MAC address to use or %NULL for setting back to permanent
@@ -4001,6 +4055,16 @@ struct wpa_driver_ops {
 	int (*update_connect_params)(
 		void *priv, struct wpa_driver_associate_params *params,
 		enum wpa_drv_update_connect_params_mask mask);
+
+	/**
+	 * send_external_auth_status - Indicate the status of external
+	 * authentication processing to the host driver.
+	 * @priv: Private driver interface data
+	 * @params: Status of authentication processing.
+	 * Returns: 0 on success, -1 on failure
+	 */
+	int (*send_external_auth_status)(void *priv,
+					 struct external_auth *params);
 };
 
 /**
@@ -4496,6 +4560,47 @@ enum wpa_event_type {
 	 * performed before start operating on this channel.
 	 */
 	EVENT_DFS_PRE_CAC_EXPIRED,
+
+	/**
+	 * EVENT_EXTERNAL_AUTH - This event interface is used by host drivers
+	 * that do not define separate commands for authentication and
+	 * association (~WPA_DRIVER_FLAGS_SME) but offload the 802.11
+	 * authentication to wpa_supplicant. This event carries all the
+	 * necessary information from the host driver for the authentication to
+	 * happen.
+	 */
+	EVENT_EXTERNAL_AUTH,
+
+	/**
+	 * EVENT_PORT_AUTHORIZED - Notification that a connection is authorized
+	 *
+	 * This event should be indicated when the driver completes the 4-way
+	 * handshake. This event should be preceded by an EVENT_ASSOC that
+	 * indicates the completion of IEEE 802.11 association.
+	 */
+	EVENT_PORT_AUTHORIZED,
+
+	/**
+	 * EVENT_STATION_OPMODE_CHANGED - Notify STA's HT/VHT operation mode
+	 * change event.
+	 */
+	EVENT_STATION_OPMODE_CHANGED,
+
+	/**
+	 * EVENT_INTERFACE_MAC_CHANGED - Notify that interface MAC changed
+	 *
+	 * This event is emitted when the MAC changes while the interface is
+	 * enabled. When an interface was disabled and becomes enabled, it
+	 * must be always assumed that the MAC possibly changed.
+	 */
+	EVENT_INTERFACE_MAC_CHANGED,
+
+	/**
+	 * EVENT_WDS_STA_INTERFACE_STATUS - Notify WDS STA interface status
+	 *
+	 * This event is emitted when an interface is added/removed for WDS STA.
+	 */
+	EVENT_WDS_STA_INTERFACE_STATUS,
 };
 
 
@@ -5298,6 +5403,37 @@ union wpa_event_data {
 			P2P_LO_STOPPED_REASON_NOT_SUPPORTED,
 		} reason_code;
 	} p2p_lo_stop;
+
+	/* For EVENT_EXTERNAL_AUTH */
+	struct external_auth external_auth;
+
+	/**
+	 * struct sta_opmode - Station's operation mode change event
+	 * @addr: The station MAC address
+	 * @smps_mode: SMPS mode of the station
+	 * @chan_width: Channel width of the station
+	 * @rx_nss: RX_NSS of the station
+	 *
+	 * This is used as data with EVENT_STATION_OPMODE_CHANGED.
+	 */
+	struct sta_opmode {
+		const u8 *addr;
+		enum smps_mode smps_mode;
+		enum chan_width chan_width;
+		u8 rx_nss;
+	} sta_opmode;
+
+	/**
+	 * struct wds_sta_interface - Data for EVENT_WDS_STA_INTERFACE_STATUS.
+	 */
+	struct wds_sta_interface {
+		const u8 *sta_addr;
+		const char *ifname;
+		enum {
+			INTERFACE_ADDED,
+			INTERFACE_REMOVED
+		} istatus;
+	} wds_sta_interface;
 };
 
 /**

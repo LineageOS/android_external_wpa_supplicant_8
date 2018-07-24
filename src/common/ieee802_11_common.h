@@ -11,6 +11,8 @@
 
 #include "defs.h"
 
+struct hostapd_hw_modes;
+
 #define MAX_NOF_MB_IES_SUPPORTED 5
 
 struct mb_ies_info {
@@ -79,6 +81,9 @@ struct ieee802_11_elems {
 	const u8 *fils_pk;
 	const u8 *fils_nonce;
 	const u8 *owe_dh;
+	const u8 *power_capab;
+	const u8 *roaming_cons_sel;
+	const u8 *password_id;
 
 	u8 ssid_len;
 	u8 supp_rates_len;
@@ -122,6 +127,9 @@ struct ieee802_11_elems {
 	u8 fils_wrapped_data_len;
 	u8 fils_pk_len;
 	u8 owe_dh_len;
+	u8 power_capab_len;
+	u8 roaming_cons_sel_len;
+	u8 password_id_len;
 
 	struct mb_ies_info mb_ies;
 };
@@ -152,7 +160,8 @@ int ieee80211_chan_to_freq(const char *country, u8 op_class, u8 chan);
 enum hostapd_hw_mode ieee80211_freq_to_channel_ext(unsigned int freq,
 						   int sec_channel, int vht,
 						   u8 *op_class, u8 *channel);
-int ieee80211_is_dfs(int freq);
+int ieee80211_is_dfs(int freq, const struct hostapd_hw_modes *modes,
+		     u16 num_modes);
 enum phy_type ieee80211_get_phy_type(int freq, int ht, int vht);
 
 int supp_rates_11b_only(struct ieee802_11_elems *elems);

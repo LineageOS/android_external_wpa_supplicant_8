@@ -466,6 +466,7 @@ ifdef CONFIG_EAP_PWD
 L_CFLAGS += -DEAP_SERVER_PWD
 OBJS += src/eap_server/eap_server_pwd.c src/eap_common/eap_pwd_common.c
 NEED_SHA256=y
+NEED_ECC=y
 endif
 
 ifdef CONFIG_EAP_EKE
@@ -649,21 +650,32 @@ L_CFLAGS += -DTLS_DEFAULT_CIPHERS=\"$(CONFIG_TLS_DEFAULT_CIPHERS)\"
 endif
 
 ifeq ($(CONFIG_TLS), gnutls)
+ifndef CONFIG_CRYPTO
+# default to libgcrypt
+CONFIG_CRYPTO=gnutls
+endif
 ifdef TLS_FUNCS
 OBJS += src/crypto/tls_gnutls.c
 LIBS += -lgnutls -lgpg-error
 endif
-OBJS += src/crypto/crypto_gnutls.c
-HOBJS += src/crypto/crypto_gnutls.c
+OBJS += src/crypto/crypto_$(CONFIG_CRYPTO).c
+HOBJS += src/crypto/crypto_$(CONFIG_CRYPTO).c
 ifdef NEED_FIPS186_2_PRF
 OBJS += src/crypto/fips_prf_internal.c
 OBJS += src/crypto/sha1-internal.c
 endif
+ifeq ($(CONFIG_CRYPTO), gnutls)
 LIBS += -lgcrypt
 LIBS_h += -lgcrypt
-CONFIG_INTERNAL_SHA256=y
 CONFIG_INTERNAL_RC4=y
 CONFIG_INTERNAL_DH_GROUP5=y
+endif
+ifeq ($(CONFIG_CRYPTO), nettle)
+LIBS += -lnettle -lgmp
+LIBS_p += -lnettle -lgmp
+CONFIG_INTERNAL_RC4=y
+CONFIG_INTERNAL_DH_GROUP5=y
+endif
 endif
 
 ifeq ($(CONFIG_TLS), internal)
@@ -820,7 +832,9 @@ endif
 SHA1OBJS =
 ifdef NEED_SHA1
 ifneq ($(CONFIG_TLS), openssl)
+ifneq ($(CONFIG_TLS), gnutls)
 SHA1OBJS += src/crypto/sha1.c
+endif
 endif
 SHA1OBJS += src/crypto/sha1-prf.c
 ifdef CONFIG_INTERNAL_SHA1
@@ -845,7 +859,9 @@ OBJS += $(SHA1OBJS)
 endif
 
 ifneq ($(CONFIG_TLS), openssl)
+ifneq ($(CONFIG_TLS), gnutls)
 OBJS += src/crypto/md5.c
+endif
 endif
 
 ifdef NEED_MD5
@@ -882,7 +898,9 @@ endif
 ifdef NEED_SHA256
 L_CFLAGS += -DCONFIG_SHA256
 ifneq ($(CONFIG_TLS), openssl)
+ifneq ($(CONFIG_TLS), gnutls)
 OBJS += src/crypto/sha256.c
+endif
 endif
 OBJS += src/crypto/sha256-prf.c
 ifdef CONFIG_INTERNAL_SHA256
@@ -904,7 +922,9 @@ endif
 ifdef NEED_SHA384
 L_CFLAGS += -DCONFIG_SHA384
 ifneq ($(CONFIG_TLS), openssl)
+ifneq ($(CONFIG_TLS), gnutls)
 OBJS += src/crypto/sha384.c
+endif
 endif
 OBJS += src/crypto/sha384-prf.c
 endif
@@ -912,7 +932,9 @@ ifdef NEED_SHA512
 L_CFLAGS += -DCONFIG_SHA512
 ifneq ($(CONFIG_TLS), openssl)
 ifneq ($(CONFIG_TLS), linux)
+ifneq ($(CONFIG_TLS), gnutls)
 OBJS += src/crypto/sha512.c
+endif
 endif
 endif
 OBJS += src/crypto/sha512-prf.c

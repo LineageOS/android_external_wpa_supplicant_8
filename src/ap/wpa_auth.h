@@ -14,6 +14,8 @@
 #include "common/wpa_common.h"
 #include "common/ieee802_11_defs.h"
 
+struct vlan_description;
+
 #define MAX_OWN_IE_OVERRIDE 256
 
 #ifdef _MSC_VER
@@ -77,6 +79,14 @@ struct ft_rrb_frame {
 #define FT_RRB_PMK_R1        10 /* PMK_LEN */
 
 #define FT_RRB_PAIRWISE      11 /* le16 */
+#define FT_RRB_EXPIRES_IN    12 /* le16 seconds */
+
+#define FT_RRB_VLAN_UNTAGGED 13 /* le16 */
+#define FT_RRB_VLAN_TAGGED   14 /* n times le16 */
+
+#define FT_RRB_IDENTITY      15
+#define FT_RRB_RADIUS_CUI    16
+#define FT_RRB_SESSION_TIMEOUT  17 /* le32 seconds */
 
 struct ft_rrb_tlv {
 	le16 type;
@@ -92,6 +102,8 @@ struct ft_rrb_seq {
 
 /* session TLVs:
  *   required: PMK_R1, PMK_R1_NAME, PAIRWISE
+ *   optional: VLAN_UNTAGGED, VLAN_TAGGED, EXPIRES_IN, IDENTITY, RADIUS_CUI,
+ *		 SESSION_TIMEOUT
  *
  * pull frame TLVs:
  *   auth:
@@ -177,6 +189,7 @@ struct wpa_auth_config {
 #ifdef CONFIG_IEEE80211W
 	enum mfp_options ieee80211w;
 	int group_mgmt_cipher;
+	int sae_require_mfp;
 #endif /* CONFIG_IEEE80211W */
 #ifdef CONFIG_IEEE80211R_AP
 	u8 ssid[SSID_MAX_LEN];
@@ -185,11 +198,12 @@ struct wpa_auth_config {
 	u8 r0_key_holder[FT_R0KH_ID_MAX_LEN];
 	size_t r0_key_holder_len;
 	u8 r1_key_holder[FT_R1KH_ID_LEN];
-	u32 r0_key_lifetime;
+	u32 r0_key_lifetime; /* PMK-R0 lifetime seconds */
 	int rkh_pos_timeout;
 	int rkh_neg_timeout;
 	int rkh_pull_timeout; /* ms */
 	int rkh_pull_retries;
+	int r1_max_key_lifetime;
 	u32 reassociation_deadline;
 	struct ft_remote_r0kh **r0kh_list;
 	struct ft_remote_r1kh **r1kh_list;
@@ -253,6 +267,20 @@ struct wpa_auth_callbacks {
 			size_t data_len);
 #ifdef CONFIG_IEEE80211R_AP
 	struct wpa_state_machine * (*add_sta)(void *ctx, const u8 *sta_addr);
+	int (*set_vlan)(void *ctx, const u8 *sta_addr,
+			struct vlan_description *vlan);
+	int (*get_vlan)(void *ctx, const u8 *sta_addr,
+			struct vlan_description *vlan);
+	int (*set_identity)(void *ctx, const u8 *sta_addr,
+			    const u8 *identity, size_t identity_len);
+	size_t (*get_identity)(void *ctx, const u8 *sta_addr, const u8 **buf);
+	int (*set_radius_cui)(void *ctx, const u8 *sta_addr,
+			      const u8 *radius_cui, size_t radius_cui_len);
+	size_t (*get_radius_cui)(void *ctx, const u8 *sta_addr, const u8 **buf);
+	void (*set_session_timeout)(void *ctx, const u8 *sta_addr,
+				    int session_timeout);
+	int (*get_session_timeout)(void *ctx, const u8 *sta_addr);
+
 	int (*send_ft_action)(void *ctx, const u8 *dst,
 			      const u8 *data, size_t data_len);
 	int (*add_tspec)(void *ctx, const u8 *sta_addr, u8 *tspec_ie,
@@ -331,6 +359,7 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
 			       struct eapol_state_machine *eapol);
 int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			   const u8 *pmk, const u8 *pmkid);
+void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid);
 int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
 			int session_timeout, int akmp);
@@ -420,7 +449,8 @@ const u8 *  wpa_fils_validate_fils_session(struct wpa_state_machine *sm,
 int wpa_fils_validate_key_confirm(struct wpa_state_machine *sm, const u8 *ies,
 				  size_t ies_len);
 
-int wpa_auth_write_fte(struct wpa_authenticator *wpa_auth, u8 *buf, size_t len);
+int wpa_auth_write_fte(struct wpa_authenticator *wpa_auth, int use_sha384,
+		       u8 *buf, size_t len);
 void wpa_auth_get_fils_aead_params(struct wpa_state_machine *sm,
 				   u8 *fils_anonce, u8 *fils_snonce,
 				   u8 *fils_kek, size_t *fils_kek_len);
@@ -437,5 +467,6 @@ int wpa_auth_resend_m3(struct wpa_state_machine *sm,
 int wpa_auth_resend_group_m1(struct wpa_state_machine *sm,
 			     void (*cb)(void *ctx1, void *ctx2),
 			     void *ctx1, void *ctx2);
+int wpa_auth_rekey_gtk(struct wpa_authenticator *wpa_auth);
 
 #endif /* WPA_AUTH_H */

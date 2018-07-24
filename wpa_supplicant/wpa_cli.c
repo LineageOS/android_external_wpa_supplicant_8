@@ -60,6 +60,7 @@ static DEFINE_DL_LIST(p2p_peers); /* struct cli_txt_entry */
 static DEFINE_DL_LIST(p2p_groups); /* struct cli_txt_entry */
 static DEFINE_DL_LIST(ifnames); /* struct cli_txt_entry */
 static DEFINE_DL_LIST(networks); /* struct cli_txt_entry */
+static DEFINE_DL_LIST(creds); /* struct cli_txt_entry */
 #ifdef CONFIG_AP
 static DEFINE_DL_LIST(stations); /* struct cli_txt_entry */
 #endif /* CONFIG_AP */
@@ -70,6 +71,7 @@ static void wpa_cli_mon_receive(int sock, void *eloop_ctx, void *sock_ctx);
 static void wpa_cli_close_connection(void);
 static char * wpa_cli_get_default_ifname(void);
 static char ** wpa_list_cmd_list(void);
+static void update_creds(struct wpa_ctrl *ctrl);
 static void update_networks(struct wpa_ctrl *ctrl);
 static void update_stations(struct wpa_ctrl *ctrl);
 
@@ -474,7 +476,7 @@ static char ** wpa_cli_complete_set(const char *str, int pos)
 #endif /* CONFIG_P2P */
 		"country", "bss_max_count", "bss_expiration_age",
 		"bss_expiration_scan_count", "filter_ssids", "filter_rssi",
-		"max_num_sta", "disassoc_low_ack",
+		"max_num_sta", "disassoc_low_ack", "ap_isolate",
 #ifdef CONFIG_HS20
 		"hs20",
 #endif /* CONFIG_HS20 */
@@ -571,7 +573,7 @@ static char ** wpa_cli_complete_get(const char *str, int pos)
 #endif /* CONFIG_P2P */
 		"bss_max_count", "bss_expiration_age",
 		"bss_expiration_scan_count", "filter_ssids", "filter_rssi",
-		"max_num_sta", "disassoc_low_ack",
+		"max_num_sta", "disassoc_low_ack", "ap_isolate",
 #ifdef CONFIG_HS20
 		"hs20",
 #endif /* CONFIG_HS20 */
@@ -1519,14 +1521,56 @@ static int wpa_cli_cmd_list_creds(struct wpa_ctrl *ctrl, int argc,
 
 static int wpa_cli_cmd_add_cred(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
-	return wpa_ctrl_command(ctrl, "ADD_CRED");
+	int res = wpa_ctrl_command(ctrl, "ADD_CRED");
+	if (interactive)
+		update_creds(ctrl);
+	return res;
 }
 
 
 static int wpa_cli_cmd_remove_cred(struct wpa_ctrl *ctrl, int argc,
 				   char *argv[])
 {
-	return wpa_cli_cmd(ctrl, "REMOVE_CRED", 1, argc, argv);
+	int res = wpa_cli_cmd(ctrl, "REMOVE_CRED", 1, argc, argv);
+	if (interactive)
+		update_creds(ctrl);
+	return res;
+}
+
+
+static const char * const cred_fields[] = {
+	"temporary", "priority", "sp_priority", "pcsc", "eap",
+	"update_identifier", "min_dl_bandwidth_home", "min_ul_bandwidth_home",
+	"min_dl_bandwidth_roaming", "min_ul_bandwidth_roaming", "max_bss_load",
+	"req_conn_capab", "ocsp", "sim_num", "realm", "username", "password",
+	"ca_cert", "client_cert", "private_key", "private_key_passwd", "imsi",
+	"milenage", "domain_suffix_match", "domain", "phase1", "phase2",
+	"roaming_consortium", "required_roaming_consortium", "excluded_ssid",
+	"roaming_partner", "provisioning_sp"
+};
+
+
+static char ** wpa_cli_complete_cred(const char *str, int pos)
+{
+	int arg = get_cmd_arg_num(str, pos);
+	int i, num_fields = ARRAY_SIZE(cred_fields);
+	char **res = NULL;
+
+	switch (arg) {
+	case 1:
+		res = cli_txt_list_array(&creds);
+		break;
+	case 2:
+		res = os_calloc(num_fields + 1, sizeof(char *));
+		if (res == NULL)
+			return NULL;
+		for (i = 0; i < num_fields; i++) {
+			res[i] = os_strdup(cred_fields[i]);
+			if (res[i] == NULL)
+				break;
+		}
+	}
+	return res;
 }
 
 
@@ -2443,6 +2487,8 @@ static int wpa_cli_cmd_p2p_remove_client(struct wpa_ctrl *ctrl, int argc,
 	return wpa_cli_cmd(ctrl, "P2P_REMOVE_CLIENT", 1, argc, argv);
 }
 
+#endif /* CONFIG_P2P */
+
 
 static int wpa_cli_cmd_vendor_elem_add(struct wpa_ctrl *ctrl, int argc,
 				       char *argv[])
@@ -2464,7 +2510,6 @@ static int wpa_cli_cmd_vendor_elem_remove(struct wpa_ctrl *ctrl, int argc,
 	return wpa_cli_cmd(ctrl, "VENDOR_ELEM_REMOVE", 2, argc, argv);
 }
 
-#endif /* CONFIG_P2P */
 
 #ifdef CONFIG_WIFI_DISPLAY
 
@@ -2903,6 +2948,13 @@ static int wpa_cli_cmd_dpp_configurator_remove(struct wpa_ctrl *ctrl, int argc,
 }
 
 
+static int wpa_cli_cmd_dpp_configurator_get_key(struct wpa_ctrl *ctrl, int argc,
+						char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "DPP_CONFIGURATOR_GET_KEY", 1, argc, argv);
+}
+
+
 static int wpa_cli_cmd_dpp_pkex_add(struct wpa_ctrl *ctrl, int argc,
 				    char *argv[])
 {
@@ -3093,10 +3145,10 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "remove_cred", wpa_cli_cmd_remove_cred, NULL,
 	  cli_cmd_flag_none,
 	  "<cred id> = remove a credential" },
-	{ "set_cred", wpa_cli_cmd_set_cred, NULL,
+	{ "set_cred", wpa_cli_cmd_set_cred, wpa_cli_complete_cred,
 	  cli_cmd_flag_sensitive,
 	  "<cred id> <variable> <value> = set credential variables" },
-	{ "get_cred", wpa_cli_cmd_get_cred, NULL,
+	{ "get_cred", wpa_cli_cmd_get_cred, wpa_cli_complete_cred,
 	  cli_cmd_flag_none,
 	  "<cred id> <variable> = get credential variables" },
 	{ "save_config", wpa_cli_cmd_save_config, NULL,
@@ -3377,6 +3429,7 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "p2p_remove_client", wpa_cli_cmd_p2p_remove_client,
 	  wpa_cli_complete_p2p_peer, cli_cmd_flag_none,
 	  "<address|iface=address> = remove a peer from all groups" },
+#endif /* CONFIG_P2P */
 	{ "vendor_elem_add", wpa_cli_cmd_vendor_elem_add, NULL,
 	  cli_cmd_flag_none,
 	  "<frame id> <hexdump of elem(s)> = add vendor specific IEs to frame(s)\n"
@@ -3389,7 +3442,6 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	  cli_cmd_flag_none,
 	  "<frame id> <hexdump of elem(s)> = remove vendor specific IE(s) in frame(s)\n"
 	  VENDOR_ELEM_FRAME_ID },
-#endif /* CONFIG_P2P */
 #ifdef CONFIG_WIFI_DISPLAY
 	{ "wfd_subelem_set", wpa_cli_cmd_wfd_subelem_set, NULL,
 	  cli_cmd_flag_none,
@@ -3559,6 +3611,9 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "dpp_configurator_remove", wpa_cli_cmd_dpp_configurator_remove, NULL,
 	  cli_cmd_flag_none,
 	  "*|<id> = remove DPP configurator" },
+	{ "dpp_configurator_get_key", wpa_cli_cmd_dpp_configurator_get_key,
+	  NULL, cli_cmd_flag_none,
+	  "<id> = Get DPP configurator's private key" },
 	{ "dpp_pkex_add", wpa_cli_cmd_dpp_pkex_add, NULL,
 	  cli_cmd_flag_sensitive,
 	  "add PKEX code" },
@@ -3900,6 +3955,8 @@ static void wpa_cli_action_process(const char *msg)
 		wpa_cli_exec(action_file, ifname, pos);
 	} else if (str_starts(pos, HS20_DEAUTH_IMMINENT_NOTICE)) {
 		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, HS20_T_C_ACCEPTANCE)) {
+		wpa_cli_exec(action_file, ifname, pos);
 	} else if (str_starts(pos, WPA_EVENT_TERMINATING)) {
 		printf("wpa_supplicant is terminating - stop monitoring\n");
 		wpa_cli_quit = 1;
@@ -4206,6 +4263,38 @@ static void update_ifnames(struct wpa_ctrl *ctrl)
 }
 
 
+static void update_creds(struct wpa_ctrl *ctrl)
+{
+	char buf[4096];
+	size_t len = sizeof(buf);
+	int ret;
+	const char *cmd = "LIST_CREDS";
+	char *pos, *end;
+	int header = 1;
+
+	cli_txt_list_flush(&creds);
+
+	if (ctrl == NULL)
+		return;
+	ret = wpa_ctrl_request(ctrl, cmd, os_strlen(cmd), buf, &len, NULL);
+	if (ret < 0)
+		return;
+	buf[len] = '\0';
+
+	pos = buf;
+	while (pos) {
+		end = os_strchr(pos, '\n');
+		if (end == NULL)
+			break;
+		*end = '\0';
+		if (!header)
+			cli_txt_list_add_word(&creds, pos, '\t');
+		header = 0;
+		pos = end + 1;
+	}
+}
+
+
 static void update_networks(struct wpa_ctrl *ctrl)
 {
 	char buf[4096];
@@ -4279,6 +4368,7 @@ static void try_connection(void *eloop_ctx, void *timeout_ctx)
 	}
 
 	update_bssid_list(ctrl_conn);
+	update_creds(ctrl_conn);
 	update_networks(ctrl_conn);
 	update_stations(ctrl_conn);
 
@@ -4302,6 +4392,7 @@ static void wpa_cli_interactive(void)
 	cli_txt_list_flush(&p2p_groups);
 	cli_txt_list_flush(&bsses);
 	cli_txt_list_flush(&ifnames);
+	cli_txt_list_flush(&creds);
 	cli_txt_list_flush(&networks);
 	if (edit_started)
 		edit_deinit(hfile, wpa_cli_edit_filter_history_cb);

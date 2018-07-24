@@ -1248,20 +1248,23 @@ static u8 * eap_sim_get_emsk(struct eap_sm *sm, void *priv, size_t *len)
 	return key;
 }
 
+
 static int eap_sim_get_error_code(void *priv)
 {
 	struct eap_sim_data *data = priv;
+	int current_data_error;
 
 	if (!data)
 		return NO_EAP_METHOD_ERROR;
 
-	int current_data_error = data->error_code;
+	current_data_error = data->error_code;
 
 	/* Now reset for next transaction */
 	data->error_code = NO_EAP_METHOD_ERROR;
 
 	return current_data_error;
 }
+
 
 int eap_peer_sim_register(void)
 {

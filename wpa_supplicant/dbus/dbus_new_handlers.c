@@ -980,8 +980,21 @@ dbus_bool_t wpas_dbus_getter_global_capabilities(
 	const struct wpa_dbus_property_desc *property_desc,
 	DBusMessageIter *iter, DBusError *error, void *user_data)
 {
-	const char *capabilities[5] = { NULL, NULL, NULL, NULL, NULL };
+	const char *capabilities[8] = { NULL, NULL, NULL, NULL, NULL, NULL,
+					NULL, NULL };
 	size_t num_items = 0;
+#ifdef CONFIG_FILS
+	struct wpa_global *global = user_data;
+	struct wpa_supplicant *wpa_s;
+	int fils_supported = 0, fils_sk_pfs_supported = 0;
+
+	for (wpa_s = global->ifaces; wpa_s; wpa_s = wpa_s->next) {
+		if (wpa_is_fils_supported(wpa_s))
+			fils_supported = 1;
+		if (wpa_is_fils_sk_pfs_supported(wpa_s))
+			fils_sk_pfs_supported = 1;
+	}
+#endif /* CONFIG_FILS */
 
 #ifdef CONFIG_AP
 	capabilities[num_items++] = "ap";
@@ -998,6 +1011,15 @@ dbus_bool_t wpas_dbus_getter_global_capabilities(
 #ifdef CONFIG_IEEE80211W
 	capabilities[num_items++] = "pmf";
 #endif /* CONFIG_IEEE80211W */
+#ifdef CONFIG_MESH
+	capabilities[num_items++] = "mesh";
+#endif /* CONFIG_MESH */
+#ifdef CONFIG_FILS
+	if (fils_supported)
+		capabilities[num_items++] = "fils";
+	if (fils_sk_pfs_supported)
+		capabilities[num_items++] = "fils_sk_pfs";
+#endif /* CONFIG_FILS */
 
 	return wpas_dbus_simple_array_property_getter(iter,
 						      DBUS_TYPE_STRING,
@@ -4094,7 +4116,7 @@ static dbus_bool_t wpas_dbus_get_bss_security_prop(
 	DBusMessageIter iter_dict, variant_iter;
 	const char *group;
 	const char *pairwise[5]; /* max 5 pairwise ciphers is supported */
-	const char *key_mgmt[9]; /* max 9 key managements may be supported */
+	const char *key_mgmt[13]; /* max 13 key managements may be supported */
 	int n;
 
 	if (!dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT,
@@ -4126,6 +4148,16 @@ static dbus_bool_t wpas_dbus_get_bss_security_prop(
 	if (ie_data->key_mgmt & WPA_KEY_MGMT_IEEE8021X_SUITE_B_192)
 		key_mgmt[n++] = "wpa-eap-suite-b-192";
 #endif /* CONFIG_SUITEB192 */
+#ifdef CONFIG_FILS
+	if (ie_data->key_mgmt & WPA_KEY_MGMT_FILS_SHA256)
+		key_mgmt[n++] = "wpa-fils-sha256";
+	if (ie_data->key_mgmt & WPA_KEY_MGMT_FILS_SHA384)
+		key_mgmt[n++] = "wpa-fils-sha384";
+	if (ie_data->key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA256)
+		key_mgmt[n++] = "wpa-ft-fils-sha256";
+	if (ie_data->key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA384)
+		key_mgmt[n++] = "wpa-ft-fils-sha384";
+#endif /* CONFIG_FILS */
 	if (ie_data->key_mgmt & WPA_KEY_MGMT_NONE)
 		key_mgmt[n++] = "wpa-none";
 
