@@ -33,7 +33,7 @@ constexpr char kConfFileNameFmt[] = "/data/vendor/wifi/hostapd/hostapd_%s.conf";
 using android::base::RemoveFileIfExists;
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
-using android::hardware::wifi::hostapd::V1_0::IHostapd;
+using android::hardware::wifi::hostapd::V1_1::IHostapd;
 
 std::string WriteHostapdConfig(
     const std::string& interface_name, const std::string& config)
@@ -187,15 +187,35 @@ std::string CreateHostapdConfig(
 	    hw_mode_as_string.c_str(), ht_cap_vht_oper_chwidth_as_string.c_str(),
 	    nw_params.isHidden ? 1 : 0, encryption_config_as_string.c_str());
 }
+
+// hostapd core functions accept "C" style function pointers, so use global
+// functions to pass to the hostapd core function and store the corresponding
+// std::function methods to be invoked.
+//
+// NOTE: Using the pattern from the vendor HAL (wifi_legacy_hal.cpp).
+//
+// Callback to be invoked once setup is complete
+std::function<void(struct hostapd_data*)> on_setup_complete_internal_callback;
+void onAsyncSetupCompleteCb(void* ctx)
+{
+	struct hostapd_data* iface_hapd = (struct hostapd_data*)ctx;
+	if (on_setup_complete_internal_callback) {
+		on_setup_complete_internal_callback(iface_hapd);
+		// Invalidate this callback since we don't want this firing
+		// again.
+		on_setup_complete_internal_callback = nullptr;
+	}
+}
 }  // namespace
 
 namespace android {
 namespace hardware {
 namespace wifi {
 namespace hostapd {
-namespace V1_0 {
+namespace V1_1 {
 namespace implementation {
 using hidl_return_util::call;
+using namespace android::hardware::wifi::hostapd::V1_0;
 
 Hostapd::Hostapd(struct hapd_interfaces* interfaces) : interfaces_(interfaces)
 {}
@@ -216,10 +236,18 @@ Return<void> Hostapd::removeAccessPoint(
 	    this, &Hostapd::removeAccessPointInternal, _hidl_cb, iface_name);
 }
 
-Return<void> Hostapd::terminate() {
+Return<void> Hostapd::terminate()
+{
 	wpa_printf(MSG_INFO, "Terminating...");
 	eloop_terminate();
 	return Void();
+}
+
+Return<void> Hostapd::registerCallback(
+    const sp<IHostapdCallback>& callback, registerCallback_cb _hidl_cb)
+{
+	return call(
+	    this, &Hostapd::registerCallbackInternal, _hidl_cb, callback);
 }
 
 HostapdStatus Hostapd::addAccessPointInternal(
@@ -256,6 +284,23 @@ HostapdStatus Hostapd::addAccessPointInternal(
 	struct hostapd_data* iface_hapd =
 	    hostapd_get_iface(interfaces_, iface_params.ifaceName.c_str());
 	WPA_ASSERT(iface_hapd != nullptr && iface_hapd->iface != nullptr);
+	// Register the setup complete callbacks
+	on_setup_complete_internal_callback =
+	    [this](struct hostapd_data* iface_hapd) {
+		    wpa_printf(
+			MSG_DEBUG, "AP interface setup completed - state %s",
+			hostapd_state_text(iface_hapd->iface->state));
+		    if (iface_hapd->iface->state == HAPD_IFACE_DISABLED) {
+			    // Invoke the failure callback on all registered
+			    // clients.
+			    for (const auto& callback : callbacks_) {
+				    callback->onFailure(
+					iface_hapd->conf->iface);
+			    }
+		    }
+	    };
+	iface_hapd->setup_complete_cb = onAsyncSetupCompleteCb;
+	iface_hapd->setup_complete_cb_ctx = iface_hapd;
 	if (hostapd_enable_iface(iface_hapd->iface) < 0) {
 		wpa_printf(
 		    MSG_ERROR, "Enabling interface %s failed",
@@ -278,8 +323,16 @@ HostapdStatus Hostapd::removeAccessPointInternal(const std::string& iface_name)
 	}
 	return {HostapdStatusCode::SUCCESS, ""};
 }
+
+HostapdStatus Hostapd::registerCallbackInternal(
+    const sp<IHostapdCallback>& callback)
+{
+	callbacks_.push_back(callback);
+	return {HostapdStatusCode::SUCCESS, ""};
+}
+
 }  // namespace implementation
-}  // namespace V1_0
+}  // namespace V1_1
 }  // namespace hostapd
 }  // namespace wifi
 }  // namespace hardware

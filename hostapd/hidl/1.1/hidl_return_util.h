@@ -16,7 +16,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace hostapd {
-namespace V1_0 {
+namespace V1_1 {
 namespace implementation {
 namespace hidl_return_util {
 
@@ -36,7 +36,7 @@ Return<void> call(
 
 }  // namespace hidl_return_util
 }  // namespace implementation
-}  // namespace V1_0
+}  // namespace V1_1
 }  // namespace hostapd
 }  // namespace wifi
 }  // namespace hardware

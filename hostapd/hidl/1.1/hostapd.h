@@ -14,7 +14,8 @@
 
 #include <android-base/macros.h>
 
-#include <android/hardware/wifi/hostapd/1.0/IHostapd.h>
+#include <android/hardware/wifi/hostapd/1.1/IHostapd.h>
+#include <android/hardware/wifi/hostapd/1.1/IHostapdCallback.h>
 
 extern "C"
 {
@@ -28,15 +29,16 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace hostapd {
-namespace V1_0 {
+namespace V1_1 {
 namespace implementation {
+using namespace android::hardware::wifi::hostapd::V1_0;
 
 /**
  * Implementation of the hostapd hidl object. This hidl
  * object is used core for global control operations on
  * hostapd.
  */
-class Hostapd : public V1_0::IHostapd
+class Hostapd : public V1_1::IHostapd
 {
 public:
 	Hostapd(hapd_interfaces* interfaces);
@@ -50,20 +52,27 @@ public:
 	    const hidl_string& iface_name,
 	    removeAccessPoint_cb _hidl_cb) override;
 	Return<void> terminate() override;
+	Return<void> registerCallback(
+	    const sp<IHostapdCallback>& callback,
+	    registerCallback_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
 	HostapdStatus addAccessPointInternal(
 	    const IfaceParams& iface_params, const NetworkParams& nw_params);
 	HostapdStatus removeAccessPointInternal(const std::string& iface_name);
+	HostapdStatus registerCallbackInternal(
+	    const sp<IHostapdCallback>& callback);
 
 	// Raw pointer to the global structure maintained by the core.
 	struct hapd_interfaces* interfaces_;
+	// Callbacks registered.
+	std::vector<sp<IHostapdCallback>> callbacks_;
 
 	DISALLOW_COPY_AND_ASSIGN(Hostapd);
 };
 }  // namespace implementation
-}  // namespace V1_0
+}  // namespace V1_1
 }  // namespace hostapd
 }  // namespace wifi
 }  // namespace hardware
