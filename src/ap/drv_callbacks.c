@@ -109,10 +109,10 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 	struct ieee802_11_elems elems;
 	const u8 *ie;
 	size_t ielen;
-#if defined(CONFIG_IEEE80211R_AP) || defined(CONFIG_IEEE80211W) || defined(CONFIG_FILS)
+#if defined(CONFIG_IEEE80211R_AP) || defined(CONFIG_IEEE80211W) || defined(CONFIG_FILS) || defined(CONFIG_OWE)
 	u8 buf[sizeof(struct ieee80211_mgmt) + 1024];
 	u8 *p = buf;
-#endif /* CONFIG_IEEE80211R_AP || CONFIG_IEEE80211W || CONFIG_FILS */
+#endif /* CONFIG_IEEE80211R_AP || CONFIG_IEEE80211W || CONFIG_FILS || CONFIG_OWE */
 	u16 reason = WLAN_REASON_UNSPECIFIED;
 	u16 status = WLAN_STATUS_SUCCESS;
 	const u8 *p2p_dev_addr = NULL;
@@ -1711,7 +1711,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			 * Try to re-enable interface if the driver stopped it
 			 * when the interface got disabled.
 			 */
-			wpa_auth_reconfig_group_keys(hapd->wpa_auth);
+			if (hapd->wpa_auth)
+				wpa_auth_reconfig_group_keys(hapd->wpa_auth);
+			else
+				hostapd_reconfig_encryption(hapd);
 			hapd->reenable_beacon = 1;
 			ieee802_11_set_beacon(hapd);
 		}
