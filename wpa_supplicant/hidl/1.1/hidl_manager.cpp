@@ -14,6 +14,7 @@
 #include "misc_utils.h"
 
 extern "C" {
+#include "scan.h"
 #include "src/eap_common/eap_sim_common.h"
 }
 
@@ -470,6 +471,16 @@ int HidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		}
 		sta_iface_callbacks_map_[wpa_s->ifname] =
 		    std::vector<android::sp<ISupplicantStaIfaceCallback>>();
+		// Turn on Android specific customizations for STA interfaces
+		// here!
+		//
+		// Turn on scan randomization.
+		if (wpas_mac_addr_rand_scan_set(
+			wpa_s, MAC_ADDR_RAND_SCAN, nullptr, nullptr)) {
+			wpa_printf(
+			    MSG_ERROR,
+			    "Failed to enable scan mac randomization");
+		}
 	}
 
 	// Invoke the |onInterfaceCreated| method on all registered callbacks.
