@@ -13,7 +13,8 @@
 #include "misc_utils.h"
 #include "sta_iface.h"
 
-extern "C" {
+extern "C"
+{
 #include "utils/eloop.h"
 #include "gas_query.h"
 #include "interworking.h"
@@ -22,10 +23,10 @@ extern "C" {
 }
 
 namespace {
-using android::hardware::wifi::supplicant::V1_1::ISupplicantStaIface;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
-using android::hardware::wifi::supplicant::V1_1::implementation::HidlManager;
+using android::hardware::wifi::supplicant::V1_1::ISupplicantStaIface;
+using android::hardware::wifi::supplicant::V1_2::implementation::HidlManager;
 
 constexpr uint32_t kMaxAnqpElems = 100;
 constexpr char kGetMacAddress[] = "MACADDR";
@@ -155,7 +156,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 
@@ -165,8 +166,7 @@ using V1_0::ISupplicantStaIfaceCallback;
 
 StaIface::StaIface(struct wpa_global *wpa_global, const char ifname[])
     : wpa_global_(wpa_global), ifname_(ifname), is_valid_(true)
-{
-}
+{}
 
 void StaIface::invalidate() { is_valid_ = false; }
 bool StaIface::isValid()
@@ -219,8 +219,8 @@ Return<void> StaIface::listNetworks(listNetworks_cb _hidl_cb)
 }
 
 Return<void> StaIface::registerCallback(
-    const sp<ISupplicantStaIfaceCallback>
-    & callback, registerCallback_cb _hidl_cb)
+    const sp<ISupplicantStaIfaceCallback> &callback,
+    registerCallback_cb _hidl_cb)
 {
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
@@ -231,7 +231,7 @@ Return<void> StaIface::registerCallback_1_1(
     const sp<V1_1::ISupplicantStaIfaceCallback> &callback,
     registerCallback_cb _hidl_cb)
 {
-	sp<V1_0::ISupplicantStaIfaceCallback> callback_1_0 =  callback;
+	sp<V1_0::ISupplicantStaIfaceCallback> callback_1_0 = callback;
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 	    &StaIface::registerCallbackInternal, _hidl_cb, callback_1_0);
@@ -1027,8 +1027,8 @@ wpa_supplicant *StaIface::retrieveIfacePtr()
 	return wpa_supplicant_get_iface(wpa_global_, ifname_.c_str());
 }
 }  // namespace implementation
-}  // namespace V1_1
-}  // namespace wifi
+}  // namespace V1_2
 }  // namespace supplicant
+}  // namespace wifi
 }  // namespace hardware
 }  // namespace android

@@ -16,7 +16,8 @@
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantIface.h>
 
-extern "C" {
+extern "C"
+{
 #include "utils/common.h"
 #include "utils/includes.h"
 #include "utils/wpa_debug.h"
@@ -27,7 +28,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 using namespace android::hardware::wifi::supplicant::V1_0;
 
@@ -90,9 +91,9 @@ private:
 };
 
 }  // namespace implementation
-}  // namespace V1_1
-}  // namespace wifi
+}  // namespace V1_2
 }  // namespace supplicant
+}  // namespace wifi
 }  // namespace hardware
 }  // namespace android
 

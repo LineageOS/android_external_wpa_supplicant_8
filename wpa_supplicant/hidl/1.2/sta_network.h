@@ -15,10 +15,11 @@
 
 #include <android-base/macros.h>
 
-#include <android/hardware/wifi/supplicant/1.1/ISupplicantStaNetwork.h>
+#include <android/hardware/wifi/supplicant/1.2/ISupplicantStaNetwork.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetworkCallback.h>
 
-extern "C" {
+extern "C"
+{
 #include "utils/common.h"
 #include "utils/includes.h"
 #include "config.h"
@@ -33,16 +34,17 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 using namespace android::hardware::wifi::supplicant::V1_0;
+using namespace android::hardware::wifi::supplicant::V1_1;
 
 /**
  * Implementation of StaNetwork hidl object. Each unique hidl
  * object is used for control operations on a specific network
  * controlled by wpa_supplicant.
  */
-class StaNetwork : public V1_1::ISupplicantStaNetwork
+class StaNetwork : public V1_2::ISupplicantStaNetwork
 {
 public:
 	StaNetwork(
@@ -109,9 +111,9 @@ public:
 	    const hidl_string& path, setEapClientCert_cb _hidl_cb) override;
 	Return<void> setEapPrivateKeyId(
 	    const hidl_string& id, setEapPrivateKeyId_cb _hidl_cb) override;
-        Return<void> setEapEncryptedImsiIdentity(
-            const EapSimEncryptedIdentity& identity,
-            setEapEncryptedImsiIdentity_cb _hidl_cb) override;
+	Return<void> setEapEncryptedImsiIdentity(
+	    const EapSimEncryptedIdentity& identity,
+	    setEapEncryptedImsiIdentity_cb _hidl_cb) override;
 	Return<void> setEapSubjectMatch(
 	    const hidl_string& match, setEapSubjectMatch_cb _hidl_cb) override;
 	Return<void> setEapAltSubjectMatch(
@@ -140,6 +142,8 @@ public:
 	Return<void> getPairwiseCipher(getPairwiseCipher_cb _hidl_cb) override;
 	Return<void> getPskPassphrase(getPskPassphrase_cb _hidl_cb) override;
 	Return<void> getPsk(getPsk_cb _hidl_cb) override;
+	Return<void> getSaePassword(getSaePassword_cb _hidl_cb) override;
+	Return<void> getSaePasswordId(getSaePasswordId_cb _hidl_cb) override;
 	Return<void> getWepKey(
 	    uint32_t key_idx, getWepKey_cb _hidl_cb) override;
 	Return<void> getWepTxKeyIdx(getWepTxKeyIdx_cb _hidl_cb) override;
@@ -193,6 +197,31 @@ public:
 	    const EapSimIdentity& identity,
 	    const EapSimEncryptedIdentity& imsiIdentity,
 	    sendNetworkEapIdentityResponse_1_1_cb _hidl_cb) override;
+	Return<void> setKeyMgmt_1_2(
+	    uint32_t key_mgmt_mask, setKeyMgmt_1_2_cb _hidl_cb) override;
+	Return<void> getKeyMgmt_1_2(getKeyMgmt_1_2_cb _hidl_cb) override;
+	Return<void> setPairwiseCipher_1_2(
+	    uint32_t pairwise_cipher_mask,
+	    setPairwiseCipher_1_2_cb _hidl_cb) override;
+	Return<void> getPairwiseCipher_1_2(
+	    getPairwiseCipher_1_2_cb _hidl_cb) override;
+	Return<void> setGroupCipher_1_2(
+	    uint32_t group_cipher_mask,
+	    setGroupCipher_1_2_cb _hidl_cb) override;
+	Return<void> getGroupCipher_1_2(
+	    getGroupCipher_1_2_cb _hidl_cb) override;
+	Return<void> enableTlsSuiteBEapPhase1Param(
+	    bool enable, enableTlsSuiteBEapPhase1Param_cb _hidl_cb) override;
+	Return<void> enableSuiteBEapOpenSslCiphers(
+	    enableSuiteBEapOpenSslCiphers_cb _hidl_cb) override;
+	Return<void> setSaePassword(
+	    const hidl_string& sae_password,
+	    setSaePassword_cb _hidl_cb) override;
+	Return<void> setSaePasswordId(
+	    const hidl_string& sae_password_id,
+	    setSaePasswordId_cb _hidl_cb) override;
+	Return<void> getKeyMgmtCapabilities(
+	    getKeyMgmtCapabilities_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -222,7 +251,7 @@ private:
 	    ISupplicantStaNetwork::EapPhase2Method method);
 	SupplicantStatus setEapIdentityInternal(
 	    const std::vector<uint8_t>& identity);
-        SupplicantStatus setEapEncryptedImsiIdentityInternal(
+	SupplicantStatus setEapEncryptedImsiIdentityInternal(
 	    const std::vector<uint8_t>& identity);
 	SupplicantStatus setEapAnonymousIdentityInternal(
 	    const std::vector<uint8_t>& identity);
@@ -252,6 +281,8 @@ private:
 	std::pair<SupplicantStatus, uint32_t> getPairwiseCipherInternal();
 	std::pair<SupplicantStatus, std::string> getPskPassphraseInternal();
 	std::pair<SupplicantStatus, std::array<uint8_t, 32>> getPskInternal();
+	std::pair<SupplicantStatus, std::string> getSaePasswordInternal();
+	std::pair<SupplicantStatus, std::string> getSaePasswordIdInternal();
 	std::pair<SupplicantStatus, std::vector<uint8_t>> getWepKeyInternal(
 	    uint32_t key_idx);
 	std::pair<SupplicantStatus, uint32_t> getWepTxKeyIdxInternal();
@@ -299,6 +330,13 @@ private:
 	SupplicantStatus sendNetworkEapIdentityResponseInternal_1_1(
 	    const std::vector<uint8_t>& identity,
 	    const std::vector<uint8_t>& imsi_identity);
+	SupplicantStatus enableTlsSuiteBEapPhase1ParamInternal(bool enable);
+	SupplicantStatus enableSuiteBEapOpenSslCiphersInternal();
+	SupplicantStatus setSaePasswordInternal(
+	    const std::string& sae_password);
+	SupplicantStatus setSaePasswordIdInternal(
+	    const std::string& sae_password_id);
+	std::pair<SupplicantStatus, uint32_t> getKeyMgmtCapabilitiesInternal();
 
 	struct wpa_ssid* retrieveNetworkPtr();
 	struct wpa_supplicant* retrieveIfacePtr();
@@ -335,9 +373,9 @@ private:
 };
 
 }  // namespace implementation
-}  // namespace V1_1
-}  // namespace wifi
+}  // namespace V1_2
 }  // namespace supplicant
+}  // namespace wifi
 }  // namespace hardware
 }  // namespace android
 

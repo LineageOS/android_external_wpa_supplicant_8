@@ -19,7 +19,8 @@
 #include <android/hardware/wifi/supplicant/1.1/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetwork.h>
 
-extern "C" {
+extern "C"
+{
 #include "utils/common.h"
 #include "utils/includes.h"
 #include "wpa_supplicant_i.h"
@@ -32,7 +33,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 using namespace android::hardware::wifi::supplicant::V1_0;
 
@@ -41,7 +42,7 @@ using namespace android::hardware::wifi::supplicant::V1_0;
  * object is used for control operations on a specific interface
  * controlled by wpa_supplicant.
  */
-class StaIface : public ISupplicantStaIface
+class StaIface : public V1_1::ISupplicantStaIface
 {
 public:
 	StaIface(struct wpa_global* wpa_global, const char ifname[]);
@@ -71,10 +72,10 @@ public:
 	    SupplicantNetworkId id, getNetwork_cb _hidl_cb) override;
 	Return<void> listNetworks(listNetworks_cb _hidl_cb) override;
 	Return<void> registerCallback(
-	    const sp<android::hardware::wifi::supplicant::V1_0::ISupplicantStaIfaceCallback>
-	    & callback, registerCallback_cb _hidl_cb) override;
+	    const sp<V1_0::ISupplicantStaIfaceCallback>& callback,
+	    registerCallback_cb _hidl_cb) override;
 	Return<void> registerCallback_1_1(
-	    const sp<ISupplicantStaIfaceCallback>& callback,
+	    const sp<V1_1::ISupplicantStaIfaceCallback>& callback,
 	    registerCallback_cb _hidl_cb) override;
 	Return<void> reassociate(reassociate_cb _hidl_cb) override;
 	Return<void> reconnect(reconnect_cb _hidl_cb) override;
@@ -171,10 +172,9 @@ private:
 	std::pair<SupplicantStatus, std::vector<SupplicantNetworkId>>
 	listNetworksInternal();
 	SupplicantStatus registerCallbackInternal(
-	    const sp<android::hardware::wifi::supplicant::V1_0::ISupplicantStaIfaceCallback>
-	    & callback);
+	    const sp<V1_0::ISupplicantStaIfaceCallback>& callback);
 	SupplicantStatus registerCallbackInternal_1_1(
-	    const sp<ISupplicantStaIfaceCallback>& callback);
+	    const sp<V1_1::ISupplicantStaIfaceCallback>& callback);
 	SupplicantStatus reassociateInternal();
 	SupplicantStatus reconnectInternal();
 	SupplicantStatus disconnectInternal();
@@ -246,9 +246,9 @@ private:
 };
 
 }  // namespace implementation
-}  // namespace V1_1
-}  // namespace wifi
+}  // namespace V1_2
 }  // namespace supplicant
+}  // namespace wifi
 }  // namespace hardware
 }  // namespace android
 

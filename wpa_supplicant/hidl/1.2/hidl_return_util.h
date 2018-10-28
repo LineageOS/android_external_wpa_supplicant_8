@@ -14,7 +14,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 namespace hidl_return_util {
 
@@ -91,9 +91,9 @@ Return<void> validateAndCall(
 	return Void();
 }
 
-}  // namespace hidl_util
+}  // namespace hidl_return_util
 }  // namespace implementation
-}  // namespace V1_1
+}  // namespace V1_2
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

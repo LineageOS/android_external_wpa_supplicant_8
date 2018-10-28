@@ -11,15 +11,16 @@
 #define HIDL_I_H
 
 #ifdef _cplusplus
-extern "C" {
+extern "C"
+{
 #endif  // _cplusplus
 
-struct wpas_hidl_priv
-{
-	int hidl_fd;
-	struct wpa_global *global;
-	void *hidl_manager;
-};
+	struct wpas_hidl_priv
+	{
+		int hidl_fd;
+		struct wpa_global *global;
+		void *hidl_manager;
+	};
 
 #ifdef _cplusplus
 }

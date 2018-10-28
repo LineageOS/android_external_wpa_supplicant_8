@@ -14,7 +14,8 @@
 #include "misc_utils.h"
 #include "p2p_iface.h"
 
-extern "C" {
+extern "C"
+{
 #include "ap.h"
 #include "wps_supplicant.h"
 #include "wifi_display.h"
@@ -48,14 +49,13 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 
 P2pIface::P2pIface(struct wpa_global* wpa_global, const char ifname[])
     : wpa_global_(wpa_global), ifname_(ifname), is_valid_(true)
-{
-}
+{}
 
 void P2pIface::invalidate() { is_valid_ = false; }
 bool P2pIface::isValid()
@@ -699,11 +699,12 @@ std::pair<SupplicantStatus, std::string> P2pIface::connectInternal(
 	}
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
-	const char* pin = pre_selected_pin.length() > 0 ? pre_selected_pin.data() : nullptr;
+	const char* pin =
+	    pre_selected_pin.length() > 0 ? pre_selected_pin.data() : nullptr;
 	int new_pin = wpas_p2p_connect(
-	    wpa_s, peer_address.data(), pin, wps_method,
-	    persistent, false, join_existing_group, false, go_intent_signed, 0, 0, -1,
-	    false, ht40, vht, VHT_CHANWIDTH_USE_HT, nullptr, 0);
+	    wpa_s, peer_address.data(), pin, wps_method, persistent, false,
+	    join_existing_group, false, go_intent_signed, 0, 0, -1, false, ht40,
+	    vht, VHT_CHANWIDTH_USE_HT, nullptr, 0);
 	if (new_pin < 0) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
@@ -868,8 +869,8 @@ SupplicantStatus P2pIface::setDisallowedFrequenciesInternal(
 	DestT* freq_ranges = nullptr;
 	// Empty ranges is used to enable all frequencies.
 	if (ranges.size() != 0) {
-		freq_ranges =
-		    static_cast<DestT*>(os_malloc(sizeof(DestT) * ranges.size()));
+		freq_ranges = static_cast<DestT*>(
+		    os_malloc(sizeof(DestT) * ranges.size()));
 		if (!freq_ranges) {
 			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 		}
@@ -1064,7 +1065,7 @@ SupplicantStatus P2pIface::startWpsPinKeypadInternal(
 #ifdef CONFIG_AP
 	if (wpa_group_s->ap_iface) {
 		if (wpa_supplicant_ap_wps_pin(
-				wpa_group_s, nullptr, pin.c_str(), nullptr, 0, 0) < 0) {
+			wpa_group_s, nullptr, pin.c_str(), nullptr, 0, 0) < 0) {
 			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 		}
 		return {SupplicantStatusCode::SUCCESS, ""};
@@ -1277,8 +1278,8 @@ wpa_supplicant* P2pIface::retrieveGroupIfacePtr(const std::string& group_ifname)
 }
 
 }  // namespace implementation
-}  // namespace V1_1
-}  // namespace wifi
+}  // namespace V1_2
 }  // namespace supplicant
+}  // namespace wifi
 }  // namespace hardware
 }  // namespace android

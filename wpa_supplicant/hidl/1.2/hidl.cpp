@@ -12,7 +12,8 @@
 #include <hidl/HidlTransportSupport.h>
 #include "hidl_manager.h"
 
-extern "C" {
+extern "C"
+{
 #include "hidl.h"
 #include "hidl_i.h"
 #include "utils/common.h"
@@ -21,9 +22,9 @@ extern "C" {
 }
 
 using android::hardware::configureRpcThreadpool;
-using android::hardware::setupTransportPolling;
 using android::hardware::handleTransportPoll;
-using android::hardware::wifi::supplicant::V1_1::implementation::HidlManager;
+using android::hardware::setupTransportPolling;
+using android::hardware::wifi::supplicant::V1_2::implementation::HidlManager;
 
 void wpas_hidl_sock_handler(
     int sock, void * /* eloop_ctx */, void * /* sock_ctx */)
@@ -206,8 +207,9 @@ void wpas_hidl_notify_hs20_icon_query_done(
 		return;
 
 	wpa_printf(
-	    MSG_DEBUG, "Notifying HS20 icon query done to hidl control: " MACSTR
-		       "file_name: %s",
+	    MSG_DEBUG,
+	    "Notifying HS20 icon query done to hidl control: " MACSTR
+	    "file_name: %s",
 	    MAC2STR(bssid), file_name);
 
 	HidlManager *hidl_manager = HidlManager::getInstance();
@@ -533,13 +535,14 @@ void wpas_hidl_notify_p2p_invitation_result(
 		return;
 	if (bssid) {
 		wpa_printf(
-			MSG_DEBUG,
-			"Notifying P2P invitation result to hidl control: " MACSTR,
-			MAC2STR(bssid));
+		    MSG_DEBUG,
+		    "Notifying P2P invitation result to hidl control: " MACSTR,
+		    MAC2STR(bssid));
 	} else {
 		wpa_printf(
-			MSG_DEBUG,
-			"Notifying P2P invitation result to hidl control: NULL bssid");
+		    MSG_DEBUG,
+		    "Notifying P2P invitation result to hidl control: NULL "
+		    "bssid");
 	}
 
 	HidlManager *hidl_manager = HidlManager::getInstance();
@@ -626,15 +629,12 @@ void wpas_hidl_notify_ap_sta_deauthorized(
 	hidl_manager->notifyApStaDeauthorized(wpa_s, sta, p2p_dev_addr);
 }
 
-void wpas_hidl_notify_eap_error(
-    struct wpa_supplicant *wpa_s, int error_code)
+void wpas_hidl_notify_eap_error(struct wpa_supplicant *wpa_s, int error_code)
 {
 	if (!wpa_s)
 		return;
 
-	wpa_printf(
-	    MSG_DEBUG,
-            "Notifying EAP Error: %d ", error_code);
+	wpa_printf(MSG_DEBUG, "Notifying EAP Error: %d ", error_code);
 
 	HidlManager *hidl_manager = HidlManager::getInstance();
 	if (!hidl_manager)
@@ -642,4 +642,3 @@ void wpas_hidl_notify_eap_error(
 
 	hidl_manager->notifyEapError(wpa_s, error_code);
 }
-

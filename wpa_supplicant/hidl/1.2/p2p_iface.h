@@ -19,7 +19,8 @@
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pNetwork.h>
 
-extern "C" {
+extern "C"
+{
 #include "utils/common.h"
 #include "utils/includes.h"
 #include "p2p/p2p.h"
@@ -33,9 +34,10 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 using namespace android::hardware::wifi::supplicant::V1_0;
+using namespace android::hardware::wifi::supplicant::V1_1;
 
 /**
  * Implementation of P2pIface hidl object. Each unique hidl
@@ -305,9 +307,9 @@ private:
 };
 
 }  // namespace implementation
-}  // namespace V1_1
-}  // namespace wifi
+}  // namespace V1_2
 }  // namespace supplicant
+}  // namespace wifi
 }  // namespace hardware
 }  // namespace android
 

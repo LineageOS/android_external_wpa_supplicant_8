@@ -11,7 +11,8 @@
 #include "hidl_return_util.h"
 #include "p2p_network.h"
 
-extern "C" {
+extern "C"
+{
 #include "config_ssid.h"
 }
 
@@ -19,7 +20,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 
@@ -29,8 +30,7 @@ P2pNetwork::P2pNetwork(
       ifname_(ifname),
       network_id_(network_id),
       is_valid_(true)
-{
-}
+{}
 
 void P2pNetwork::invalidate() { is_valid_ = false; }
 bool P2pNetwork::isValid()
@@ -137,9 +137,8 @@ SupplicantStatus P2pNetwork::registerCallbackInternal(
     const sp<ISupplicantP2pNetworkCallback> &callback)
 {
 	HidlManager *hidl_manager = HidlManager::getInstance();
-	if (!hidl_manager ||
-	    hidl_manager->addP2pNetworkCallbackHidlObject(
-		ifname_, network_id_, callback)) {
+	if (!hidl_manager || hidl_manager->addP2pNetworkCallbackHidlObject(
+				 ifname_, network_id_, callback)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -250,8 +249,8 @@ struct wpa_supplicant *P2pNetwork::retrieveIfacePtr()
 	    (struct wpa_global *)wpa_global_, ifname_.c_str());
 }
 }  // namespace implementation
-}  // namespace V1_1
-}  // namespace wifi
+}  // namespace V1_2
 }  // namespace supplicant
+}  // namespace wifi
 }  // namespace hardware
 }  // namespace android

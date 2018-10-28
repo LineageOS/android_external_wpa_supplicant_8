@@ -16,6 +16,8 @@
 #include <sys/stat.h>
 
 namespace {
+using namespace android::hardware::wifi::supplicant::V1_2;
+
 // Pre-populated interface params for interfaces controlled by wpa_supplicant.
 // Note: This may differ for other OEM's. So, modify this accordingly.
 constexpr char kIfaceDriverName[] = "nl80211";
@@ -32,10 +34,8 @@ constexpr char kSystemTemplateConfPath[] =
     "/system/etc/wifi/wpa_supplicant.conf";
 constexpr char kVendorTemplateConfPath[] =
     "/vendor/etc/wifi/wpa_supplicant.conf";
-constexpr char kOldStaIfaceConfPath[] =
-    "/data/misc/wifi/wpa_supplicant.conf";
-constexpr char kOldP2pIfaceConfPath[] =
-    "/data/misc/wifi/p2p_supplicant.conf";
+constexpr char kOldStaIfaceConfPath[] = "/data/misc/wifi/wpa_supplicant.conf";
+constexpr char kOldP2pIfaceConfPath[] = "/data/misc/wifi/p2p_supplicant.conf";
 constexpr mode_t kConfigFileMode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
 
 int copyFile(
@@ -157,7 +157,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 
@@ -347,8 +347,9 @@ Supplicant::getInterfaceInternal(const IfaceInfo& iface_info)
 			return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""},
 				iface};
 		}
-		// Set this flag true here, since there is no HIDL initialize method for the p2p
-		// config, and the supplicant interface is not ready when the p2p iface is created.
+		// Set this flag true here, since there is no HIDL initialize
+		// method for the p2p config, and the supplicant interface is
+		// not ready when the p2p iface is created.
 		wpa_s->conf->persistent_reconnect = true;
 		return {{SupplicantStatusCode::SUCCESS, ""}, iface};
 	} else {
@@ -416,8 +417,8 @@ SupplicantStatus Supplicant::setConcurrencyPriorityInternal(IfaceType type)
 	return SupplicantStatus{SupplicantStatusCode::SUCCESS, ""};
 }
 }  // namespace implementation
-}  // namespace V1_1
-}  // namespace wifi
+}  // namespace V1_2
 }  // namespace supplicant
+}  // namespace wifi
 }  // namespace hardware
 }  // namespace android

@@ -14,6 +14,9 @@
 #include "iface_config_utils.h"
 
 namespace {
+using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
+using android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
+
 constexpr uint32_t kMaxWpsDeviceNameSize = WPS_DEV_NAME_MAX_LEN;
 constexpr uint32_t kMaxWpsManufacturerSize = WPS_MANUFACTURER_MAX_LEN;
 constexpr uint32_t kMaxWpsModelNameSize = WPS_MODEL_NAME_MAX_LEN;
@@ -78,7 +81,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 namespace iface_config_utils {
 SupplicantStatus setWpsDeviceName(
@@ -173,8 +176,8 @@ SupplicantStatus setExternalSim(
 }
 }  // namespace iface_config_utils
 }  // namespace implementation
-}  // namespace V1_1
-}  // namespace wifi
+}  // namespace V1_2
 }  // namespace supplicant
+}  // namespace wifi
 }  // namespace hardware
 }  // namespace android

@@ -14,7 +14,8 @@
 
 #include <android-base/macros.h>
 
-extern "C" {
+extern "C"
+{
 #include "utils/common.h"
 #include "utils/includes.h"
 #include "wpa_supplicant_i.h"
@@ -29,7 +30,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 namespace iface_config_utils {
 SupplicantStatus setWpsDeviceName(
@@ -50,9 +51,9 @@ SupplicantStatus setExternalSim(
     struct wpa_supplicant* wpa_s, bool useExternalSim);
 }  // namespace iface_config_utils
 }  // namespace implementation
-}  // namespace V1_1
-}  // namespace wifi
+}  // namespace V1_2
 }  // namespace supplicant
+}  // namespace wifi
 }  // namespace hardware
 }  // namespace android
 
