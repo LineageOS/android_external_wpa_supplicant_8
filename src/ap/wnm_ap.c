@@ -200,6 +200,13 @@ static void ieee802_11_rx_wnmsleep_req(struct hostapd_data *hapd,
 	u8 *tfsreq_ie_end = NULL;
 	u16 tfsreq_ie_len = 0;
 
+	if (len < 1) {
+		wpa_printf(MSG_DEBUG,
+			   "WNM: Ignore too short WNM-Sleep Mode Request from "
+			   MACSTR, MAC2STR(addr));
+		return;
+	}
+
 	dialog_token = *pos++;
 	while (pos + 1 < frm + len) {
 		u8 ie_len = pos[1];
