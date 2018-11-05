@@ -57,6 +57,13 @@ constexpr uint32_t kAllowedPairwisewCipherMask =
      static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::CCMP) |
      static_cast<uint32_t>(
 	 ISupplicantStaNetwork::PairwiseCipherMask::GCMP_256));
+constexpr uint32_t kAllowedGroupMgmtCipherMask =
+	(static_cast<uint32_t>(
+			ISupplicantStaNetwork::GroupMgmtCipherMask::BIP_GMAC_128) |
+	 static_cast<uint32_t>(
+			 ISupplicantStaNetwork::GroupMgmtCipherMask::BIP_GMAC_256) |
+	 static_cast<uint32_t>(
+			 ISupplicantStaNetwork::GroupMgmtCipherMask::BIP_CMAC_256));
 
 constexpr uint32_t kEapMethodMax =
     static_cast<uint32_t>(ISupplicantStaNetwork::EapMethod::WFA_UNAUTH_TLS) + 1;
@@ -701,6 +708,22 @@ Return<void> StaNetwork::setGroupCipher_1_2(
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 	    &StaNetwork::setGroupCipherInternal, _hidl_cb, group_cipher_mask);
+}
+
+Return<void> StaNetwork::setGroupMgmtCipher(
+    uint32_t group_mgmt_cipher_mask, setGroupMgmtCipher_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::setGroupMgmtCipherInternal,
+		_hidl_cb, group_mgmt_cipher_mask);
+}
+
+Return<void> StaNetwork::getGroupMgmtCipher(getGroupMgmtCipher_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::getGroupMgmtCipherInternal, _hidl_cb);
 }
 
 Return<void> StaNetwork::setPairwiseCipher_1_2(
@@ -1955,6 +1978,27 @@ StaNetwork::getKeyMgmtCapabilitiesInternal()
 #endif /* CONFIG_SAE */
 
 	return {{SupplicantStatusCode::SUCCESS, ""}, mask};
+}
+
+SupplicantStatus StaNetwork::setGroupMgmtCipherInternal(uint32_t
+		group_mgmt_cipher_mask)
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	if (group_mgmt_cipher_mask & ~kAllowedGroupMgmtCipherMask) {
+		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
+	}
+	wpa_ssid->group_mgmt_cipher = group_mgmt_cipher_mask;
+	wpa_printf(MSG_MSGDUMP, "group_mgmt_cipher: 0x%x",
+			wpa_ssid->group_mgmt_cipher);
+	resetInternalStateAfterParamsUpdate();
+	return {SupplicantStatusCode::SUCCESS, ""};
+}
+
+std::pair<SupplicantStatus, uint32_t> StaNetwork::getGroupMgmtCipherInternal()
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	return {{SupplicantStatusCode::SUCCESS, ""},
+		wpa_ssid->group_mgmt_cipher & kAllowedGroupMgmtCipherMask};
 }
 
 /**

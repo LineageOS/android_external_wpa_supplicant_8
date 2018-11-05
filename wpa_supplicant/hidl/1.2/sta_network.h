@@ -210,6 +210,11 @@ public:
 	    setGroupCipher_1_2_cb _hidl_cb) override;
 	Return<void> getGroupCipher_1_2(
 	    getGroupCipher_1_2_cb _hidl_cb) override;
+	Return<void> setGroupMgmtCipher(
+	    uint32_t group_mgmt_cipher_mask,
+	    setGroupMgmtCipher_cb _hidl_cb) override;
+	Return<void> getGroupMgmtCipher(
+	    getGroupMgmtCipher_cb _hidl_cb) override;
 	Return<void> enableTlsSuiteBEapPhase1Param(
 	    bool enable, enableTlsSuiteBEapPhase1Param_cb _hidl_cb) override;
 	Return<void> enableSuiteBEapOpenSslCiphers(
@@ -337,6 +342,8 @@ private:
 	SupplicantStatus setSaePasswordIdInternal(
 	    const std::string& sae_password_id);
 	std::pair<SupplicantStatus, uint32_t> getKeyMgmtCapabilitiesInternal();
+	SupplicantStatus setGroupMgmtCipherInternal(uint32_t group_mgmt_cipher_mask);
+	std::pair<SupplicantStatus, uint32_t> getGroupMgmtCipherInternal();
 
 	struct wpa_ssid* retrieveNetworkPtr();
 	struct wpa_supplicant* retrieveIfacePtr();
