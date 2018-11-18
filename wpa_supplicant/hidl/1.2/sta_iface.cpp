@@ -25,7 +25,7 @@ extern "C"
 namespace {
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
-using android::hardware::wifi::supplicant::V1_1::ISupplicantStaIface;
+using android::hardware::wifi::supplicant::V1_2::ISupplicantStaIface;
 using android::hardware::wifi::supplicant::V1_2::implementation::HidlManager;
 
 constexpr uint32_t kMaxAnqpElems = 100;
@@ -509,6 +509,14 @@ Return<void> StaIface::enableAutoReconnect(
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 	    &StaIface::enableAutoReconnectInternal, _hidl_cb, enable);
+}
+
+Return<void> StaIface::getKeyMgmtCapabilities(
+    getKeyMgmtCapabilities_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaIface::getKeyMgmtCapabilitiesInternal, _hidl_cb);
 }
 
 std::pair<SupplicantStatus, std::string> StaIface::getNameInternal()
@@ -1014,6 +1022,53 @@ SupplicantStatus StaIface::enableAutoReconnectInternal(bool enable)
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	wpa_s->auto_reconnect_disabled = enable ? 0 : 1;
 	return {SupplicantStatusCode::SUCCESS, ""};
+}
+
+std::pair<SupplicantStatus, uint32_t>
+StaIface::getKeyMgmtCapabilitiesInternal()
+{
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct wpa_driver_capa capa;
+	uint32_t mask = 0;
+
+	/* Get capabilities from driver and populate the key management mask */
+	if (wpa_drv_get_capa(wpa_s, &capa) < 0) {
+		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, mask};
+	}
+
+	/* Logic from ctrl_iface.c, NONE and IEEE8021X have no capability
+	 * flags and always enabled.
+	 */
+	mask |=
+	    (ISupplicantStaNetwork::KeyMgmtMask::NONE |
+	     ISupplicantStaNetwork::KeyMgmtMask::IEEE8021X);
+
+	if (capa.key_mgmt &
+	    (WPA_DRIVER_CAPA_KEY_MGMT_WPA | WPA_DRIVER_CAPA_KEY_MGMT_WPA2)) {
+		mask |= ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP;
+	}
+
+	if (capa.key_mgmt & (WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK |
+			     WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK)) {
+		mask |= ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK;
+	}
+#ifdef CONFIG_SUITEB192
+	if (capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SUITE_B_192) {
+		mask |= ISupplicantStaNetwork::KeyMgmtMask::SUITE_B_192;
+	}
+#endif /* CONFIG_SUITEB192 */
+#ifdef CONFIG_OWE
+	if (capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_OWE) {
+		mask |= ISupplicantStaNetwork::KeyMgmtMask::OWE;
+	}
+#endif /* CONFIG_OWE */
+#ifdef CONFIG_SAE
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE) {
+		mask |= ISupplicantStaNetwork::KeyMgmtMask::SAE;
+	}
+#endif /* CONFIG_SAE */
+
+	return {{SupplicantStatusCode::SUCCESS, ""}, mask};
 }
 
 /**

@@ -225,8 +225,6 @@ public:
 	Return<void> setSaePasswordId(
 	    const hidl_string& sae_password_id,
 	    setSaePasswordId_cb _hidl_cb) override;
-	Return<void> getKeyMgmtCapabilities(
-	    getKeyMgmtCapabilities_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -341,7 +339,6 @@ private:
 	    const std::string& sae_password);
 	SupplicantStatus setSaePasswordIdInternal(
 	    const std::string& sae_password_id);
-	std::pair<SupplicantStatus, uint32_t> getKeyMgmtCapabilitiesInternal();
 	SupplicantStatus setGroupMgmtCipherInternal(uint32_t group_mgmt_cipher_mask);
 	std::pair<SupplicantStatus, uint32_t> getGroupMgmtCipherInternal();
 

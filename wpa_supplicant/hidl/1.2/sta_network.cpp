@@ -789,14 +789,6 @@ Return<void> StaNetwork::setSaePasswordId(
 	    &StaNetwork::setSaePasswordIdInternal, _hidl_cb, sae_password_id);
 }
 
-Return<void> StaNetwork::getKeyMgmtCapabilities(
-    getKeyMgmtCapabilities_cb _hidl_cb)
-{
-	return validateAndCall(
-	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
-	    &StaNetwork::getKeyMgmtCapabilitiesInternal, _hidl_cb);
-}
-
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getIdInternal()
 {
 	return {{SupplicantStatusCode::SUCCESS, ""}, network_id_};
@@ -1926,58 +1918,6 @@ SupplicantStatus StaNetwork::setSaePasswordIdInternal(
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
-}
-
-std::pair<SupplicantStatus, uint32_t>
-StaNetwork::getKeyMgmtCapabilitiesInternal()
-{
-	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
-	struct wpa_driver_capa capa;
-	uint32_t mask = 0;
-
-	if (!wpa_s) {
-		return {{SupplicantStatusCode::FAILURE_IFACE_UNKNOWN, ""},
-			mask};
-	}
-
-	/* Get capabilities from driver and populate the key management mask */
-	if (wpa_drv_get_capa(wpa_s, &capa) < 0) {
-		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, mask};
-	}
-
-	/* Logic from ctrl_iface.c, NONE and IEEE8021X have no capability
-	 * flags and always enabled.
-	 */
-	mask |=
-	    (ISupplicantStaNetwork::KeyMgmtMask::NONE |
-	     ISupplicantStaNetwork::KeyMgmtMask::IEEE8021X);
-
-	if (capa.key_mgmt &
-	    (WPA_DRIVER_CAPA_KEY_MGMT_WPA | WPA_DRIVER_CAPA_KEY_MGMT_WPA2)) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP;
-	}
-
-	if (capa.key_mgmt & (WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK |
-			     WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK)) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK;
-	}
-#ifdef CONFIG_SUITEB192
-	if (capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SUITE_B_192) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::SUITE_B_192;
-	}
-#endif /* CONFIG_SUITEB192 */
-#ifdef CONFIG_OWE
-	if (capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_OWE) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::OWE;
-	}
-#endif /* CONFIG_OWE */
-#ifdef CONFIG_SAE
-	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::SAE;
-	}
-#endif /* CONFIG_SAE */
-
-	return {{SupplicantStatusCode::SUCCESS, ""}, mask};
 }
 
 SupplicantStatus StaNetwork::setGroupMgmtCipherInternal(uint32_t

@@ -15,9 +15,9 @@
 
 #include <android-base/macros.h>
 
-#include <android/hardware/wifi/supplicant/1.1/ISupplicantStaIface.h>
+#include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIface.h>
 #include <android/hardware/wifi/supplicant/1.1/ISupplicantStaIfaceCallback.h>
-#include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetwork.h>
+#include <android/hardware/wifi/supplicant/1.2/ISupplicantStaNetwork.h>
 
 extern "C"
 {
@@ -35,14 +35,14 @@ namespace wifi {
 namespace supplicant {
 namespace V1_2 {
 namespace implementation {
-using namespace android::hardware::wifi::supplicant::V1_0;
+using namespace android::hardware::wifi::supplicant::V1_2;
 
 /**
  * Implementation of StaIface hidl object. Each unique hidl
  * object is used for control operations on a specific interface
  * controlled by wpa_supplicant.
  */
-class StaIface : public V1_1::ISupplicantStaIface
+class StaIface : public V1_2::ISupplicantStaIface
 {
 public:
 	StaIface(struct wpa_global* wpa_global, const char ifname[]);
@@ -159,6 +159,8 @@ public:
 	    uint32_t id, removeExtRadioWork_cb _hidl_cb) override;
 	Return<void> enableAutoReconnect(
 	    bool enable, enableAutoReconnect_cb _hidl_cb) override;
+	Return<void> getKeyMgmtCapabilities(
+	    getKeyMgmtCapabilities_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -232,6 +234,7 @@ private:
 	    uint32_t timeout_in_sec);
 	SupplicantStatus removeExtRadioWorkInternal(uint32_t id);
 	SupplicantStatus enableAutoReconnectInternal(bool enable);
+	std::pair<SupplicantStatus, uint32_t> getKeyMgmtCapabilitiesInternal();
 
 	struct wpa_supplicant* retrieveIfacePtr();
 
