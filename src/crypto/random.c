@@ -162,10 +162,17 @@ int random_get_bytes(void *buf, size_t len)
 	wpa_printf(MSG_MSGDUMP, "Get randomness: len=%u entropy=%u",
 		   (unsigned int) len, entropy);
 
+#ifdef CONFIG_USE_OPENSSL_RNG
+	/* Start with assumed strong randomness from OpenSSL */
+	ret = crypto_get_random(buf, len);
+	wpa_hexdump_key(MSG_EXCESSIVE, "random from crypto_get_random",
+			buf, len);
+#else /* CONFIG_USE_OPENSSL_RNG */
 	/* Start with assumed strong randomness from OS */
 	ret = os_get_random(buf, len);
 	wpa_hexdump_key(MSG_EXCESSIVE, "random from os_get_random",
 			buf, len);
+#endif /* CONFIG_USE_OPENSSL_RNG */
 
 	/* Mix in additional entropy extracted from the internal pool */
 	left = len;
