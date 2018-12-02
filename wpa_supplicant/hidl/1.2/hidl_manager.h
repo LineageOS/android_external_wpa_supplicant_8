@@ -40,6 +40,7 @@ namespace supplicant {
 namespace V1_2 {
 namespace implementation {
 using namespace android::hardware::wifi::supplicant::V1_2;
+using V1_0::ISupplicantP2pIface;
 using V1_0::ISupplicantStaIfaceCallback;
 using V1_1::ISupplicant;
 using V1_1::ISupplicantStaIface;

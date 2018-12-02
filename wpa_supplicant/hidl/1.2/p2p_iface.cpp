@@ -13,6 +13,7 @@
 #include "iface_config_utils.h"
 #include "misc_utils.h"
 #include "p2p_iface.h"
+#include "sta_network.h"
 
 extern "C"
 {
@@ -30,6 +31,7 @@ constexpr uint8_t kWfdDeviceInfoSubelemId = 0;
 constexpr char kWfdDeviceInfoSubelemLenHexStr[] = "0006";
 
 using android::hardware::wifi::supplicant::V1_0::ISupplicantP2pIface;
+using android::hardware::wifi::supplicant::V1_0::ISupplicantStaNetwork;
 uint8_t convertHidlMiracastModeToInternal(
     ISupplicantP2pIface::MiracastMode mode)
 {
@@ -42,6 +44,43 @@ uint8_t convertHidlMiracastModeToInternal(
 		return 2;
 	};
 	WPA_ASSERT(false);
+}
+
+/**
+ * Check if the provided ssid is valid or not.
+ *
+ * Returns 1 if valid, 0 otherwise.
+ */
+int isSsidValid(const std::vector<uint8_t>& ssid)
+{
+	if (ssid.size() == 0 ||
+	    ssid.size() >
+		static_cast<uint32_t>(ISupplicantStaNetwork::ParamSizeLimits::
+					  SSID_MAX_LEN_IN_BYTES)) {
+		return 0;
+	}
+	return 1;
+}
+
+/**
+ * Check if the provided psk passhrase is valid or not.
+ *
+ * Returns 1 if valid, 0 otherwise.
+ */
+int isPskPassphraseValid(const std::string &psk)
+{
+	if (psk.size() <
+		static_cast<uint32_t>(ISupplicantStaNetwork::ParamSizeLimits::
+					  PSK_PASSPHRASE_MIN_LEN_IN_BYTES) ||
+	    psk.size() >
+		static_cast<uint32_t>(ISupplicantStaNetwork::ParamSizeLimits::
+					  PSK_PASSPHRASE_MAX_LEN_IN_BYTES)) {
+		return 0;
+	}
+	if (has_ctrl_char((u8 *)psk.c_str(), psk.size())) {
+		return 0;
+	}
+	return 1;
 }
 }  // namespace
 
@@ -503,6 +542,17 @@ Return<void> P2pIface::saveConfig(saveConfig_cb _hidl_cb)
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 	    &P2pIface::saveConfigInternal, _hidl_cb);
+}
+
+Return<void> P2pIface::addGroup_1_2(
+    const hidl_vec<uint8_t>& ssid, const hidl_string& passphrase,
+    bool persistent, uint32_t freq, const hidl_array<uint8_t, 6>& peer_address,
+    bool join, addGroup_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &P2pIface::addGroup_1_2Internal, _hidl_cb,
+	    ssid, passphrase, persistent, freq, peer_address, join);
 }
 
 std::pair<SupplicantStatus, std::string> P2pIface::getNameInternal()
@@ -1257,6 +1307,77 @@ SupplicantStatus P2pIface::saveConfigInternal()
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
 
+SupplicantStatus P2pIface::addGroup_1_2Internal(
+    const std::vector<uint8_t>& ssid, const std::string& passphrase,
+    bool persistent, uint32_t freq, const std::array<uint8_t, 6>& peer_address,
+    bool joinExistingGroup)
+{
+	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	int vht = wpa_s->conf->p2p_go_vht;
+	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+
+	if (!isSsidValid(ssid)) {
+		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, "SSID is invalid."};
+	}
+
+	if (!isPskPassphraseValid(passphrase)) {
+		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, "passphrase is invalid."};
+	}
+
+	if (joinExistingGroup) {
+		struct wpa_bss *bss = findBssBySsid(
+		    wpa_s, peer_address.data(),
+		    ssid.data(), ssid.size());
+		if (bss == NULL) {
+			return {SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN,
+			    "No matched BSS found."};
+		}
+
+		// Construct a network for adding group.
+		// Group client follows the persistent attribute of Group Owner.
+		// If joined group is persistent, it adds a persistent network on GroupStarted.
+		struct wpa_ssid *wpa_network = addGroupClientNetwork(
+		    wpa_s, bss->bssid, ssid, passphrase);
+		if (wpa_network == NULL) {
+			return {SupplicantStatusCode::FAILURE_UNKNOWN,
+			    "Cannot construct P2P network."};
+		}
+
+		// this is temporary network only for establishing the connection.
+		wpa_network->temporary = 1;
+
+		if (wpas_p2p_group_add_persistent(
+			wpa_s, wpa_network, 0, 0, 0, 0, ht40, vht,
+			VHT_CHANWIDTH_USE_HT, NULL, 0, 1)) {
+			wpa_config_remove_network(wpa_s->conf, wpa_network->id);
+			return {SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN, ""};
+		}
+
+		// Always remove this temporary network at the end.
+		wpa_config_remove_network(wpa_s->conf, wpa_network->id);
+	} else {
+		if (wpa_s->global->p2p == NULL) {
+			return {SupplicantStatusCode::FAILURE_IFACE_DISABLED, ""};
+		}
+
+		struct p2p_data *p2p = wpa_s->global->p2p;
+		os_memcpy(p2p->ssid, ssid.data(), ssid.size());
+		p2p->ssid_len = ssid.size();
+		p2p->ssid_set = 1;
+
+		os_memset(p2p->passphrase, 0, sizeof(p2p->passphrase));
+		os_memcpy(p2p->passphrase, passphrase.c_str(), passphrase.length());
+		p2p->passphrase_set = 1;
+
+		if (wpas_p2p_group_add(
+			wpa_s, persistent, freq, 0, ht40, vht,
+			VHT_CHANWIDTH_USE_HT)) {
+			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+		}
+	}
+	return {SupplicantStatusCode::SUCCESS, ""};
+}
+
 /**
  * Retrieve the underlying |wpa_supplicant| struct
  * pointer for this iface.
@@ -1275,6 +1396,77 @@ wpa_supplicant* P2pIface::retrieveIfacePtr()
 wpa_supplicant* P2pIface::retrieveGroupIfacePtr(const std::string& group_ifname)
 {
 	return wpa_supplicant_get_iface(wpa_global_, group_ifname.c_str());
+}
+
+struct wpa_ssid* P2pIface::addGroupClientNetwork(
+    struct wpa_supplicant* wpa_s,
+    uint8_t *group_owner_bssid,
+    const std::vector<uint8_t>& ssid,
+    const std::string& passphrase)
+{
+	struct wpa_ssid* wpa_network = wpa_config_add_network(wpa_s->conf);
+	if (!wpa_network) {
+		return NULL;
+	}
+	// set general network defaults
+	wpa_config_set_network_defaults(wpa_network);
+
+	// set P2p network defaults
+	wpa_network->p2p_group = 1;
+	wpa_network->mode = wpa_ssid::wpas_mode::WPAS_MODE_INFRA;
+
+	wpa_network->auth_alg = WPA_AUTH_ALG_OPEN;
+	wpa_network->key_mgmt = WPA_KEY_MGMT_PSK;
+	wpa_network->proto = WPA_PROTO_RSN;
+	wpa_network->pairwise_cipher = WPA_CIPHER_CCMP;
+	wpa_network->group_cipher = WPA_CIPHER_CCMP;
+	wpa_network->disabled = 2;
+
+	// set necessary fields
+	os_memcpy(wpa_network->bssid, group_owner_bssid, ETH_ALEN);
+	wpa_network->bssid_set = 1;
+
+	wpa_network->ssid = (uint8_t *)os_malloc(ssid.size());
+	if (wpa_network->ssid == NULL) {
+		wpa_config_remove_network(wpa_s->conf, wpa_network->id);
+		return  NULL;
+	}
+	memcpy(wpa_network->ssid, ssid.data(), ssid.size());
+	wpa_network->ssid_len = ssid.size();
+
+	wpa_network->psk_set = 0;
+	wpa_network->passphrase = dup_binstr(passphrase.c_str(), passphrase.length());
+	if (wpa_network->passphrase == NULL) {
+		wpa_config_remove_network(wpa_s->conf, wpa_network->id);
+		return  NULL;
+	}
+	wpa_config_update_psk(wpa_network);
+
+	return wpa_network;
+
+}
+
+/**
+ * findBssBySsid - Fetch a BSS table entry based on SSID and optional BSSID.
+ * @wpa_s: Pointer to wpa_supplicant data
+ * @bssid: BSSID, zero addr matches any bssid
+ * @ssid: SSID
+ * @ssid_len: Length of @ssid
+ * Returns: Pointer to the BSS entry or %NULL if not found
+ */
+struct wpa_bss* P2pIface::findBssBySsid(
+    struct wpa_supplicant *wpa_s, const u8 *bssid,
+    const u8 *ssid, size_t ssid_len)
+{
+	struct wpa_bss *bss;
+	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
+		if ((is_zero_ether_addr(bssid) ||
+		    os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0) &&
+		    bss->ssid_len == ssid_len &&
+		    os_memcmp(bss->ssid, ssid, ssid_len) == 0)
+			return bss;
+	}
+	return NULL;
 }
 
 }  // namespace implementation
