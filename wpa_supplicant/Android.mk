@@ -1812,7 +1812,8 @@ LOCAL_SHARED_LIBRARIES := \
     libhidlbase \
     libhidltransport \
     libutils \
-    liblog
+    liblog \
+    libssl
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
 include $(BUILD_STATIC_LIBRARY)

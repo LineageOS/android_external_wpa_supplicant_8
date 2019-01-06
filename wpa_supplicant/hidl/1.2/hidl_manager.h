@@ -16,7 +16,7 @@
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pNetworkCallback.h>
-#include <android/hardware/wifi/supplicant/1.1/ISupplicantStaIfaceCallback.h>
+#include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetworkCallback.h>
 
 #include "p2p_iface.h"
@@ -128,6 +128,11 @@ public:
 	    struct wpa_supplicant *wpa_s, const u8 *sta,
 	    const u8 *p2p_dev_addr);
 	void notifyEapError(struct wpa_supplicant *wpa_s, int error_code);
+	void notifyDppConfigReceived(const char *ifname,
+			struct wpa_ssid *config);
+	void notifyDppSuccess(const char *ifname, DppSuccessCode code);
+	void notifyDppFailure(const char *ifname, DppFailureCode code);
+	void notifyDppProgress(const char *ifname, DppProgressCode code);
 
 	// Methods called from hidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
@@ -197,6 +202,10 @@ private:
 	    const std::string &ifname,
 	    const std::function<android::hardware::Return<void>(
 		android::sp<V1_1::ISupplicantStaIfaceCallback>)> &method);
+	void callWithEachStaIfaceCallback_1_2(
+	    const std::string &ifname,
+	    const std::function<android::hardware::Return<void>(
+	    android::sp<V1_2::ISupplicantStaIfaceCallback>)> &method);
 	void callWithEachP2pNetworkCallback(
 	    const std::string &ifname, int network_id,
 	    const std::function<android::hardware::Return<void>(

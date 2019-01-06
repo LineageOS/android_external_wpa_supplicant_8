@@ -16,7 +16,7 @@
 #include <android-base/macros.h>
 
 #include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIface.h>
-#include <android/hardware/wifi/supplicant/1.1/ISupplicantStaIfaceCallback.h>
+#include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.2/ISupplicantStaNetwork.h>
 
 extern "C"
@@ -76,6 +76,9 @@ public:
 	    registerCallback_cb _hidl_cb) override;
 	Return<void> registerCallback_1_1(
 	    const sp<V1_1::ISupplicantStaIfaceCallback>& callback,
+	    registerCallback_cb _hidl_cb) override;
+	Return<void> registerCallback_1_2(
+	    const sp<V1_2::ISupplicantStaIfaceCallback>& callback,
 	    registerCallback_cb _hidl_cb) override;
 	Return<void> reassociate(reassociate_cb _hidl_cb) override;
 	Return<void> reconnect(reconnect_cb _hidl_cb) override;
@@ -161,6 +164,19 @@ public:
 	    bool enable, enableAutoReconnect_cb _hidl_cb) override;
 	Return<void> getKeyMgmtCapabilities(
 	    getKeyMgmtCapabilities_cb _hidl_cb) override;
+	Return<void> addDppPeerUri(const hidl_string& uri,
+			addDppPeerUri_cb _hidl_cb) override;
+	Return<void> removeDppUri(uint32_t bootstrap_id,
+			removeDppUri_cb _hidl_cb) override;
+	Return<void> startDppConfiguratorInitiator(uint32_t peer_bootstrap_id,
+			uint32_t own_bootstrap_id, const hidl_string& ssid,
+			const hidl_string& password, const hidl_string& psk,
+			DppNetRole net_role, DppAkm security_akm,
+			startDppConfiguratorInitiator_cb _hidl_cb) override;
+	Return<void> startDppEnrolleeInitiator(uint32_t peer_bootstrap_id,
+			uint32_t own_bootstrap_id,
+			startDppConfiguratorInitiator_cb _hidl_cb) override;
+	Return<void> stopDppInitiator(stopDppInitiator_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -235,6 +251,16 @@ private:
 	SupplicantStatus removeExtRadioWorkInternal(uint32_t id);
 	SupplicantStatus enableAutoReconnectInternal(bool enable);
 	std::pair<SupplicantStatus, uint32_t> getKeyMgmtCapabilitiesInternal();
+	std::pair<SupplicantStatus, uint32_t> addDppPeerUriInternal(const std::string& uri);
+	SupplicantStatus removeDppUriInternal(uint32_t bootstrap_id);
+	SupplicantStatus startDppConfiguratorInitiatorInternal(uint32_t peer_bootstrap_id,
+			uint32_t own_bootstrap_id,
+		    const std::string& ssid, const std::string& password,
+			const std::string& psk, DppNetRole net_role, DppAkm security_akm);
+	SupplicantStatus startDppEnrolleeInitiatorInternal(uint32_t peer_bootstrap_id,
+			uint32_t own_bootstrap_id);
+	SupplicantStatus stopDppInitiatorInternal();
+
 
 	struct wpa_supplicant* retrieveIfacePtr();
 

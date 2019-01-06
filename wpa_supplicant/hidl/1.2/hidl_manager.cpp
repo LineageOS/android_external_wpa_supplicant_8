@@ -318,6 +318,35 @@ void callWithEachIfaceCallback_1_1(
 	}
 }
 
+template <class CallbackTypeV1_0, class CallbackTypeV1_2>
+void callWithEachIfaceCallback_1_2(
+    const std::string &ifname,
+    const std::function<
+	android::hardware::Return<void>(android::sp<CallbackTypeV1_2>)> &method,
+    const std::map<
+	const std::string, std::vector<android::sp<CallbackTypeV1_0>>>
+	&callbacks_map)
+{
+	if (ifname.empty())
+		return;
+
+	auto iface_callback_map_iter = callbacks_map.find(ifname);
+	if (iface_callback_map_iter == callbacks_map.end())
+		return;
+	const auto &iface_callback_list = iface_callback_map_iter->second;
+	for (const auto &callback : iface_callback_list) {
+		android::sp<CallbackTypeV1_2> callback_1_2 =
+		    CallbackTypeV1_2::castFrom(callback);
+		if (callback_1_2 == nullptr)
+			continue;
+
+		if (!method(callback_1_2).isOk()) {
+			wpa_printf(
+			    MSG_ERROR, "Failed to invoke HIDL iface callback");
+		}
+	}
+}
+
 template <class CallbackType>
 void callWithEachNetworkCallback(
     const std::string &ifname, int network_id,
@@ -1455,6 +1484,88 @@ void HidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
 }
 
 /**
+ * Notify listener about a new DPP configuration success event
+ *
+ * @param ifname Interface name
+ * @param config Configuration object
+ */
+void HidlManager::notifyDppConfigReceived(const char *ifname,
+		struct wpa_ssid *config)
+{
+	DppAkm securityAkm;
+	char *password;
+	std::string hidl_ifname = ifname;
+
+	if (config->key_mgmt & WPA_KEY_MGMT_SAE) {
+		securityAkm = DppAkm::SAE;
+	} else if (config->key_mgmt & WPA_KEY_MGMT_PSK) {
+			securityAkm = DppAkm::PSK;
+	} else {
+		/* Unsupported AKM */
+		notifyDppFailure(ifname, DppFailureCode::CONFIGURATION);
+		return;
+	}
+
+	password = config->passphrase;
+	std::vector < uint8_t > hidl_ssid;
+	hidl_ssid.assign(config->ssid, config->ssid + config->ssid_len);
+
+	/* At this point, the network is already registered, notify about new
+	 * received configuration
+	 */
+	callWithEachStaIfaceCallback_1_2(hidl_ifname,
+			std::bind(
+					&V1_2::ISupplicantStaIfaceCallback::onDppSuccessConfigReceived,
+					std::placeholders::_1, hidl_ssid, password, config->psk,
+					securityAkm));
+}
+
+/**
+ * Notify listener about a DPP success event
+ *
+ * @param ifname Interface name
+ * @param code Status code
+ */
+void HidlManager::notifyDppSuccess(const char *ifname, DppSuccessCode code)
+{
+	std::string hidl_ifname = ifname;
+
+	callWithEachStaIfaceCallback_1_2(hidl_ifname,
+			std::bind(&V1_2::ISupplicantStaIfaceCallback::onDppSuccess,
+					std::placeholders::_1, code));
+}
+
+/**
+ * Notify listener about a DPP failure event
+ *
+ * @param ifname Interface name
+ * @param code Status code
+ */
+void HidlManager::notifyDppFailure(const char *ifname, DppFailureCode code)
+{
+	std::string hidl_ifname = ifname;
+
+	callWithEachStaIfaceCallback_1_2(hidl_ifname,
+			std::bind(&V1_2::ISupplicantStaIfaceCallback::onDppFailure,
+					std::placeholders::_1, code));
+}
+
+/**
+ * Notify listener about a DPP progress event
+ *
+ * @param ifname Interface name
+ * @param code Status code
+ */
+void HidlManager::notifyDppProgress(const char *ifname, DppProgressCode code)
+{
+	std::string hidl_ifname = ifname;
+
+	callWithEachStaIfaceCallback_1_2(hidl_ifname,
+			std::bind(&V1_2::ISupplicantStaIfaceCallback::onDppProgress,
+					std::placeholders::_1, code));
+}
+
+/**
  * Retrieve the |ISupplicantP2pIface| hidl object reference using the provided
  * ifname.
  *
@@ -1783,8 +1894,8 @@ void HidlManager::callWithEachP2pIfaceCallback(
 }
 
 /**
- * Helper fucntion to invoke the provided callback method on all the
- * registered V1.1 iface callback hidl objects for the specified
+ * Helper function to invoke the provided callback method on all the
+ * registered V1.1 interface callback hidl objects for the specified
  * |ifname|.
  *
  * @param ifname Name of the corresponding interface.
@@ -1800,8 +1911,25 @@ void HidlManager::callWithEachStaIfaceCallback_1_1(
 }
 
 /**
- * Helper fucntion to invoke the provided callback method on all the
- * registered iface callback hidl objects for the specified
+ * Helper function to invoke the provided callback method on all the
+ * registered V1.2 interface callback hidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required hidl method from
+ * |V1_2::ISupplicantIfaceCallback|.
+ */
+void HidlManager::callWithEachStaIfaceCallback_1_2(
+    const std::string &ifname,
+    const std::function<
+	Return<void>(android::sp<V1_2::ISupplicantStaIfaceCallback>)> &method)
+{
+	callWithEachIfaceCallback_1_2(ifname, method, sta_iface_callbacks_map_);
+}
+
+/**
+ * Helper function to invoke the provided callback method on all the
+ * registered interface callback hidl objects for the specified
  * |ifname|.
  *
  * @param ifname Name of the corresponding interface.

@@ -20,6 +20,8 @@ extern "C"
 #include "interworking.h"
 #include "hs20_supplicant.h"
 #include "wps_supplicant.h"
+#include "dpp_supplicant.h"
+#include "dpp.h"
 }
 
 namespace {
@@ -235,6 +237,16 @@ Return<void> StaIface::registerCallback_1_1(
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 	    &StaIface::registerCallbackInternal, _hidl_cb, callback_1_0);
+}
+
+Return<void> StaIface::registerCallback_1_2(
+    const sp<V1_2::ISupplicantStaIfaceCallback> &callback,
+    registerCallback_cb _hidl_cb)
+{
+	sp<V1_1::ISupplicantStaIfaceCallback> callback_1_1 = callback;
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &StaIface::registerCallbackInternal, _hidl_cb, callback_1_1);
 }
 
 Return<void> StaIface::reassociate(reassociate_cb _hidl_cb)
@@ -517,6 +529,50 @@ Return<void> StaIface::getKeyMgmtCapabilities(
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 	    &StaIface::getKeyMgmtCapabilitiesInternal, _hidl_cb);
+}
+
+Return<void> StaIface::addDppPeerUri(const hidl_string& uri,
+		addDppPeerUri_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaIface::addDppPeerUriInternal, _hidl_cb, uri);
+}
+
+Return<void> StaIface::removeDppUri(uint32_t bootstrap_id,
+		removeDppUri_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaIface::removeDppUriInternal, _hidl_cb, bootstrap_id);
+}
+
+Return<void> StaIface::startDppConfiguratorInitiator(uint32_t peer_bootstrap_id,
+		uint32_t own_bootstrap_id, const hidl_string& ssid,
+		const hidl_string& password, const hidl_string& psk,
+		DppNetRole net_role, DppAkm security_akm,
+		startDppConfiguratorInitiator_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaIface::startDppConfiguratorInitiatorInternal, _hidl_cb, peer_bootstrap_id,
+		own_bootstrap_id, ssid, password, psk, net_role, security_akm);
+}
+
+Return<void> StaIface::startDppEnrolleeInitiator(uint32_t peer_bootstrap_id,
+		uint32_t own_bootstrap_id, startDppConfiguratorInitiator_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaIface::startDppEnrolleeInitiatorInternal, _hidl_cb, peer_bootstrap_id,
+		own_bootstrap_id);
+}
+
+Return<void> StaIface::stopDppInitiator(stopDppInitiator_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaIface::stopDppInitiatorInternal, _hidl_cb);
 }
 
 std::pair<SupplicantStatus, std::string> StaIface::getNameInternal()
@@ -1067,8 +1123,175 @@ StaIface::getKeyMgmtCapabilitiesInternal()
 		mask |= ISupplicantStaNetwork::KeyMgmtMask::SAE;
 	}
 #endif /* CONFIG_SAE */
-
+#ifdef CONFIG_DPP
+	if (capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_DPP) {
+		mask |= ISupplicantStaNetwork::KeyMgmtMask::DPP;
+	}
+#endif
 	return {{SupplicantStatusCode::SUCCESS, ""}, mask};
+}
+
+std::pair<SupplicantStatus, uint32_t>
+StaIface::addDppPeerUriInternal(const std::string& uri)
+{
+#ifdef CONFIG_DPP
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	int32_t id;
+
+	id = wpas_dpp_qr_code(wpa_s, uri.c_str());
+
+	if (id > 0) {
+		return {{SupplicantStatusCode::SUCCESS, ""}, id};
+	}
+#endif
+	return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, -1};
+}
+
+SupplicantStatus StaIface::removeDppUriInternal(uint32_t bootstrap_id)
+{
+#ifdef CONFIG_DPP
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	std::string bootstrap_id_str;
+
+	if (bootstrap_id == 0) {
+		bootstrap_id_str = "*";
+	}
+	else {
+		bootstrap_id_str = std::to_string(bootstrap_id);
+	}
+
+	if (wpas_dpp_bootstrap_remove(wpa_s, bootstrap_id_str.c_str()) >= 0) {
+		return {SupplicantStatusCode::SUCCESS, ""};
+	}
+#endif
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+}
+
+SupplicantStatus StaIface::startDppConfiguratorInitiatorInternal(
+		uint32_t peer_bootstrap_id,	uint32_t own_bootstrap_id,
+		const std::string& ssid, const std::string& password,
+		const std::string& psk, DppNetRole net_role, DppAkm security_akm)
+{
+#ifdef CONFIG_DPP
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	std::string cmd = "";
+
+	if (net_role != DppNetRole::AP &&
+			net_role != DppNetRole::STA) {
+		wpa_printf(MSG_ERROR,
+			   "DPP: Error: Invalid network role specified: %d", net_role);
+		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+	}
+
+	cmd += " peer=" + std::to_string(peer_bootstrap_id);
+	cmd += (own_bootstrap_id > 0) ?
+			" own=" + std::to_string(own_bootstrap_id) : "";
+
+	/* SAE AKM requires SSID and password to be initialized */
+	if ((security_akm == DppAkm::SAE ||
+			security_akm == DppAkm::PSK_SAE) &&
+			(ssid.empty() || password.empty())) {
+		wpa_printf(MSG_ERROR, "DPP: Error: Password or SSID not specified");
+		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+	} else if (security_akm == DppAkm::PSK ||
+			security_akm == DppAkm::PSK_SAE) {
+		/* PSK AKM requires SSID and password/psk to be initialized */
+		if (ssid.empty()) {
+			wpa_printf(MSG_ERROR, "DPP: Error: SSID not specified");
+			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+		}
+		if (password.empty() && psk.empty()) {
+			wpa_printf(MSG_ERROR, "DPP: Error: Password or PSK not specified");
+			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+		}
+	} else {
+		wpa_printf(MSG_ERROR, "DPP: Error: invalid AKM specified");
+		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+	}
+
+	cmd += " role=configurator";
+	cmd += (ssid.empty()) ? "" : " ssid=" + ssid;
+
+	if (!psk.empty()) {
+		cmd += " psk=" + psk;
+	} else {
+		cmd += (password.empty()) ? "" : " pass=" + password;
+	}
+
+	std::string role = "";
+	if (net_role == DppNetRole::AP) {
+		role = "ap-";
+	}
+	else {
+		role = "sta-";
+	}
+
+	switch (security_akm) {
+	case DppAkm::PSK:
+		role += "psk";
+		break;
+
+	case DppAkm::SAE:
+		role += "sae";
+		break;
+
+	case DppAkm::PSK_SAE:
+		role += "psk-sae";
+		break;
+
+	default:
+		wpa_printf(MSG_ERROR,
+			   "DPP: Invalid or unsupported security AKM specified: %d", security_akm);
+		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+	}
+
+	cmd += " conf=";
+	cmd += role;
+
+	wpa_printf(MSG_DEBUG,
+		   "DPP initiator command: %s", cmd.c_str());
+
+	if (wpas_dpp_auth_init(wpa_s, cmd.c_str()) == 0) {
+		return {SupplicantStatusCode::SUCCESS, ""};
+	}
+#endif
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+}
+
+SupplicantStatus StaIface::startDppEnrolleeInitiatorInternal(uint32_t peer_bootstrap_id,
+			uint32_t own_bootstrap_id) {
+#ifdef CONFIG_DPP
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	std::string cmd = "";
+
+	/* Report received configuration to HIDL and create an internal profile */
+	wpa_s->conf->dpp_config_processing = 1;
+
+	cmd += " peer=" + std::to_string(peer_bootstrap_id);
+	cmd += (own_bootstrap_id > 0) ?
+			" own=" + std::to_string(own_bootstrap_id) : "";
+
+	cmd += " role=enrollee";
+
+	wpa_printf(MSG_DEBUG,
+		   "DPP initiator command: %s", cmd.c_str());
+
+	if (wpas_dpp_auth_init(wpa_s, cmd.c_str()) == 0) {
+		return {SupplicantStatusCode::SUCCESS, ""};
+	}
+#endif
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+}
+SupplicantStatus StaIface::stopDppInitiatorInternal()
+{
+#ifdef CONFIG_DPP
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+
+	wpas_dpp_stop(wpa_s);
+	return {SupplicantStatusCode::SUCCESS, ""};
+#else
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+#endif
 }
 
 /**

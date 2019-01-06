@@ -1026,3 +1026,112 @@ void wpas_notify_mesh_peer_disconnected(struct wpa_supplicant *wpa_s,
 }
 
 #endif /* CONFIG_MESH */
+
+/*
+ * DPP Notifications
+ */
+
+/* DPP Success notifications */
+
+void wpas_notify_dpp_config_received(const char *ifname,
+	    struct wpa_ssid *ssid)
+{
+#ifdef CONFIG_DPP
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_config_received(ifname, ssid);
+#endif /* CONFIG_DPP */
+}
+
+void wpas_notify_dpp_config_sent(const char *ifname)
+{
+#ifdef CONFIG_DPP
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_config_sent(ifname);
+#endif /* CONFIG_DPP */
+}
+
+/* DPP Progress notifications */
+void wpas_notify_dpp_auth_success(const char *ifname)
+{
+#ifdef CONFIG_DPP
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_auth_success(ifname);
+#endif /* CONFIG_DPP */
+}
+
+void wpas_notify_dpp_resp_pending(const char *ifname)
+{
+#ifdef CONFIG_DPP
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_resp_pending(ifname);
+#endif /* CONFIG_DPP */
+}
+
+/* DPP Failure notifications */
+void wpas_notify_dpp_not_compatible(const char *ifname)
+{
+#ifdef CONFIG_DPP
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_not_compatible(ifname);
+#endif /* CONFIG_DPP */
+}
+
+void wpas_notify_dpp_missing_auth(const char *ifname)
+{
+#ifdef CONFIG_DPP
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_missing_auth(ifname);
+#endif /* CONFIG_DPP */
+}
+
+void wpas_notify_dpp_configuration_failure(const char *ifname)
+{
+#ifdef CONFIG_DPP
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_configuration_failure(ifname);
+#endif /* CONFIG_DPP */
+}
+
+void wpas_notify_dpp_timeout(const char *ifname)
+{
+#ifdef CONFIG_DPP
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_timeout(ifname);
+#endif /* CONFIG_DPP */
+}
+
+void wpas_notify_dpp_auth_failure(const char *ifname)
+{
+#ifdef CONFIG_DPP
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_auth_failure(ifname);
+#endif /* CONFIG_DPP */
+}
+
+void wpas_notify_dpp_failure(const char *ifname)
+{
+#ifdef CONFIG_DPP
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_fail(ifname);
+#endif /* CONFIG_DPP */
+}

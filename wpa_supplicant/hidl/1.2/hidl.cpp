@@ -25,6 +25,11 @@ using android::hardware::configureRpcThreadpool;
 using android::hardware::handleTransportPoll;
 using android::hardware::setupTransportPolling;
 using android::hardware::wifi::supplicant::V1_2::implementation::HidlManager;
+using namespace android::hardware::wifi::supplicant::V1_2;
+
+static void wpas_hidl_notify_dpp_success(const char *ifname, DppSuccessCode code);
+static void wpas_hidl_notify_dpp_failure(const char *ifname, DppFailureCode code);
+static void wpas_hidl_notify_dpp_progress(const char *ifname, DppProgressCode code);
 
 void wpas_hidl_sock_handler(
     int sock, void * /* eloop_ctx */, void * /* sock_ctx */)
@@ -641,4 +646,142 @@ void wpas_hidl_notify_eap_error(struct wpa_supplicant *wpa_s, int error_code)
 		return;
 
 	hidl_manager->notifyEapError(wpa_s, error_code);
+}
+
+void wpas_hidl_notify_dpp_config_received(const char *ifname,
+	    struct wpa_ssid *ssid)
+{
+	if (!ifname || !ssid)
+		return;
+
+	wpa_printf(
+	    MSG_DEBUG,
+	    "Notifying DPP configuration received for SSID %d", ssid->id);
+
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager)
+		return;
+
+	hidl_manager->notifyDppConfigReceived(ifname, ssid);
+}
+
+void wpas_hidl_notify_dpp_config_sent(const char *ifname)
+{
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_success(ifname, DppSuccessCode::CONFIGURATION_SENT);
+}
+
+/* DPP Progress notifications */
+void wpas_hidl_notify_dpp_auth_success(const char *ifname)
+{
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_progress(ifname, DppProgressCode::AUTHENTICATION_SUCCESS);
+}
+
+void wpas_hidl_notify_dpp_resp_pending(const char *ifname)
+{
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_progress(ifname, DppProgressCode::RESPONSE_PENDING);
+}
+
+/* DPP Failure notifications */
+void wpas_hidl_notify_dpp_not_compatible(const char *ifname)
+{
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_failure(ifname, DppFailureCode::NOT_COMPATIBLE);
+}
+
+void wpas_hidl_notify_dpp_missing_auth(const char *ifname)
+{
+	if (!ifname)
+		return;
+}
+
+void wpas_hidl_notify_dpp_configuration_failure(const char *ifname)
+{
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_failure(ifname, DppFailureCode::CONFIGURATION);
+}
+
+void wpas_hidl_notify_dpp_timeout(const char *ifname)
+{
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_failure(ifname, DppFailureCode::TIMEOUT);
+}
+
+void wpas_hidl_notify_dpp_auth_failure(const char *ifname)
+{
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_failure(ifname, DppFailureCode::AUTHENTICATION);
+}
+
+void wpas_hidl_notify_dpp_fail(const char *ifname)
+{
+	if (!ifname)
+		return;
+
+	wpas_hidl_notify_dpp_failure(ifname, DppFailureCode::FAILURE);
+}
+
+/* DPP notification helper functions */
+static void wpas_hidl_notify_dpp_success(const char *ifname, DppSuccessCode code)
+{
+	if (!ifname)
+		return;
+
+	wpa_printf(
+	    MSG_DEBUG,
+	    "Notifying DPP success event %d", code);
+
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager)
+		return;
+
+	hidl_manager->notifyDppSuccess(ifname, code);
+}
+
+static void wpas_hidl_notify_dpp_failure(const char *ifname, DppFailureCode code)
+{
+	if (!ifname)
+		return;
+
+	wpa_printf(
+	    MSG_DEBUG,
+	    "Notifying DPP failure event %d", code);
+
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager)
+		return;
+
+	hidl_manager->notifyDppFailure(ifname, code);
+}
+
+static void wpas_hidl_notify_dpp_progress(const char *ifname, DppProgressCode code)
+{
+	if (!ifname)
+		return;
+
+	wpa_printf(
+	    MSG_DEBUG,
+	    "Notifying DPP progress event %d", code);
+
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager)
+		return;
+
+	hidl_manager->notifyDppProgress(ifname, code);
 }
