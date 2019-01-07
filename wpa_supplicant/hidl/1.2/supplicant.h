@@ -10,11 +10,12 @@
 #ifndef WPA_SUPPLICANT_HIDL_SUPPLICANT_H
 #define WPA_SUPPLICANT_HIDL_SUPPLICANT_H
 
-#include <android-base/macros.h>
-
-#include <android/hardware/wifi/supplicant/1.1/ISupplicant.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantIface.h>
+#include <android/hardware/wifi/supplicant/1.0/types.h>
+#include <android/hardware/wifi/supplicant/1.2/ISupplicant.h>
+#include <android-base/macros.h>
+#include <hidl/Status.h>
 
 extern "C"
 {
@@ -37,7 +38,7 @@ using namespace android::hardware::wifi::supplicant::V1_0;
  * object is used core for global control operations on
  * wpa_supplicant.
  */
-class Supplicant : public V1_1::ISupplicant
+class Supplicant : public V1_2::ISupplicant
 {
 public:
 	Supplicant(struct wpa_global* global);
