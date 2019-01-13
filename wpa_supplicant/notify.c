@@ -1033,105 +1033,105 @@ void wpas_notify_mesh_peer_disconnected(struct wpa_supplicant *wpa_s,
 
 /* DPP Success notifications */
 
-void wpas_notify_dpp_config_received(const char *ifname,
+void wpas_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
 	    struct wpa_ssid *ssid)
 {
 #ifdef CONFIG_DPP
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_config_received(ifname, ssid);
+	wpas_hidl_notify_dpp_config_received(wpa_s, ssid);
 #endif /* CONFIG_DPP */
 }
 
-void wpas_notify_dpp_config_sent(const char *ifname)
+void wpas_notify_dpp_config_sent(struct wpa_supplicant *wpa_s)
 {
 #ifdef CONFIG_DPP
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_config_sent(ifname);
+	wpas_hidl_notify_dpp_config_sent(wpa_s);
 #endif /* CONFIG_DPP */
 }
 
 /* DPP Progress notifications */
-void wpas_notify_dpp_auth_success(const char *ifname)
+void wpas_notify_dpp_auth_success(struct wpa_supplicant *wpa_s)
 {
 #ifdef CONFIG_DPP
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_auth_success(ifname);
+	wpas_hidl_notify_dpp_auth_success(wpa_s);
 #endif /* CONFIG_DPP */
 }
 
-void wpas_notify_dpp_resp_pending(const char *ifname)
+void wpas_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s)
 {
 #ifdef CONFIG_DPP
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_resp_pending(ifname);
+	wpas_hidl_notify_dpp_resp_pending(wpa_s);
 #endif /* CONFIG_DPP */
 }
 
 /* DPP Failure notifications */
-void wpas_notify_dpp_not_compatible(const char *ifname)
+void wpas_notify_dpp_not_compatible(struct wpa_supplicant *wpa_s)
 {
 #ifdef CONFIG_DPP
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_not_compatible(ifname);
+	wpas_hidl_notify_dpp_not_compatible(wpa_s);
 #endif /* CONFIG_DPP */
 }
 
-void wpas_notify_dpp_missing_auth(const char *ifname)
+void wpas_notify_dpp_missing_auth(struct wpa_supplicant *wpa_s)
 {
 #ifdef CONFIG_DPP
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_missing_auth(ifname);
+	wpas_hidl_notify_dpp_missing_auth(wpa_s);
 #endif /* CONFIG_DPP */
 }
 
-void wpas_notify_dpp_configuration_failure(const char *ifname)
+void wpas_notify_dpp_configuration_failure(struct wpa_supplicant *wpa_s)
 {
 #ifdef CONFIG_DPP
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_configuration_failure(ifname);
+	wpas_hidl_notify_dpp_configuration_failure(wpa_s);
 #endif /* CONFIG_DPP */
 }
 
-void wpas_notify_dpp_timeout(const char *ifname)
+void wpas_notify_dpp_timeout(struct wpa_supplicant *wpa_s)
 {
 #ifdef CONFIG_DPP
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_timeout(ifname);
+	wpas_hidl_notify_dpp_timeout(wpa_s);
 #endif /* CONFIG_DPP */
 }
 
-void wpas_notify_dpp_auth_failure(const char *ifname)
+void wpas_notify_dpp_auth_failure(struct wpa_supplicant *wpa_s)
 {
 #ifdef CONFIG_DPP
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_auth_failure(ifname);
+	wpas_hidl_notify_dpp_auth_failure(wpa_s);
 #endif /* CONFIG_DPP */
 }
 
-void wpas_notify_dpp_failure(const char *ifname)
+void wpas_notify_dpp_failure(struct wpa_supplicant *wpa_s)
 {
 #ifdef CONFIG_DPP
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_fail(ifname);
+	wpas_hidl_notify_dpp_fail(wpa_s);
 #endif /* CONFIG_DPP */
 }

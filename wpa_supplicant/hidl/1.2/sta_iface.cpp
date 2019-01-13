@@ -1187,6 +1187,14 @@ SupplicantStatus StaIface::startDppConfiguratorInitiatorInternal(
 	cmd += (own_bootstrap_id > 0) ?
 			" own=" + std::to_string(own_bootstrap_id) : "";
 
+	/* Check for supported AKMs */
+	if (security_akm != DppAkm::PSK && security_akm != DppAkm::SAE &&
+			security_akm != DppAkm::PSK_SAE) {
+		wpa_printf(MSG_ERROR, "DPP: Error: invalid AKM specified: %d",
+				security_akm);
+		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+	}
+
 	/* SAE AKM requires SSID and password to be initialized */
 	if ((security_akm == DppAkm::SAE ||
 			security_akm == DppAkm::PSK_SAE) &&
@@ -1204,9 +1212,6 @@ SupplicantStatus StaIface::startDppConfiguratorInitiatorInternal(
 			wpa_printf(MSG_ERROR, "DPP: Error: Password or PSK not specified");
 			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 		}
-	} else {
-		wpa_printf(MSG_ERROR, "DPP: Error: invalid AKM specified");
-		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 
 	cmd += " role=configurator";

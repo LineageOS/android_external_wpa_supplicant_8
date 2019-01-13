@@ -1489,20 +1489,23 @@ void HidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
  * @param ifname Interface name
  * @param config Configuration object
  */
-void HidlManager::notifyDppConfigReceived(const char *ifname,
+void HidlManager::notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 		struct wpa_ssid *config)
 {
 	DppAkm securityAkm;
 	char *password;
-	std::string hidl_ifname = ifname;
+	std::string hidl_ifname = wpa_s->ifname;
 
-	if (config->key_mgmt & WPA_KEY_MGMT_SAE) {
+	if ((config->key_mgmt & WPA_KEY_MGMT_SAE) &&
+			(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE)) {
 		securityAkm = DppAkm::SAE;
 	} else if (config->key_mgmt & WPA_KEY_MGMT_PSK) {
 			securityAkm = DppAkm::PSK;
 	} else {
 		/* Unsupported AKM */
-		notifyDppFailure(ifname, DppFailureCode::CONFIGURATION);
+		wpa_printf(MSG_ERROR, "DPP: Error: Unsupported AKM 0x%X",
+				config->key_mgmt);
+		notifyDppFailure(wpa_s, DppFailureCode::CONFIGURATION);
 		return;
 	}
 
@@ -1526,9 +1529,9 @@ void HidlManager::notifyDppConfigReceived(const char *ifname,
  * @param ifname Interface name
  * @param code Status code
  */
-void HidlManager::notifyDppSuccess(const char *ifname, DppSuccessCode code)
+void HidlManager::notifyDppSuccess(struct wpa_supplicant *wpa_s, DppSuccessCode code)
 {
-	std::string hidl_ifname = ifname;
+	std::string hidl_ifname = wpa_s->ifname;
 
 	callWithEachStaIfaceCallback_1_2(hidl_ifname,
 			std::bind(&V1_2::ISupplicantStaIfaceCallback::onDppSuccess,
@@ -1541,9 +1544,9 @@ void HidlManager::notifyDppSuccess(const char *ifname, DppSuccessCode code)
  * @param ifname Interface name
  * @param code Status code
  */
-void HidlManager::notifyDppFailure(const char *ifname, DppFailureCode code)
+void HidlManager::notifyDppFailure(struct wpa_supplicant *wpa_s, DppFailureCode code)
 {
-	std::string hidl_ifname = ifname;
+	std::string hidl_ifname = wpa_s->ifname;
 
 	callWithEachStaIfaceCallback_1_2(hidl_ifname,
 			std::bind(&V1_2::ISupplicantStaIfaceCallback::onDppFailure,
@@ -1556,9 +1559,9 @@ void HidlManager::notifyDppFailure(const char *ifname, DppFailureCode code)
  * @param ifname Interface name
  * @param code Status code
  */
-void HidlManager::notifyDppProgress(const char *ifname, DppProgressCode code)
+void HidlManager::notifyDppProgress(struct wpa_supplicant *wpa_s, DppProgressCode code)
 {
-	std::string hidl_ifname = ifname;
+	std::string hidl_ifname = wpa_s->ifname;
 
 	callWithEachStaIfaceCallback_1_2(hidl_ifname,
 			std::bind(&V1_2::ISupplicantStaIfaceCallback::onDppProgress,

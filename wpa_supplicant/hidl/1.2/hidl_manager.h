@@ -128,11 +128,11 @@ public:
 	    struct wpa_supplicant *wpa_s, const u8 *sta,
 	    const u8 *p2p_dev_addr);
 	void notifyEapError(struct wpa_supplicant *wpa_s, int error_code);
-	void notifyDppConfigReceived(const char *ifname,
+	void notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 			struct wpa_ssid *config);
-	void notifyDppSuccess(const char *ifname, DppSuccessCode code);
-	void notifyDppFailure(const char *ifname, DppFailureCode code);
-	void notifyDppProgress(const char *ifname, DppProgressCode code);
+	void notifyDppSuccess(struct wpa_supplicant *wpa_s, DppSuccessCode code);
+	void notifyDppFailure(struct wpa_supplicant *wpa_s, DppFailureCode code);
+	void notifyDppProgress(struct wpa_supplicant *wpa_s, DppProgressCode code);
 
 	// Methods called from hidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);

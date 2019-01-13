@@ -469,7 +469,7 @@ static void wpas_dpp_reply_wait_timeout(void *eloop_ctx, void *timeout_ctx)
 		wpa_printf(MSG_INFO,
 			   "DPP: No response received from responder - stopping initiation attempt");
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_AUTH_INIT_FAILED);
-		wpas_notify_dpp_timeout(wpa_s->ifname);
+		wpas_notify_dpp_timeout(wpa_s);
 		offchannel_send_action_done(wpa_s);
 		wpas_dpp_listen_stop(wpa_s);
 		dpp_auth_deinit(auth);
@@ -731,6 +731,7 @@ static int wpas_dpp_auth_init_next(struct wpa_supplicant *wpa_s)
 			wpa_printf(MSG_INFO,
 				   "DPP: No response received from responder - stopping initiation attempt");
 			wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_AUTH_INIT_FAILED);
+			wpas_notify_dpp_timeout(wpa_s);
 			eloop_cancel_timeout(wpas_dpp_reply_wait_timeout,
 					     wpa_s, NULL);
 			offchannel_send_action_done(wpa_s);
@@ -1141,7 +1142,7 @@ static void wpas_dpp_rx_auth_req(struct wpa_supplicant *wpa_s, const u8 *src,
 					  peer_bi, own_bi, freq, hdr, buf, len);
 	if (!wpa_s->dpp_auth) {
 		wpa_printf(MSG_DEBUG, "DPP: No response generated");
-		wpas_notify_dpp_auth_failure(wpa_s->ifname);
+		wpas_notify_dpp_auth_failure(wpa_s);
 		return;
 	}
 	wpas_dpp_set_testing_options(wpa_s, wpa_s->dpp_auth);
@@ -1264,7 +1265,7 @@ static void wpas_dpp_process_config(struct wpa_supplicant *wpa_s,
 
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_NETWORK_ID "%d", ssid->id);
 
-	wpas_notify_dpp_config_received(wpa_s->ifname, ssid);
+	wpas_notify_dpp_config_received(wpa_s, ssid);
 
 	if (wpa_s->conf->dpp_config_processing < 2) {
 		return;
@@ -1389,7 +1390,7 @@ static void wpas_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
 
 fail:
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_FAILED);
-	wpas_notify_dpp_configuration_failure(wpa_s->ifname);
+	wpas_notify_dpp_configuration_failure(wpa_s);
 	dpp_auth_deinit(wpa_s->dpp_auth);
 	wpa_s->dpp_auth = NULL;
 }
@@ -1467,7 +1468,7 @@ static void wpas_dpp_auth_success(struct wpa_supplicant *wpa_s, int initiator)
 {
 	wpa_printf(MSG_DEBUG, "DPP: Authentication succeeded");
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_AUTH_SUCCESS "init=%d", initiator);
-	wpas_notify_dpp_auth_success(wpa_s->ifname);
+	wpas_notify_dpp_auth_success(wpa_s);
 #ifdef CONFIG_TESTING_OPTIONS
 	if (dpp_test == DPP_TEST_STOP_AT_AUTH_CONF) {
 		wpa_printf(MSG_INFO,
@@ -1524,13 +1525,13 @@ static void wpas_dpp_rx_auth_resp(struct wpa_supplicant *wpa_s, const u8 *src,
 		if (auth->auth_resp_status == DPP_STATUS_RESPONSE_PENDING) {
 			wpa_printf(MSG_DEBUG,
 				   "DPP: Start wait for full response");
-			wpas_notify_dpp_resp_pending(wpa_s->ifname);
+			wpas_notify_dpp_resp_pending(wpa_s);
 			offchannel_send_action_done(wpa_s);
 			wpas_dpp_listen_start(wpa_s, auth->curr_freq);
 			return;
 		}
 		wpa_printf(MSG_DEBUG, "DPP: No confirm generated");
-		wpas_notify_dpp_auth_failure(wpa_s->ifname);
+		wpas_notify_dpp_auth_failure(wpa_s);
 		return;
 	}
 	os_memcpy(auth->peer_mac_addr, src, ETH_ALEN);
@@ -1568,7 +1569,7 @@ static void wpas_dpp_rx_auth_conf(struct wpa_supplicant *wpa_s, const u8 *src,
 
 	if (dpp_auth_conf_rx(auth, hdr, buf, len) < 0) {
 		wpa_printf(MSG_DEBUG, "DPP: Authentication failed");
-		wpas_notify_dpp_auth_failure(wpa_s->ifname);
+		wpas_notify_dpp_auth_failure(wpa_s);
 		return;
 	}
 
@@ -2161,7 +2162,7 @@ wpas_dpp_gas_req_handler(void *ctx, const u8 *sa, const u8 *query,
 	resp = dpp_conf_req_rx(auth, query, query_len);
 	if (!resp) {
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_FAILED);
-		wpas_notify_dpp_configuration_failure(wpa_s->ifname);
+		wpas_notify_dpp_configuration_failure(wpa_s);
 	}
 	auth->conf_resp = resp;
 	return resp;
@@ -2194,11 +2195,11 @@ wpas_dpp_gas_status_handler(void *ctx, struct wpabuf *resp, int ok)
 	wpas_dpp_listen_stop(wpa_s);
 	if (ok) {
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_SENT);
-		wpas_notify_dpp_config_sent(wpa_s->ifname);
+		wpas_notify_dpp_config_sent(wpa_s);
 	}
 	else {
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_FAILED);
-		wpas_notify_dpp_configuration_failure(wpa_s->ifname);
+		wpas_notify_dpp_configuration_failure(wpa_s);
 	}
 	dpp_auth_deinit(wpa_s->dpp_auth);
 	wpa_s->dpp_auth = NULL;

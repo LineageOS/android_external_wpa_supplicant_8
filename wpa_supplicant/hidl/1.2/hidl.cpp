@@ -27,9 +27,9 @@ using android::hardware::setupTransportPolling;
 using android::hardware::wifi::supplicant::V1_2::implementation::HidlManager;
 using namespace android::hardware::wifi::supplicant::V1_2;
 
-static void wpas_hidl_notify_dpp_success(const char *ifname, DppSuccessCode code);
-static void wpas_hidl_notify_dpp_failure(const char *ifname, DppFailureCode code);
-static void wpas_hidl_notify_dpp_progress(const char *ifname, DppProgressCode code);
+static void wpas_hidl_notify_dpp_success(struct wpa_supplicant *wpa_s, DppSuccessCode code);
+static void wpas_hidl_notify_dpp_failure(struct wpa_supplicant *wpa_s, DppFailureCode code);
+static void wpas_hidl_notify_dpp_progress(struct wpa_supplicant *wpa_s, DppProgressCode code);
 
 void wpas_hidl_sock_handler(
     int sock, void * /* eloop_ctx */, void * /* sock_ctx */)
@@ -648,10 +648,10 @@ void wpas_hidl_notify_eap_error(struct wpa_supplicant *wpa_s, int error_code)
 	hidl_manager->notifyEapError(wpa_s, error_code);
 }
 
-void wpas_hidl_notify_dpp_config_received(const char *ifname,
+void wpas_hidl_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
 	    struct wpa_ssid *ssid)
 {
-	if (!ifname || !ssid)
+	if (!wpa_s || !ssid)
 		return;
 
 	wpa_printf(
@@ -662,85 +662,85 @@ void wpas_hidl_notify_dpp_config_received(const char *ifname,
 	if (!hidl_manager)
 		return;
 
-	hidl_manager->notifyDppConfigReceived(ifname, ssid);
+	hidl_manager->notifyDppConfigReceived(wpa_s, ssid);
 }
 
-void wpas_hidl_notify_dpp_config_sent(const char *ifname)
+void wpas_hidl_notify_dpp_config_sent(struct wpa_supplicant *wpa_s)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_success(ifname, DppSuccessCode::CONFIGURATION_SENT);
+	wpas_hidl_notify_dpp_success(wpa_s, DppSuccessCode::CONFIGURATION_SENT);
 }
 
 /* DPP Progress notifications */
-void wpas_hidl_notify_dpp_auth_success(const char *ifname)
+void wpas_hidl_notify_dpp_auth_success(struct wpa_supplicant *wpa_s)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_progress(ifname, DppProgressCode::AUTHENTICATION_SUCCESS);
+	wpas_hidl_notify_dpp_progress(wpa_s, DppProgressCode::AUTHENTICATION_SUCCESS);
 }
 
-void wpas_hidl_notify_dpp_resp_pending(const char *ifname)
+void wpas_hidl_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_progress(ifname, DppProgressCode::RESPONSE_PENDING);
+	wpas_hidl_notify_dpp_progress(wpa_s, DppProgressCode::RESPONSE_PENDING);
 }
 
 /* DPP Failure notifications */
-void wpas_hidl_notify_dpp_not_compatible(const char *ifname)
+void wpas_hidl_notify_dpp_not_compatible(struct wpa_supplicant *wpa_s)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_failure(ifname, DppFailureCode::NOT_COMPATIBLE);
+	wpas_hidl_notify_dpp_failure(wpa_s, DppFailureCode::NOT_COMPATIBLE);
 }
 
-void wpas_hidl_notify_dpp_missing_auth(const char *ifname)
+void wpas_hidl_notify_dpp_missing_auth(struct wpa_supplicant *wpa_s)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 }
 
-void wpas_hidl_notify_dpp_configuration_failure(const char *ifname)
+void wpas_hidl_notify_dpp_configuration_failure(struct wpa_supplicant *wpa_s)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_failure(ifname, DppFailureCode::CONFIGURATION);
+	wpas_hidl_notify_dpp_failure(wpa_s, DppFailureCode::CONFIGURATION);
 }
 
-void wpas_hidl_notify_dpp_timeout(const char *ifname)
+void wpas_hidl_notify_dpp_timeout(struct wpa_supplicant *wpa_s)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_failure(ifname, DppFailureCode::TIMEOUT);
+	wpas_hidl_notify_dpp_failure(wpa_s, DppFailureCode::TIMEOUT);
 }
 
-void wpas_hidl_notify_dpp_auth_failure(const char *ifname)
+void wpas_hidl_notify_dpp_auth_failure(struct wpa_supplicant *wpa_s)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_failure(ifname, DppFailureCode::AUTHENTICATION);
+	wpas_hidl_notify_dpp_failure(wpa_s, DppFailureCode::AUTHENTICATION);
 }
 
-void wpas_hidl_notify_dpp_fail(const char *ifname)
+void wpas_hidl_notify_dpp_fail(struct wpa_supplicant *wpa_s)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
-	wpas_hidl_notify_dpp_failure(ifname, DppFailureCode::FAILURE);
+	wpas_hidl_notify_dpp_failure(wpa_s, DppFailureCode::FAILURE);
 }
 
 /* DPP notification helper functions */
-static void wpas_hidl_notify_dpp_success(const char *ifname, DppSuccessCode code)
+static void wpas_hidl_notify_dpp_success(struct wpa_supplicant *wpa_s, DppSuccessCode code)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
 	wpa_printf(
@@ -751,12 +751,12 @@ static void wpas_hidl_notify_dpp_success(const char *ifname, DppSuccessCode code
 	if (!hidl_manager)
 		return;
 
-	hidl_manager->notifyDppSuccess(ifname, code);
+	hidl_manager->notifyDppSuccess(wpa_s, code);
 }
 
-static void wpas_hidl_notify_dpp_failure(const char *ifname, DppFailureCode code)
+static void wpas_hidl_notify_dpp_failure(struct wpa_supplicant *wpa_s, DppFailureCode code)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
 	wpa_printf(
@@ -767,12 +767,12 @@ static void wpas_hidl_notify_dpp_failure(const char *ifname, DppFailureCode code
 	if (!hidl_manager)
 		return;
 
-	hidl_manager->notifyDppFailure(ifname, code);
+	hidl_manager->notifyDppFailure(wpa_s, code);
 }
 
-static void wpas_hidl_notify_dpp_progress(const char *ifname, DppProgressCode code)
+static void wpas_hidl_notify_dpp_progress(struct wpa_supplicant *wpa_s, DppProgressCode code)
 {
-	if (!ifname)
+	if (!wpa_s)
 		return;
 
 	wpa_printf(
@@ -783,5 +783,5 @@ static void wpas_hidl_notify_dpp_progress(const char *ifname, DppProgressCode co
 	if (!hidl_manager)
 		return;
 
-	hidl_manager->notifyDppProgress(ifname, code);
+	hidl_manager->notifyDppProgress(wpa_s, code);
 }

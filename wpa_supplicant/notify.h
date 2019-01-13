@@ -167,16 +167,16 @@ void wpas_notify_hs20_rx_subscription_remediation(struct wpa_supplicant *wpa_s,
 void wpas_notify_hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s,
 						u8 code, u16 reauth_delay,
 						const char *url);
-void wpas_notify_dpp_config_received(const char *ifname,
+void wpas_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
 	    struct wpa_ssid *ssid);
-void wpas_notify_dpp_config_sent(const char *ifname);
-void wpas_notify_dpp_auth_success(const char *ifname);
-void wpas_notify_dpp_resp_pending(const char *ifname);
-void wpas_notify_dpp_not_compatible(const char *ifname);
-void wpas_notify_dpp_missing_auth(const char *ifname);
-void wpas_notify_dpp_configuration_failure(const char *ifname);
-void wpas_notify_dpp_timeout(const char *ifname);
-void wpas_notify_dpp_auth_failure(const char *ifname);
-void wpas_notify_dpp_failure(const char *ifname);
+void wpas_notify_dpp_config_sent(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_auth_success(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_not_compatible(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_missing_auth(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_configuration_failure(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_timeout(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_auth_failure(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_failure(struct wpa_supplicant *wpa_s);
 
 #endif /* NOTIFY_H */
