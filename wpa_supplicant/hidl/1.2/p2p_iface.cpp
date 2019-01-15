@@ -20,7 +20,12 @@ extern "C"
 #include "ap.h"
 #include "wps_supplicant.h"
 #include "wifi_display.h"
+#include "utils/eloop.h"
+#include "wpa_supplicant_i.h"
+#include "driver_i.h"
 }
+
+#define P2P_MAX_JOIN_SCAN_ATTEMPTS 10
 
 namespace {
 const char kConfigMethodStrPbc[] = "pbc";
@@ -29,6 +34,9 @@ const char kConfigMethodStrKeypad[] = "keypad";
 constexpr char kSetMiracastMode[] = "MIRACAST ";
 constexpr uint8_t kWfdDeviceInfoSubelemId = 0;
 constexpr char kWfdDeviceInfoSubelemLenHexStr[] = "0006";
+
+std::function<void()> pending_join_scan_callback = NULL;
+std::function<void()> pending_scan_res_join_callback = NULL;
 
 using android::hardware::wifi::supplicant::V1_0::ISupplicantP2pIface;
 using android::hardware::wifi::supplicant::V1_0::ISupplicantStaNetwork;
@@ -82,6 +90,280 @@ int isPskPassphraseValid(const std::string &psk)
 	}
 	return 1;
 }
+
+void setBandScanFreqsList(
+    struct wpa_supplicant *wpa_s,
+    enum hostapd_hw_mode band,
+    struct wpa_driver_scan_params *params)
+{
+	/* Include only supported channels for the specified band */
+	struct hostapd_hw_modes *mode;
+	int count, i;
+
+	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, band);
+	if (mode == NULL) {
+		/* No channels supported in this band. */
+		return;
+	}
+
+	params->freqs = (int *) os_calloc(mode->num_channels + 1, sizeof(int));
+	if (params->freqs == NULL)
+		return;
+	for (count = 0, i = 0; i < mode->num_channels; i++) {
+		if (mode->channels[i].flag & HOSTAPD_CHAN_DISABLED)
+			continue;
+		params->freqs[count++] = mode->channels[i].freq;
+	}
+}
+
+/**
+ * findBssBySsid - Fetch a BSS table entry based on SSID and optional BSSID.
+ * @wpa_s: Pointer to wpa_supplicant data
+ * @bssid: BSSID, zero addr matches any bssid
+ * @ssid: SSID
+ * @ssid_len: Length of @ssid
+ * Returns: Pointer to the BSS entry or %NULL if not found
+ */
+struct wpa_bss* findBssBySsid(
+    struct wpa_supplicant *wpa_s, const u8 *bssid,
+    const u8 *ssid, size_t ssid_len)
+{
+	struct wpa_bss *bss;
+	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
+		if ((is_zero_ether_addr(bssid) ||
+		    os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0) &&
+		    bss->ssid_len == ssid_len &&
+		    os_memcmp(bss->ssid, ssid, ssid_len) == 0)
+			return bss;
+	}
+	return NULL;
+}
+
+struct wpa_ssid* addGroupClientNetwork(
+    struct wpa_supplicant* wpa_s,
+    uint8_t *group_owner_bssid,
+    const std::vector<uint8_t>& ssid,
+    const std::string& passphrase)
+{
+	struct wpa_ssid* wpa_network = wpa_config_add_network(wpa_s->conf);
+	if (!wpa_network) {
+		return NULL;
+	}
+	// set general network defaults
+	wpa_config_set_network_defaults(wpa_network);
+
+	// set P2p network defaults
+	wpa_network->p2p_group = 1;
+	wpa_network->mode = wpa_ssid::wpas_mode::WPAS_MODE_INFRA;
+
+	wpa_network->auth_alg = WPA_AUTH_ALG_OPEN;
+	wpa_network->key_mgmt = WPA_KEY_MGMT_PSK;
+	wpa_network->proto = WPA_PROTO_RSN;
+	wpa_network->pairwise_cipher = WPA_CIPHER_CCMP;
+	wpa_network->group_cipher = WPA_CIPHER_CCMP;
+	wpa_network->disabled = 2;
+
+	// set necessary fields
+	os_memcpy(wpa_network->bssid, group_owner_bssid, ETH_ALEN);
+	wpa_network->bssid_set = 1;
+
+	wpa_network->ssid = (uint8_t *)os_malloc(ssid.size());
+	if (wpa_network->ssid == NULL) {
+		wpa_config_remove_network(wpa_s->conf, wpa_network->id);
+		return  NULL;
+	}
+	memcpy(wpa_network->ssid, ssid.data(), ssid.size());
+	wpa_network->ssid_len = ssid.size();
+
+	wpa_network->psk_set = 0;
+	wpa_network->passphrase = dup_binstr(passphrase.c_str(), passphrase.length());
+	if (wpa_network->passphrase == NULL) {
+		wpa_config_remove_network(wpa_s->conf, wpa_network->id);
+		return  NULL;
+	}
+	wpa_config_update_psk(wpa_network);
+
+	return wpa_network;
+
+}
+
+void joinScanWrapper(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpa_supplicant *wpa_s = (struct wpa_supplicant *) eloop_ctx;
+
+	if (pending_join_scan_callback != NULL) {
+		pending_join_scan_callback();
+	}
+}
+
+void scanResJoinWrapper(
+    struct wpa_supplicant *wpa_s,
+    struct wpa_scan_results *scan_res)
+{
+	if (pending_scan_res_join_callback) {
+		pending_scan_res_join_callback();
+	}
+}
+
+int joinScanReq(
+    struct wpa_supplicant* wpa_s,
+    const std::vector<uint8_t>& ssid,
+    int freq)
+{
+	int ret;
+	struct wpa_driver_scan_params params;
+	struct wpabuf *ies;
+	size_t ielen;
+	unsigned int bands;
+
+	os_memset(&params, 0, sizeof(params));
+	if (ssid.size() > 0) {
+		params.ssids[0].ssid = ssid.data();
+		params.ssids[0].ssid_len = ssid.size();
+	} else {
+		params.ssids[0].ssid = (u8 *) P2P_WILDCARD_SSID;
+		params.ssids[0].ssid_len = P2P_WILDCARD_SSID_LEN;
+	}
+	wpa_printf(MSG_DEBUG, "Scan SSID %s for join with frequency %d (reinvoke)",
+	    wpa_ssid_txt(params.ssids[0].ssid, params.ssids[0].ssid_len), freq);
+
+	if (freq > 0) {
+		if (freq == 2 || freq == 5) {
+			if (wpa_s->hw.modes != NULL) {
+				switch (freq) {
+				case 2:
+					setBandScanFreqsList(wpa_s,
+					    HOSTAPD_MODE_IEEE80211G, &params);
+				break;
+				case 5:
+					setBandScanFreqsList(wpa_s,
+					    HOSTAPD_MODE_IEEE80211A, &params);
+				break;
+				}
+				if (!params.freqs) {
+					wpa_printf(MSG_ERROR,
+					    "P2P: No supported channels in %dG band.", freq);
+					return -1;
+				}
+			} else {
+				wpa_printf(MSG_DEBUG,
+				    "P2P: Unknown what %dG channels the driver supports.", freq);
+			}
+		} else {
+			if (0 == p2p_supported_freq_cli(wpa_s->global->p2p, freq)) {
+				wpa_printf(MSG_ERROR,
+				    "P2P: freq %d is not supported for a client.", freq);
+				return -1;
+			}
+
+			params.freqs = (int *) os_malloc(sizeof(int) * 2);
+			if (params.freqs) {
+				params.freqs[0] = freq;
+			} else {
+				wpa_printf(MSG_ERROR,
+				    "P2P: Cannot allocate memory for scan params.");
+				return -1;
+			}
+		}
+	}
+
+	ielen = p2p_scan_ie_buf_len(wpa_s->global->p2p);
+	ies = wpabuf_alloc(ielen);
+	if (ies == NULL) {
+		if (params.freqs) {
+			os_free(params.freqs);
+		}
+		return -1;
+	}
+
+	bands = wpas_get_bands(wpa_s, params.freqs);
+	p2p_scan_ie(wpa_s->global->p2p, ies, NULL, bands);
+
+	params.p2p_probe = 1;
+	params.extra_ies = (u8 *) wpabuf_head(ies);
+	params.extra_ies_len = wpabuf_len(ies);
+	if (wpa_s->clear_driver_scan_cache) {
+		wpa_printf(MSG_DEBUG,
+		    "Request driver to clear scan cache due to local BSS flush");
+		params.only_new_results = 1;
+	}
+
+	ret = wpa_drv_scan(wpa_s, &params);
+	if (!ret) {
+		os_get_reltime(&wpa_s->scan_trigger_time);
+		wpa_s->scan_res_handler = scanResJoinWrapper;
+		wpa_s->own_scan_requested = 1;
+		wpa_s->clear_driver_scan_cache = 0;
+	}
+
+	if (params.freqs) {
+		os_free(params.freqs);
+	}
+
+	wpabuf_free(ies);
+
+	return ret;
+}
+
+int joinGroup(
+    struct wpa_supplicant* wpa_s,
+    uint8_t *group_owner_bssid,
+    const std::vector<uint8_t>& ssid,
+    const std::string& passphrase)
+{
+	int ret = 0;
+	int vht = wpa_s->conf->p2p_go_vht;
+	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+
+	// Construct a network for adding group.
+	// Group client follows the persistent attribute of Group Owner.
+	// If joined group is persistent, it adds a persistent network on GroupStarted.
+	struct wpa_ssid *wpa_network = addGroupClientNetwork(
+	    wpa_s, group_owner_bssid, ssid, passphrase);
+	if (wpa_network == NULL) {
+		wpa_printf(MSG_ERROR, "P2P: Cannot construct a network for group join.");
+		return -1;
+	}
+
+	// this is temporary network only for establishing the connection.
+	wpa_network->temporary = 1;
+
+	if (wpas_p2p_group_add_persistent(
+		wpa_s, wpa_network, 0, 0, 0, 0, ht40, vht,
+		VHT_CHANWIDTH_USE_HT, NULL, 0, 1)) {
+		ret = -1;
+	}
+
+	// Always remove this temporary network at the end.
+	wpa_config_remove_network(wpa_s->conf, wpa_network->id);
+	return ret;
+}
+
+void notifyGroupJoinFailure(
+    struct wpa_supplicant* wpa_s)
+{
+	u8 zero_addr[ETH_ALEN] = {0};
+	std::vector<uint8_t> ssid = {'D', 'I', 'R', 'E','C', 'T', '-'};
+	std::string passphrase = "";
+	struct wpa_ssid *wpa_network = addGroupClientNetwork(
+	    wpa_s, zero_addr, ssid, passphrase);
+	if (wpa_network) {
+		wpa_network->temporary = 1;
+		wpas_notify_p2p_group_formation_failure(wpa_s, "Failed to find the group.");
+		wpas_notify_p2p_group_removed(
+		    wpa_s, wpa_network, "client");
+		wpa_config_remove_network(
+		    wpa_s->conf, wpa_network->id);
+	} else {
+		wpa_printf(MSG_ERROR,
+		    "P2P: Cannot construct a network.");
+	}
+}
+
+void scanResJoinIgnore(struct wpa_supplicant *wpa_s, struct wpa_scan_results *scan_res) {
+	wpa_printf(MSG_DEBUG, "P2P: Ignore group join scan results.");
+}
+
 }  // namespace
 
 namespace android {
@@ -706,6 +988,11 @@ SupplicantStatus P2pIface::stopFindInternal()
 	if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED) {
 		return {SupplicantStatusCode::FAILURE_IFACE_DISABLED, ""};
 	}
+	if (wpa_s->scan_res_handler == scanResJoinWrapper) {
+		wpa_printf(MSG_DEBUG, "P2P: Stop pending group scan for stopping find).");
+		pending_scan_res_join_callback = NULL;
+		wpa_s->scan_res_handler = scanResJoinIgnore;
+	}
 	wpas_p2p_stop_find(wpa_s);
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
@@ -769,6 +1056,11 @@ std::pair<SupplicantStatus, std::string> P2pIface::connectInternal(
 SupplicantStatus P2pIface::cancelConnectInternal()
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	if (wpa_s->scan_res_handler == scanResJoinWrapper) {
+		wpa_printf(MSG_DEBUG, "P2P: Stop pending group scan for canceling connect");
+		pending_scan_res_join_callback = NULL;
+		wpa_s->scan_res_handler = scanResJoinIgnore;
+	}
 	if (wpas_p2p_cancel(wpa_s)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
@@ -1324,38 +1616,7 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, "passphrase is invalid."};
 	}
 
-	if (joinExistingGroup) {
-		struct wpa_bss *bss = findBssBySsid(
-		    wpa_s, peer_address.data(),
-		    ssid.data(), ssid.size());
-		if (bss == NULL) {
-			return {SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN,
-			    "No matched BSS found."};
-		}
-
-		// Construct a network for adding group.
-		// Group client follows the persistent attribute of Group Owner.
-		// If joined group is persistent, it adds a persistent network on GroupStarted.
-		struct wpa_ssid *wpa_network = addGroupClientNetwork(
-		    wpa_s, bss->bssid, ssid, passphrase);
-		if (wpa_network == NULL) {
-			return {SupplicantStatusCode::FAILURE_UNKNOWN,
-			    "Cannot construct P2P network."};
-		}
-
-		// this is temporary network only for establishing the connection.
-		wpa_network->temporary = 1;
-
-		if (wpas_p2p_group_add_persistent(
-			wpa_s, wpa_network, 0, 0, 0, 0, ht40, vht,
-			VHT_CHANWIDTH_USE_HT, NULL, 0, 1)) {
-			wpa_config_remove_network(wpa_s->conf, wpa_network->id);
-			return {SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN, ""};
-		}
-
-		// Always remove this temporary network at the end.
-		wpa_config_remove_network(wpa_s->conf, wpa_network->id);
-	} else {
+	if (!joinExistingGroup) {
 		if (wpa_s->global->p2p == NULL) {
 			return {SupplicantStatusCode::FAILURE_IFACE_DISABLED, ""};
 		}
@@ -1370,10 +1631,94 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 		p2p->passphrase_set = 1;
 
 		if (wpas_p2p_group_add(
-			wpa_s, persistent, freq, 0, ht40, vht,
-			VHT_CHANWIDTH_USE_HT)) {
+		    wpa_s, persistent, freq, 0, ht40, vht,
+		    VHT_CHANWIDTH_USE_HT)) {
 			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 		}
+		return {SupplicantStatusCode::SUCCESS, ""};
+	}
+
+	// The rest is for group join.
+	wpa_printf(MSG_DEBUG, "P2P: Stop any on-going P2P FIND before group join.");
+	wpas_p2p_stop_find(wpa_s);
+
+	struct wpa_bss *bss = findBssBySsid(
+	    wpa_s, peer_address.data(),
+	    ssid.data(), ssid.size());
+	if (bss != NULL) {
+		wpa_printf(MSG_DEBUG, "P2P: Join group with Group Owner " MACSTR,
+		    MAC2STR(bss->bssid));
+		if (0 != joinGroup(wpa_s, bss->bssid, ssid, passphrase)) {
+			// no need to notify group join failure here,
+			// it will be handled by wpas_p2p_group_add_persistent
+			// called in joinGroup.
+			return {SupplicantStatusCode::FAILURE_UNKNOWN, "Failed to join a group."};
+		}
+		return {SupplicantStatusCode::SUCCESS, ""};
+	}
+
+	wpa_printf(MSG_INFO, "No matched BSS exists, try to find it by scan");
+
+	if (wpa_s->scan_res_handler) {
+		wpa_printf(MSG_WARNING, "There is on-going scanning, cannot start another scan.");
+		return {SupplicantStatusCode::FAILURE_UNKNOWN,
+		    "Failed to start scan due to device busy."};
+	}
+
+	if (pending_scan_res_join_callback != NULL) {
+		wpa_printf(MSG_WARNING, "There is running group join scan.");
+		return {SupplicantStatusCode::FAILURE_UNKNOWN,
+		    "Failed to start scan due to device busy."};
+	}
+
+	pending_join_scan_callback =
+	    [wpa_s, ssid, freq]() {
+		if (0 != joinScanReq(wpa_s, ssid, freq)) {
+			notifyGroupJoinFailure(wpa_s);
+			pending_scan_res_join_callback = NULL;
+		}
+	};
+
+	pending_scan_res_join_callback = [wpa_s, ssid, passphrase, peer_address, this]() {
+		if (wpa_s->global->p2p_disabled) {
+			return;
+		}
+
+		wpa_printf(MSG_DEBUG, "P2P: Scan results received for join (reinvoke).");
+
+		struct wpa_bss *bss = findBssBySsid(
+		    wpa_s, peer_address.data(), ssid.data(), ssid.size());
+		if (bss) {
+			if (0 != joinGroup(wpa_s, bss->bssid, ssid, passphrase)) {
+				wpa_printf(MSG_ERROR, "P2P: Failed to join a group.");
+			}
+			// no need to notify group join failure here,
+			// it will be handled by wpas_p2p_group_add_persistent
+			// called in joinGroup.
+			pending_scan_res_join_callback = NULL;
+			return;
+		}
+
+		wpa_s->p2p_join_scan_count++;
+		wpa_printf(MSG_DEBUG, "P2P: Join scan attempt %d.", wpa_s->p2p_join_scan_count);
+		eloop_cancel_timeout(joinScanWrapper, wpa_s, NULL);
+		if (wpa_s->p2p_join_scan_count <= P2P_MAX_JOIN_SCAN_ATTEMPTS) {
+			wpa_printf(MSG_DEBUG, "P2P: Try join again later.");
+			eloop_register_timeout(1, 0, joinScanWrapper, wpa_s, this);
+			return;
+		}
+
+		wpa_printf(MSG_ERROR, "P2P: Failed to find the group with "
+		    "network name %s - stop join attempt",
+		    ssid.data());
+		notifyGroupJoinFailure(wpa_s);
+		pending_scan_res_join_callback = NULL;
+	};
+
+	wpa_s->p2p_join_scan_count = 0;
+	if (0 != joinScanReq(wpa_s, ssid, freq)) {
+		pending_scan_res_join_callback = NULL;
+		return {SupplicantStatusCode::FAILURE_UNKNOWN, "Failed to start scan."};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
@@ -1396,77 +1741,6 @@ wpa_supplicant* P2pIface::retrieveIfacePtr()
 wpa_supplicant* P2pIface::retrieveGroupIfacePtr(const std::string& group_ifname)
 {
 	return wpa_supplicant_get_iface(wpa_global_, group_ifname.c_str());
-}
-
-struct wpa_ssid* P2pIface::addGroupClientNetwork(
-    struct wpa_supplicant* wpa_s,
-    uint8_t *group_owner_bssid,
-    const std::vector<uint8_t>& ssid,
-    const std::string& passphrase)
-{
-	struct wpa_ssid* wpa_network = wpa_config_add_network(wpa_s->conf);
-	if (!wpa_network) {
-		return NULL;
-	}
-	// set general network defaults
-	wpa_config_set_network_defaults(wpa_network);
-
-	// set P2p network defaults
-	wpa_network->p2p_group = 1;
-	wpa_network->mode = wpa_ssid::wpas_mode::WPAS_MODE_INFRA;
-
-	wpa_network->auth_alg = WPA_AUTH_ALG_OPEN;
-	wpa_network->key_mgmt = WPA_KEY_MGMT_PSK;
-	wpa_network->proto = WPA_PROTO_RSN;
-	wpa_network->pairwise_cipher = WPA_CIPHER_CCMP;
-	wpa_network->group_cipher = WPA_CIPHER_CCMP;
-	wpa_network->disabled = 2;
-
-	// set necessary fields
-	os_memcpy(wpa_network->bssid, group_owner_bssid, ETH_ALEN);
-	wpa_network->bssid_set = 1;
-
-	wpa_network->ssid = (uint8_t *)os_malloc(ssid.size());
-	if (wpa_network->ssid == NULL) {
-		wpa_config_remove_network(wpa_s->conf, wpa_network->id);
-		return  NULL;
-	}
-	memcpy(wpa_network->ssid, ssid.data(), ssid.size());
-	wpa_network->ssid_len = ssid.size();
-
-	wpa_network->psk_set = 0;
-	wpa_network->passphrase = dup_binstr(passphrase.c_str(), passphrase.length());
-	if (wpa_network->passphrase == NULL) {
-		wpa_config_remove_network(wpa_s->conf, wpa_network->id);
-		return  NULL;
-	}
-	wpa_config_update_psk(wpa_network);
-
-	return wpa_network;
-
-}
-
-/**
- * findBssBySsid - Fetch a BSS table entry based on SSID and optional BSSID.
- * @wpa_s: Pointer to wpa_supplicant data
- * @bssid: BSSID, zero addr matches any bssid
- * @ssid: SSID
- * @ssid_len: Length of @ssid
- * Returns: Pointer to the BSS entry or %NULL if not found
- */
-struct wpa_bss* P2pIface::findBssBySsid(
-    struct wpa_supplicant *wpa_s, const u8 *bssid,
-    const u8 *ssid, size_t ssid_len)
-{
-	struct wpa_bss *bss;
-	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
-		if ((is_zero_ether_addr(bssid) ||
-		    os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0) &&
-		    bss->ssid_len == ssid_len &&
-		    os_memcmp(bss->ssid, ssid, ssid_len) == 0)
-			return bss;
-	}
-	return NULL;
 }
 
 }  // namespace implementation

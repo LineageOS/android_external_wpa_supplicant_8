@@ -303,14 +303,6 @@ private:
 	struct wpa_supplicant* retrieveIfacePtr();
 	struct wpa_supplicant* retrieveGroupIfacePtr(
 	    const std::string& group_ifname);
-	struct wpa_ssid* addGroupClientNetwork(
-	    struct wpa_supplicant* wpa_s,
-	    uint8_t *group_owner_bssid,
-	    const std::vector<uint8_t>& ssid,
-	    const std::string& passphrase);
-	struct wpa_bss* findBssBySsid(
-	    struct wpa_supplicant *wpa_s, const u8 *bssid,
-	    const u8 *ssid, size_t ssid_len);
 
 	// Reference to the global wpa_struct. This is assumed to be valid for
 	// the lifetime of the process.
