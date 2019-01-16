@@ -1511,6 +1511,15 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->dpp_config_processing)
 		fprintf(f, "dpp_config_processing=%d\n",
 			config->dpp_config_processing);
+	if (config->p2p_device_random_mac_addr)
+		fprintf(f, "p2p_device_random_mac_addr=%d\n",
+			config->p2p_device_random_mac_addr);
+	if (config->p2p_device_persistent_mac_addr)
+		fprintf(f, "p2p_device_persistent_mac_addr=%s\n",
+			config->p2p_device_persistent_mac_addr);
+	if (config->p2p_interface_random_mac_addr)
+		fprintf(f, "p2p_interface_random_mac_addr=%d\n",
+			config->p2p_interface_random_mac_addr);
 
 }
 

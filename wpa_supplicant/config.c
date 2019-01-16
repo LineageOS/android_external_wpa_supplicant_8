@@ -2637,6 +2637,7 @@ void wpa_config_free(struct wpa_config *config)
 #ifdef CONFIG_MBO
 	os_free(config->non_pref_chan);
 #endif /* CONFIG_MBO */
+	os_free(config->p2p_device_persistent_mac_addr);
 
 	os_free(config);
 }
@@ -4753,6 +4754,9 @@ static const struct global_parse_data global_fields[] = {
 	{ INT(gas_rand_addr_lifetime), 0 },
 	{ INT_RANGE(gas_rand_mac_addr, 0, 2), 0 },
 	{ INT_RANGE(dpp_config_processing, 0, 2), 0 },
+	{ INT(p2p_device_random_mac_addr), 0 },
+	{ STR(p2p_device_persistent_mac_addr), 0 },
+	{ INT(p2p_interface_random_mac_addr), 0 },
 };
 
 #undef FUNC
