@@ -34,7 +34,9 @@ constexpr uint32_t kAllowedKeyMgmtMask =
      static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::OSEN) |
      static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::SAE) |
      static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::SUITE_B_192) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::OWE));
+     static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::OWE) |
+     static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK_SHA256) |
+     static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP_SHA256));
 constexpr uint32_t kAllowedProtoMask =
     (static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::WPA) |
      static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::RSN) |

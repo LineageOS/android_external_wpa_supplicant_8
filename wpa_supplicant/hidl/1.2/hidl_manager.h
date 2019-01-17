@@ -357,6 +357,14 @@ static_assert(
 	WPA_KEY_MGMT_OWE,
     "KeyMgmt value mismatch");
 static_assert(
+    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK_SHA256) ==
+	WPA_KEY_MGMT_PSK_SHA256,
+    "KeyMgmt value mismatch");
+static_assert(
+    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP_SHA256) ==
+	WPA_KEY_MGMT_IEEE8021X_SHA256,
+    "KeyMgmt value mismatch");
+static_assert(
     static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::WPA) ==
 	WPA_PROTO_WPA,
     "Proto value mismatch");
