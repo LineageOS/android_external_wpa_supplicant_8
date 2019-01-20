@@ -1499,6 +1499,13 @@ struct wpa_config {
 	 */
 	int p2p_interface_random_mac_addr;
 
+	/**
+	 * bss_no_flush_when_down - Whether to flush BSS entries when the interface is disabled
+	 *
+	 * 0 = Flush BSS entries when the interface becomes disabled (Default)
+	 * 1 = Do not flush BSS entries when the interface becomes disabled
+	 */
+	int bss_no_flush_when_down;
 };
 
 

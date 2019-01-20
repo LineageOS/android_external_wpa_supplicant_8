@@ -1142,7 +1142,6 @@ static void wpas_dpp_rx_auth_req(struct wpa_supplicant *wpa_s, const u8 *src,
 					  peer_bi, own_bi, freq, hdr, buf, len);
 	if (!wpa_s->dpp_auth) {
 		wpa_printf(MSG_DEBUG, "DPP: No response generated");
-		wpas_notify_dpp_auth_failure(wpa_s);
 		return;
 	}
 	wpas_dpp_set_testing_options(wpa_s, wpa_s->dpp_auth);
@@ -1531,7 +1530,6 @@ static void wpas_dpp_rx_auth_resp(struct wpa_supplicant *wpa_s, const u8 *src,
 			return;
 		}
 		wpa_printf(MSG_DEBUG, "DPP: No confirm generated");
-		wpas_notify_dpp_auth_failure(wpa_s);
 		return;
 	}
 	os_memcpy(auth->peer_mac_addr, src, ETH_ALEN);

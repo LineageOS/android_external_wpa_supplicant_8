@@ -504,12 +504,14 @@ int HidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		// Turn on Android specific customizations for STA interfaces
 		// here!
 		//
-		// Turn on scan randomization.
-		if (wpas_mac_addr_rand_scan_set(
-			wpa_s, MAC_ADDR_RAND_SCAN, nullptr, nullptr)) {
-			wpa_printf(
-			    MSG_ERROR,
-			    "Failed to enable scan mac randomization");
+		// Turn on scan mac randomization only if driver supports.
+		if (wpa_s->mac_addr_rand_supported & MAC_ADDR_RAND_SCAN) {
+			if (wpas_mac_addr_rand_scan_set(
+				wpa_s, MAC_ADDR_RAND_SCAN, nullptr, nullptr)) {
+				wpa_printf(
+				    MSG_ERROR,
+				    "Failed to enable scan mac randomization");
+			}
 		}
 	}
 

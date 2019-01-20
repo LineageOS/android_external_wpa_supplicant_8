@@ -1106,7 +1106,6 @@ endif
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := hostapd_cli
-LOCAL_MODULE_TAGS := debug
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 LOCAL_CFLAGS := $(L_CFLAGS)

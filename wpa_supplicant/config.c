@@ -4757,6 +4757,7 @@ static const struct global_parse_data global_fields[] = {
 	{ INT(p2p_device_random_mac_addr), 0 },
 	{ STR(p2p_device_persistent_mac_addr), 0 },
 	{ INT(p2p_interface_random_mac_addr), 0 },
+	{ INT_RANGE(bss_no_flush_when_down, 0, 1), 0 },
 };
 
 #undef FUNC
