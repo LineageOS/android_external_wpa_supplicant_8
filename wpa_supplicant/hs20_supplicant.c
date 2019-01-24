@@ -50,9 +50,12 @@ struct osu_provider {
 	u8 bssid[ETH_ALEN];
 	u8 osu_ssid[SSID_MAX_LEN];
 	u8 osu_ssid_len;
+	u8 osu_ssid2[SSID_MAX_LEN];
+	u8 osu_ssid2_len;
 	char server_uri[256];
 	u32 osu_methods; /* bit 0 = OMA-DM, bit 1 = SOAP-XML SPP */
 	char osu_nai[256];
+	char osu_nai2[256];
 	struct osu_lang_string friendly_name[OSU_MAX_ITEMS];
 	size_t friendly_name_count;
 	struct osu_lang_string serv_desc[OSU_MAX_ITEMS];
@@ -676,6 +679,15 @@ void hs20_parse_rx_hs20_anqp_resp(struct wpa_supplicant *wpa_s,
 				wpabuf_alloc_copy(pos, slen);
 		}
 		break;
+	case HS20_STYPE_OSU_PROVIDERS_NAI_LIST:
+		wpa_msg(wpa_s, MSG_INFO, RX_HS20_ANQP MACSTR
+			" OSU Providers NAI List", MAC2STR(sa));
+		if (anqp) {
+			wpabuf_free(anqp->hs20_osu_providers_nai_list);
+			anqp->hs20_osu_providers_nai_list =
+				wpabuf_alloc_copy(pos, slen);
+		}
+		break;
 	default:
 		wpa_printf(MSG_DEBUG, "HS20: Unsupported subtype %u", subtype);
 		break;
@@ -755,8 +767,15 @@ static void hs20_osu_fetch_done(struct wpa_supplicant *wpa_s)
 				wpa_ssid_txt(osu->osu_ssid,
 					     osu->osu_ssid_len));
 		}
+		if (osu->osu_ssid2_len) {
+			fprintf(f, "osu_ssid2=%s\n",
+				wpa_ssid_txt(osu->osu_ssid2,
+					     osu->osu_ssid2_len));
+		}
 		if (osu->osu_nai[0])
 			fprintf(f, "osu_nai=%s\n", osu->osu_nai);
+		if (osu->osu_nai2[0])
+			fprintf(f, "osu_nai2=%s\n", osu->osu_nai2);
 		for (j = 0; j < osu->friendly_name_count; j++) {
 			fprintf(f, "friendly_name=%s:%s\n",
 				osu->friendly_name[j].lang,
@@ -820,6 +839,7 @@ void hs20_next_osu_icon(struct wpa_supplicant *wpa_s)
 
 static void hs20_osu_add_prov(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 			      const u8 *osu_ssid, u8 osu_ssid_len,
+			      const u8 *osu_ssid2, u8 osu_ssid2_len,
 			      const u8 *pos, size_t len)
 {
 	struct osu_provider *prov;
@@ -841,6 +861,9 @@ static void hs20_osu_add_prov(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 	os_memcpy(prov->bssid, bss->bssid, ETH_ALEN);
 	os_memcpy(prov->osu_ssid, osu_ssid, osu_ssid_len);
 	prov->osu_ssid_len = osu_ssid_len;
+	if (osu_ssid2)
+		os_memcpy(prov->osu_ssid2, osu_ssid2, osu_ssid2_len);
+	prov->osu_ssid2_len = osu_ssid2_len;
 
 	/* OSU Friendly Name Length */
 	if (end - pos < 2) {
@@ -1022,18 +1045,30 @@ void hs20_osu_icon_fetch(struct wpa_supplicant *wpa_s)
 	struct wpabuf *prov_anqp;
 	const u8 *pos, *end;
 	u16 len;
-	const u8 *osu_ssid;
-	u8 osu_ssid_len;
+	const u8 *osu_ssid, *osu_ssid2;
+	u8 osu_ssid_len, osu_ssid2_len;
 	u8 num_providers;
 
 	hs20_free_osu_prov(wpa_s);
 
 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
+		struct wpa_ie_data data;
+		const u8 *ie;
+
 		if (bss->anqp == NULL)
 			continue;
 		prov_anqp = bss->anqp->hs20_osu_providers_list;
 		if (prov_anqp == NULL)
 			continue;
+		ie = wpa_bss_get_ie(bss, WLAN_EID_RSN);
+		if (ie && wpa_parse_wpa_ie(ie, 2 + ie[1], &data) == 0 &&
+		    (data.key_mgmt & WPA_KEY_MGMT_OSEN)) {
+			osu_ssid2 = bss->ssid;
+			osu_ssid2_len = bss->ssid_len;
+		} else {
+			osu_ssid2 = NULL;
+			osu_ssid2_len = 0;
+		}
 		wpa_printf(MSG_DEBUG, "HS 2.0: Parsing OSU Providers list from "
 			   MACSTR, MAC2STR(bss->bssid));
 		wpa_hexdump_buf(MSG_DEBUG, "HS 2.0: OSU Providers list",
@@ -1075,7 +1110,8 @@ void hs20_osu_icon_fetch(struct wpa_supplicant *wpa_s)
 			if (len > (unsigned int) (end - pos))
 				break;
 			hs20_osu_add_prov(wpa_s, bss, osu_ssid,
-					  osu_ssid_len, pos, len);
+					  osu_ssid_len, osu_ssid2,
+					  osu_ssid2_len, pos, len);
 			pos += len;
 		}
 
@@ -1083,6 +1119,35 @@ void hs20_osu_icon_fetch(struct wpa_supplicant *wpa_s)
 			wpa_printf(MSG_DEBUG, "HS 2.0: Ignored %d bytes of "
 				   "extra data after OSU Providers",
 				   (int) (end - pos));
+		}
+
+		prov_anqp = bss->anqp->hs20_osu_providers_nai_list;
+		if (!prov_anqp)
+			continue;
+		wpa_printf(MSG_DEBUG,
+			   "HS 2.0: Parsing OSU Providers NAI List from "
+			   MACSTR, MAC2STR(bss->bssid));
+		wpa_hexdump_buf(MSG_DEBUG, "HS 2.0: OSU Providers NAI List",
+				prov_anqp);
+		pos = wpabuf_head(prov_anqp);
+		end = pos + wpabuf_len(prov_anqp);
+		num_providers = 0;
+		while (end - pos > 0) {
+			len = *pos++;
+			if (end - pos < len) {
+				wpa_printf(MSG_DEBUG,
+					   "HS 2.0: Not enough room for OSU_NAI");
+				break;
+			}
+			if (num_providers >= wpa_s->osu_prov_count) {
+				wpa_printf(MSG_DEBUG,
+					   "HS 2.0: Ignore unexpected OSU Provider NAI List entries");
+				break;
+			}
+			os_memcpy(wpa_s->osu_prov[num_providers].osu_nai2,
+				  pos, len);
+			pos += len;
+			num_providers++;
 		}
 	}
 

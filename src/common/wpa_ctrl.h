@@ -275,6 +275,9 @@ extern "C" {
 #define RX_HS20_ICON "RX-HS20-ICON "
 #define RX_MBO_ANQP "RX-MBO-ANQP "
 
+/* parameters: <Venue Number> <Venue URL> */
+#define RX_VENUE_URL "RX-VENUE-URL "
+
 #define HS20_SUBSCRIPTION_REMEDIATION "HS20-SUBSCRIPTION-REMEDIATION "
 #define HS20_DEAUTH_IMMINENT_NOTICE "HS20-DEAUTH-IMMINENT-NOTICE "
 #define HS20_T_C_ACCEPTANCE "HS20-T-C-ACCEPTANCE "
@@ -328,6 +331,13 @@ extern "C" {
 
 /* BSS Transition Management Response frame received */
 #define BSS_TM_RESP "BSS-TM-RESP "
+
+/* Collocated Interference Request frame received;
+ * parameters: <dialog token> <automatic report enabled> <report timeout> */
+#define COLOC_INTF_REQ "COLOC-INTF-REQ "
+/* Collocated Interference Report frame received;
+ * parameters: <STA address> <dialog token> <hexdump of report elements> */
+#define COLOC_INTF_REPORT "COLOC-INTF-REPORT "
 
 /* MBO IE with cellular data connection preference received */
 #define MBO_CELL_PREFERENCE "MBO-CELL-PREFERENCE "

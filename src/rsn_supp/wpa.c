@@ -1007,7 +1007,7 @@ static int wpa_supplicant_install_igtk(struct wpa_sm *sm,
 	}
 
 	wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG,
-		"WPA: IGTK keyid %d pn %02x%02x%02x%02x%02x%02x",
+		"WPA: IGTK keyid %d pn " COMPACT_MACSTR,
 		keyidx, MAC2STR(igtk->pn));
 	wpa_hexdump_key(MSG_DEBUG, "WPA: IGTK", igtk->igtk, len);
 	if (keyidx > 4095) {
@@ -1461,7 +1461,13 @@ static void wpa_supplicant_process_3_of_4(struct wpa_sm *sm,
 	if (ie.gtk)
 		wpa_sm_set_rekey_offload(sm);
 
-	if (sm->proto == WPA_PROTO_RSN && wpa_key_mgmt_suite_b(sm->key_mgmt)) {
+	/* Add PMKSA cache entry for Suite B AKMs here since PMKID can be
+	 * calculated only after KCK has been derived. Though, do not replace an
+	 * existing PMKSA entry after each 4-way handshake (i.e., new KCK/PMKID)
+	 * to avoid unnecessary changes of PMKID while continuing to use the
+	 * same PMK. */
+	if (sm->proto == WPA_PROTO_RSN && wpa_key_mgmt_suite_b(sm->key_mgmt) &&
+	    !sm->cur_pmksa) {
 		struct rsn_pmksa_cache_entry *sa;
 
 		sa = pmksa_cache_add(sm->pmksa, sm->pmk, sm->pmk_len, NULL,

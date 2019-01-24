@@ -191,6 +191,8 @@ public:
 	    const hidl_vec<uint8_t>& ssid, const hidl_string& passphrase,
 	    bool persistent, uint32_t freq, const hidl_array<uint8_t, 6>& peer_address,
 	    bool joinExistingGroup, addGroup_1_2_cb _hidl_cb) override;
+	Return<void> setMacRandomization(
+	    bool enable, setMacRandomization_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -299,6 +301,7 @@ private:
 	    const std::vector<uint8_t>& ssid, const std::string& passphrase,
 	    bool persistent, uint32_t freq, const std::array<uint8_t, 6>& peer_address,
 	    bool joinExistingGroup);
+	SupplicantStatus setMacRandomizationInternal(bool enable);
 
 	struct wpa_supplicant* retrieveIfacePtr();
 	struct wpa_supplicant* retrieveGroupIfacePtr(

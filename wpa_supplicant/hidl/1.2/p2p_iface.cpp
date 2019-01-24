@@ -837,6 +837,13 @@ Return<void> P2pIface::addGroup_1_2(
 	    ssid, passphrase, persistent, freq, peer_address, join);
 }
 
+Return<void> P2pIface::setMacRandomization(bool enable, setMacRandomization_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &P2pIface::setMacRandomizationInternal, _hidl_cb, enable);
+}
+
 std::pair<SupplicantStatus, std::string> P2pIface::getNameInternal()
 {
 	return {{SupplicantStatusCode::SUCCESS, ""}, ifname_};
@@ -1720,6 +1727,55 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 		pending_scan_res_join_callback = NULL;
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, "Failed to start scan."};
 	}
+	return {SupplicantStatusCode::SUCCESS, ""};
+}
+
+SupplicantStatus P2pIface::setMacRandomizationInternal(bool enable)
+{
+	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	bool currentEnabledState = !!wpa_s->conf->p2p_device_random_mac_addr;
+	u8 *addr = NULL;
+
+	// The same state, no change is needed.
+	if (currentEnabledState == enable) {
+		wpa_printf(MSG_DEBUG, "The random MAC is %s already.",
+		    (enable) ? "enabled" : "disabled");
+		return {SupplicantStatusCode::SUCCESS, ""};
+	}
+
+	if (enable) {
+		wpa_s->conf->p2p_device_random_mac_addr = 1;
+		wpa_s->conf->p2p_interface_random_mac_addr = 1;
+
+		// restore config if it failed to set up MAC address.
+		if (wpas_p2p_mac_setup(wpa_s) < 0) {
+			wpa_s->conf->p2p_device_random_mac_addr = 0;
+			wpa_s->conf->p2p_interface_random_mac_addr = 0;
+			return {SupplicantStatusCode::FAILURE_UNKNOWN,
+			    "Failed to set up MAC address."};
+		}
+	} else {
+		// disable random MAC will use original MAC address
+		// regardless of any saved persistent groups.
+		if (wpa_drv_set_mac_addr(wpa_s, NULL) < 0) {
+			wpa_printf(MSG_ERROR, "Failed to restore MAC address");
+			return {SupplicantStatusCode::FAILURE_UNKNOWN,
+			    "Failed to restore MAC address."};
+		}
+
+		if (wpa_supplicant_update_mac_addr(wpa_s) < 0) {
+			wpa_printf(MSG_INFO, "Could not update MAC address information");
+			return {SupplicantStatusCode::FAILURE_UNKNOWN,
+			    "Failed to update MAC address."};
+		}
+		wpa_s->conf->p2p_device_random_mac_addr = 0;
+		wpa_s->conf->p2p_interface_random_mac_addr = 0;
+	}
+
+	// update internal data to send out correct device address in action frame.
+	os_memcpy(wpa_s->global->p2p_dev_addr, wpa_s->own_addr, ETH_ALEN);
+	os_memcpy(wpa_s->global->p2p->cfg->dev_addr, wpa_s->global->p2p_dev_addr, ETH_ALEN);
+
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
 

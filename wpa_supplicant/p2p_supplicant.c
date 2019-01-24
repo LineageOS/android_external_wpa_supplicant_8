@@ -4358,22 +4358,18 @@ int wpas_p2p_mac_setup(struct wpa_supplicant *wpa_s)
 			return -EINVAL;
 		}
 
-		// store generated MAC address.
-		if (wpa_s->conf->p2p_device_persistent_mac_addr)
-			os_free(wpa_s->conf->p2p_device_persistent_mac_addr);
-		size_t mac_addr_str_len = sizeof("00:00:00:00:00:00");
-		wpa_s->conf->p2p_device_persistent_mac_addr =
-			os_zalloc(mac_addr_str_len + 1);
-		os_snprintf(wpa_s->conf->p2p_device_persistent_mac_addr,
-			mac_addr_str_len, MACSTR, MAC2STR(addr));
+		/* Store generated MAC address. */
+		os_memcpy(wpa_s->conf->p2p_device_persistent_mac_addr, addr,
+			  ETH_ALEN);
 	} else {
-		// If there are existing saved groups, restore last MAC address.
-		// if there is no last used MAC address, the last one is factory MAC.
-		if (!wpa_s->conf->p2p_device_persistent_mac_addr)
+		/* If there are existing saved groups, restore last MAC address.
+		 * if there is no last used MAC address, the last one is
+		 * factory MAC. */
+		if (is_zero_ether_addr(
+			    wpa_s->conf->p2p_device_persistent_mac_addr))
 			return 0;
-
-		if (hwaddr_aton(wpa_s->conf->p2p_device_persistent_mac_addr, addr) < 0)
-			return -EINVAL;
+		os_memcpy(addr, wpa_s->conf->p2p_device_persistent_mac_addr,
+			  ETH_ALEN);
 		wpa_msg(wpa_s, MSG_DEBUG, "Restore last used MAC address.");
 	}
 

@@ -293,7 +293,6 @@ static int process_est_cert(struct hs20_osu_client *ctx, xml_node_t *cert,
 
 	unlink("Cert/est-req.b64");
 	unlink("Cert/est-req.pem");
-	unlink("Cert/est-resp.raw");
 	rmdir("Cert");
 
 	return 0;
@@ -437,7 +436,7 @@ static int cmd_dl_polupd_ca(struct hs20_osu_client *ctx, const char *pps_fname,
 	if (node == NULL) {
 		wpa_printf(MSG_INFO, "No Policy/PolicyUpdate/TrustRoot/CertURL found from PPS");
 		xml_node_free(ctx->xml, pps);
-		return -1;
+		return -2;
 	}
 
 	ret = download_cert(ctx, node, ca_fname);
@@ -464,7 +463,7 @@ static int cmd_dl_aaa_ca(struct hs20_osu_client *ctx, const char *pps_fname,
 	if (node == NULL) {
 		wpa_printf(MSG_INFO, "No AAAServerTrustRoot/CertURL found from PPS");
 		xml_node_free(ctx->xml, pps);
-		return -1;
+		return -2;
 	}
 
 	aaa = xml_node_first_child(ctx->xml, node);
@@ -486,7 +485,7 @@ static int download_trust_roots(struct hs20_osu_client *ctx,
 {
 	char *dir, *pos;
 	char fname[300];
-	int ret;
+	int ret, ret1;
 
 	dir = os_strdup(pps_fname);
 	if (dir == NULL)
@@ -501,9 +500,13 @@ static int download_trust_roots(struct hs20_osu_client *ctx,
 	snprintf(fname, sizeof(fname), "%s/ca.pem", dir);
 	ret = cmd_dl_osu_ca(ctx, pps_fname, fname);
 	snprintf(fname, sizeof(fname), "%s/polupd-ca.pem", dir);
-	cmd_dl_polupd_ca(ctx, pps_fname, fname);
+	ret1 = cmd_dl_polupd_ca(ctx, pps_fname, fname);
+	if (ret == 0 && ret1 == -1)
+		ret = -1;
 	snprintf(fname, sizeof(fname), "%s/aaa-ca.pem", dir);
-	cmd_dl_aaa_ca(ctx, pps_fname, fname);
+	ret1 = cmd_dl_aaa_ca(ctx, pps_fname, fname);
+	if (ret == 0 && ret1 == -1)
+		ret = -1;
 
 	os_free(dir);
 
@@ -1986,7 +1989,9 @@ struct osu_data {
 	char url[256];
 	unsigned int methods;
 	char osu_ssid[33];
+	char osu_ssid2[33];
 	char osu_nai[256];
+	char osu_nai2[256];
 	struct osu_lang_text friendly_name[MAX_OSU_VALS];
 	size_t friendly_name_count;
 	struct osu_lang_text serv_desc[MAX_OSU_VALS];
@@ -2045,9 +2050,21 @@ static struct osu_data * parse_osu_providers(const char *fname, size_t *count)
 			continue;
 		}
 
+		if (strncmp(buf, "osu_ssid2=", 10) == 0) {
+			snprintf(last->osu_ssid2, sizeof(last->osu_ssid2),
+				 "%s", buf + 10);
+			continue;
+		}
+
 		if (os_strncmp(buf, "osu_nai=", 8) == 0) {
 			os_snprintf(last->osu_nai, sizeof(last->osu_nai),
 				    "%s", buf + 8);
+			continue;
+		}
+
+		if (os_strncmp(buf, "osu_nai2=", 9) == 0) {
+			os_snprintf(last->osu_nai2, sizeof(last->osu_nai2),
+				    "%s", buf + 9);
 			continue;
 		}
 
@@ -2126,9 +2143,9 @@ static struct osu_data * parse_osu_providers(const char *fname, size_t *count)
 
 
 static int osu_connect(struct hs20_osu_client *ctx, const char *bssid,
-		       const char *ssid, const char *url,
+		       const char *ssid, const char *ssid2, const char *url,
 		       unsigned int methods, int no_prod_assoc,
-		       const char *osu_nai)
+		       const char *osu_nai, const char *osu_nai2)
 {
 	int id;
 	const char *ifname = ctx->ifname;
@@ -2136,16 +2153,40 @@ static int osu_connect(struct hs20_osu_client *ctx, const char *bssid,
 	struct wpa_ctrl *mon;
 	int res;
 
+	if (ssid2 && ssid2[0] == '\0')
+		ssid2 = NULL;
+
+	if (ctx->osu_ssid) {
+		if (os_strcmp(ssid, ctx->osu_ssid) == 0) {
+			wpa_printf(MSG_DEBUG,
+				   "Enforced OSU SSID matches ANQP info");
+			ssid2 = NULL;
+		} else if (ssid2 && os_strcmp(ssid2, ctx->osu_ssid) == 0) {
+			wpa_printf(MSG_DEBUG,
+				   "Enforced OSU SSID matches RSN[OSEN] info");
+			ssid = ssid2;
+		} else {
+			wpa_printf(MSG_INFO, "Enforced OSU SSID did not match");
+			write_summary(ctx, "Enforced OSU SSID did not match");
+			return -1;
+		}
+	}
+
 	id = add_network(ifname);
 	if (id < 0)
 		return -1;
 	if (set_network_quoted(ifname, id, "ssid", ssid) < 0)
 		return -1;
+	if (ssid2)
+		osu_nai = osu_nai2;
 	if (osu_nai && os_strlen(osu_nai) > 0) {
 		char dir[255], fname[300];
 		if (getcwd(dir, sizeof(dir)) == NULL)
 			return -1;
 		os_snprintf(fname, sizeof(fname), "%s/osu-ca.pem", dir);
+
+		if (ssid2 && set_network_quoted(ifname, id, "ssid", ssid2) < 0)
+			return -1;
 
 		if (set_network(ifname, id, "proto", "OSEN") < 0 ||
 		    set_network(ifname, id, "key_mgmt", "OSEN") < 0 ||
@@ -2156,6 +2197,10 @@ static int osu_connect(struct hs20_osu_client *ctx, const char *bssid,
 		    set_network_quoted(ifname, id, "identity", osu_nai) < 0 ||
 		    set_network_quoted(ifname, id, "ca_cert", fname) < 0)
 			return -1;
+	} else if (ssid2) {
+		wpa_printf(MSG_INFO, "No OSU_NAI set for RSN[OSEN]");
+		write_summary(ctx, "No OSU_NAI set for RSN[OSEN]");
+		return -1;
 	} else {
 		if (set_network(ifname, id, "key_mgmt", "NONE") < 0)
 			return -1;
@@ -2331,8 +2376,12 @@ static int cmd_osu_select(struct hs20_osu_client *ctx, const char *dir,
 		fprintf(f, "</table></a><br><small>BSSID: %s<br>\n"
 			"SSID: %s<br>\n",
 			last->bssid, last->osu_ssid);
+		if (last->osu_ssid2[0])
+			fprintf(f, "SSID2: %s<br>\n", last->osu_ssid2);
 		if (last->osu_nai[0])
 			fprintf(f, "NAI: %s<br>\n", last->osu_nai);
+		if (last->osu_nai2[0])
+			fprintf(f, "NAI2: %s<br>\n", last->osu_nai2);
 		fprintf(f, "URL: %s<br>\n"
 			"methods:%s%s<br>\n"
 			"</small></p>\n",
@@ -2359,6 +2408,8 @@ selected:
 		ret = 0;
 		wpa_printf(MSG_INFO, "BSSID: %s", last->bssid);
 		wpa_printf(MSG_INFO, "SSID: %s", last->osu_ssid);
+		if (last->osu_ssid2[0])
+			wpa_printf(MSG_INFO, "SSID2: %s", last->osu_ssid2);
 		wpa_printf(MSG_INFO, "URL: %s", last->url);
 		write_summary(ctx, "Selected OSU provider id=%d BSSID=%s SSID=%s URL=%s",
 			      ret, last->bssid, last->osu_ssid, last->url);
@@ -2413,10 +2464,13 @@ selected:
 					   "No supported OSU provisioning method");
 				ret = -1;
 			}
-		} else if (connect)
+		} else if (connect) {
 			ret = osu_connect(ctx, last->bssid, last->osu_ssid,
+					  last->osu_ssid2,
 					  last->url, last->methods,
-					  no_prod_assoc, last->osu_nai);
+					  no_prod_assoc, last->osu_nai,
+					  last->osu_nai2);
+		}
 	} else
 		ret = -1;
 
@@ -3134,7 +3188,7 @@ int main(int argc, char *argv[])
 		return -1;
 
 	for (;;) {
-		c = getopt(argc, argv, "df:hKNO:qr:s:S:tw:x:");
+		c = getopt(argc, argv, "df:hKNo:O:qr:s:S:tw:x:");
 		if (c < 0)
 			break;
 		switch (c) {
@@ -3150,6 +3204,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'N':
 			no_prod_assoc = 1;
+			break;
+		case 'o':
+			ctx.osu_ssid = optarg;
 			break;
 		case 'O':
 			friendly_name = optarg;

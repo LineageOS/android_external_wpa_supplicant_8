@@ -1511,19 +1511,21 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->dpp_config_processing)
 		fprintf(f, "dpp_config_processing=%d\n",
 			config->dpp_config_processing);
+	if (config->coloc_intf_reporting)
+		fprintf(f, "coloc_intf_reporting=%d\n",
+			config->coloc_intf_reporting);
 	if (config->p2p_device_random_mac_addr)
 		fprintf(f, "p2p_device_random_mac_addr=%d\n",
 			config->p2p_device_random_mac_addr);
-	if (config->p2p_device_persistent_mac_addr)
-		fprintf(f, "p2p_device_persistent_mac_addr=%s\n",
-			config->p2p_device_persistent_mac_addr);
+	if (!is_zero_ether_addr(config->p2p_device_persistent_mac_addr))
+		fprintf(f, "p2p_device_persistent_mac_addr=" MACSTR "\n",
+			MAC2STR(config->p2p_device_persistent_mac_addr));
 	if (config->p2p_interface_random_mac_addr)
 		fprintf(f, "p2p_interface_random_mac_addr=%d\n",
 			config->p2p_interface_random_mac_addr);
 	if (config->bss_no_flush_when_down)
 		fprintf(f, "bss_no_flush_when_down=%d\n",
 			config->bss_no_flush_when_down);
-
 }
 
 #endif /* CONFIG_NO_CONFIG_WRITE */

@@ -2637,7 +2637,6 @@ void wpa_config_free(struct wpa_config *config)
 #ifdef CONFIG_MBO
 	os_free(config->non_pref_chan);
 #endif /* CONFIG_MBO */
-	os_free(config->p2p_device_persistent_mac_addr);
 
 	os_free(config);
 }
@@ -3156,14 +3155,16 @@ static int wpa_config_set_cred_roaming_consortiums(struct wpa_cred *cred,
 		}
 		roaming_consortiums_len[num_roaming_consortiums] = len / 2;
 		num_roaming_consortiums++;
-		if (num_roaming_consortiums > MAX_ROAMING_CONS) {
+
+		if (!end)
+			break;
+
+		if (num_roaming_consortiums >= MAX_ROAMING_CONS) {
 			wpa_printf(MSG_INFO,
 				   "Too many roaming_consortiums OIs");
 			return -1;
 		}
 
-		if (!end)
-			break;
 		pos = end + 1;
 	}
 
@@ -4439,6 +4440,20 @@ static int wpa_config_process_p2p_no_go_freq(
 	return 0;
 }
 
+static int wpa_config_process_p2p_device_persistent_mac_addr(
+	const struct global_parse_data *data,
+	struct wpa_config *config, int line, const char *pos)
+{
+	if (hwaddr_aton2(pos, config->p2p_device_persistent_mac_addr) < 0) {
+		wpa_printf(MSG_ERROR,
+			   "Line %d: Invalid p2p_device_persistent_mac_addr '%s'",
+			   line, pos);
+		return -1;
+	}
+
+	return 0;
+}
+
 #endif /* CONFIG_P2P */
 
 
@@ -4680,6 +4695,9 @@ static const struct global_parse_data global_fields[] = {
 	{ IPV4(ip_addr_start), 0 },
 	{ IPV4(ip_addr_end), 0 },
 	{ INT_RANGE(p2p_cli_probe, 0, 1), 0 },
+	{ INT(p2p_device_random_mac_addr), 0 },
+	{ FUNC(p2p_device_persistent_mac_addr), 0 },
+	{ INT(p2p_interface_random_mac_addr), 0 },
 #endif /* CONFIG_P2P */
 	{ FUNC(country), CFG_CHANGED_COUNTRY },
 	{ INT(bss_max_count), 0 },
@@ -4754,9 +4772,8 @@ static const struct global_parse_data global_fields[] = {
 	{ INT(gas_rand_addr_lifetime), 0 },
 	{ INT_RANGE(gas_rand_mac_addr, 0, 2), 0 },
 	{ INT_RANGE(dpp_config_processing, 0, 2), 0 },
-	{ INT(p2p_device_random_mac_addr), 0 },
-	{ STR(p2p_device_persistent_mac_addr), 0 },
-	{ INT(p2p_interface_random_mac_addr), 0 },
+	{ INT_RANGE(bss_no_flush_when_down, 0, 1), 0 },
+	{ INT_RANGE(coloc_intf_reporting, 0, 1), 0 },
 	{ INT_RANGE(bss_no_flush_when_down, 0, 1), 0 },
 };
 

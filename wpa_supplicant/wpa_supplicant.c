@@ -1646,6 +1646,10 @@ static void wpas_ext_capab_byte(struct wpa_supplicant *wpa_s, u8 *pos, int idx)
 	case 0: /* Bits 0-7 */
 		break;
 	case 1: /* Bits 8-15 */
+		if (wpa_s->conf->coloc_intf_reporting) {
+			/* Bit 13 - Collocated Interference Reporting */
+			*pos |= 0x20;
+		}
 		break;
 	case 2: /* Bits 16-23 */
 #ifdef CONFIG_WNM
@@ -3076,6 +3080,11 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 				"MFP: require MFP");
 			params.mgmt_frame_protection =
 				MGMT_FRAME_PROTECTION_REQUIRED;
+#ifdef CONFIG_OWE
+		} else if (!rsn && (ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
+			   !ssid->owe_only) {
+			params.mgmt_frame_protection = NO_MGMT_FRAME_PROTECTION;
+#endif /* CONFIG_OWE */
 		}
 	}
 #endif /* CONFIG_IEEE80211W */
@@ -3303,6 +3312,7 @@ static void wpa_supplicant_enable_one_network(struct wpa_supplicant *wpa_s,
 		return;
 
 	ssid->disabled = 0;
+	ssid->owe_transition_bss_select_count = 0;
 	wpas_clear_temp_disabled(wpa_s, ssid, 1);
 	wpas_notify_network_enabled_changed(wpa_s, ssid);
 
@@ -3567,6 +3577,8 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
 	wpa_s->disconnected = 0;
 	wpa_s->reassociate = 1;
 	wpa_s->last_owe_group = 0;
+	if (ssid)
+		ssid->owe_transition_bss_select_count = 0;
 
 	if (wpa_s->connect_without_scan ||
 	    wpa_supplicant_fast_associate(wpa_s) != 1) {

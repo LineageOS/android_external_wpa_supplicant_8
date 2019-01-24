@@ -1471,6 +1471,15 @@ struct wpa_config {
 	int dpp_config_processing;
 
 	/**
+	 * coloc_intf_reporting - Colocated interference reporting
+	 *
+	 * dot11CoLocIntfReportingActivated
+	 * 0 = disabled (false)
+	 * 1 = enabled (true)
+	 */
+	int coloc_intf_reporting;
+
+	/**
 	 * p2p_device_random_mac_addr - P2P Device MAC address policy default
 	 *
 	 * 0 = use permanent MAC address
@@ -1487,7 +1496,7 @@ struct wpa_config {
 	 * and need to restore to last used MAC address.
 	 * format: aa:bb:cc:dd:ee:ff
 	 */
-	char *p2p_device_persistent_mac_addr;
+	u8 p2p_device_persistent_mac_addr[ETH_ALEN];
 
 	/**
 	 * p2p_interface_random_mac_addr - P2P Interface MAC address policy default
