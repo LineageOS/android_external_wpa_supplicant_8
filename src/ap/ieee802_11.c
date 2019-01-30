@@ -4056,6 +4056,18 @@ static void handle_auth_cb(struct hostapd_data *hapd,
 	u16 auth_alg, auth_transaction, status_code;
 	struct sta_info *sta;
 
+	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.auth)) {
+		wpa_printf(MSG_INFO, "handle_auth_cb - too short payload (len=%lu)",
+			   (unsigned long) len);
+
+		/*
+		 * Initialize status_code here because we are not able to read
+		 * it from the short payload.
+		 */
+		status_code = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto fail;
+	}
+
 	sta = ap_get_sta(hapd, mgmt->da);
 	if (!sta) {
 		wpa_printf(MSG_DEBUG, "handle_auth_cb: STA " MACSTR
@@ -4072,12 +4084,6 @@ static void handle_auth_cb(struct hostapd_data *hapd,
 		hostapd_logger(hapd, mgmt->da, HOSTAPD_MODULE_IEEE80211,
 			       HOSTAPD_LEVEL_NOTICE,
 			       "did not acknowledge authentication response");
-		goto fail;
-	}
-
-	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.auth)) {
-		wpa_printf(MSG_INFO, "handle_auth_cb - too short payload (len=%lu)",
-			   (unsigned long) len);
 		goto fail;
 	}
 

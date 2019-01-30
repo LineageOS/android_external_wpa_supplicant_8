@@ -1507,7 +1507,7 @@ void HidlManager::notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 		/* Unsupported AKM */
 		wpa_printf(MSG_ERROR, "DPP: Error: Unsupported AKM 0x%X",
 				config->key_mgmt);
-		notifyDppFailure(wpa_s, DppFailureCode::CONFIGURATION);
+		notifyDppFailure(wpa_s, DppFailureCode::NOT_SUPPORTED);
 		return;
 	}
 

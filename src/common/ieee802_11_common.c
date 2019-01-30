@@ -633,6 +633,8 @@ const u8 * get_hdr_bssid(const struct ieee80211_hdr *hdr, size_t len)
 			return NULL;
 		return hdr->addr1;
 	case WLAN_FC_TYPE_MGMT:
+		if (len < 24)
+			return NULL;
 		return hdr->addr3;
 	default:
 		return NULL;
