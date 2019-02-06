@@ -376,6 +376,10 @@ static void wnm_parse_neighbor_report_elem(struct neighbor_report *rep,
 		rep->preference_present = 1;
 		break;
 	case WNM_NEIGHBOR_BSS_TERMINATION_DURATION:
+		if (elen < 10) {
+			wpa_printf(MSG_DEBUG, "WNM: Too short bss_term_tsf");
+			break;
+		}
 		rep->bss_term_tsf = WPA_GET_LE64(pos);
 		rep->bss_term_dur = WPA_GET_LE16(pos + 8);
 		rep->bss_term_present = 1;
