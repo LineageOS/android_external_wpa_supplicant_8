@@ -13,6 +13,7 @@
 #include "utils/state_machine.h"
 #include "utils/bitfield.h"
 #include "common/ieee802_11_defs.h"
+#include "common/ocv.h"
 #include "crypto/aes.h"
 #include "crypto/aes_wrap.h"
 #include "crypto/aes_siv.h"
@@ -22,6 +23,7 @@
 #include "crypto/sha384.h"
 #include "crypto/random.h"
 #include "eapol_auth/eapol_auth_sm.h"
+#include "drivers/driver.h"
 #include "ap_config.h"
 #include "ieee802_11.h"
 #include "wpa_auth.h"
@@ -238,6 +240,17 @@ static void wpa_sta_disconnect(struct wpa_authenticator *wpa_auth,
 }
 
 
+#ifdef CONFIG_OCV
+static int wpa_channel_info(struct wpa_authenticator *wpa_auth,
+			    struct wpa_channel_info *ci)
+{
+	if (!wpa_auth->cb->channel_info)
+		return -1;
+	return wpa_auth->cb->channel_info(wpa_auth->cb_ctx, ci);
+}
+#endif /* CONFIG_OCV */
+
+
 static void wpa_rekey_gmk(void *eloop_ctx, void *timeout_ctx)
 {
 	struct wpa_authenticator *wpa_auth = eloop_ctx;
@@ -332,6 +345,10 @@ static int wpa_group_init_gmk_and_counter(struct wpa_authenticator *wpa_auth,
 	wpa_get_ntp_timestamp(buf + ETH_ALEN);
 	ptr = (unsigned long) group;
 	os_memcpy(buf + ETH_ALEN + 8, &ptr, sizeof(ptr));
+#ifdef TEST_FUZZ
+	os_memset(buf + ETH_ALEN, 0xab, 8);
+	os_memset(buf + ETH_ALEN + 8, 0xcd, sizeof(ptr));
+#endif /* TEST_FUZZ */
 	if (random_get_bytes(rkey, sizeof(rkey)) < 0)
 		return -1;
 
@@ -860,6 +877,8 @@ static int wpa_try_alt_snonce(struct wpa_state_machine *sm, u8 *data,
 
 		if (wpa_verify_key_mic(sm->wpa_key_mgmt, pmk_len, &PTK,
 				       data, data_len) == 0) {
+			os_memcpy(sm->PMK, pmk, pmk_len);
+			sm->pmk_len = pmk_len;
 			ok = 1;
 			break;
 		}
@@ -1202,6 +1221,11 @@ continue_processing:
 		     wpa_try_alt_snonce(sm, data, data_len))) {
 			wpa_auth_logger(wpa_auth, sm->addr, LOGGER_INFO,
 					"received EAPOL-Key with invalid MIC");
+#ifdef TEST_FUZZ
+			wpa_printf(MSG_INFO,
+				   "TEST: Ignore Key MIC failure for fuzz testing");
+			goto continue_fuzz;
+#endif /* TEST_FUZZ */
 			return;
 		}
 #ifdef CONFIG_FILS
@@ -1210,9 +1234,17 @@ continue_processing:
 				     &key_data_length) < 0) {
 			wpa_auth_logger(wpa_auth, sm->addr, LOGGER_INFO,
 					"received EAPOL-Key with invalid MIC");
+#ifdef TEST_FUZZ
+			wpa_printf(MSG_INFO,
+				   "TEST: Ignore Key MIC failure for fuzz testing");
+			goto continue_fuzz;
+#endif /* TEST_FUZZ */
 			return;
 		}
 #endif /* CONFIG_FILS */
+#ifdef TEST_FUZZ
+	continue_fuzz:
+#endif /* TEST_FUZZ */
 		sm->MICVerified = TRUE;
 		eloop_cancel_timeout(wpa_send_eapol_timeout, wpa_auth, sm);
 		sm->pending_1_of_4_timeout = 0;
@@ -1317,6 +1349,9 @@ static int wpa_gmk_to_gtk(const u8 *gmk, const char *label, const u8 *addr,
 	os_memcpy(data + ETH_ALEN, gnonce, WPA_NONCE_LEN);
 	pos = data + ETH_ALEN + WPA_NONCE_LEN;
 	wpa_get_ntp_timestamp(pos);
+#ifdef TEST_FUZZ
+	os_memset(pos, 0xef, 8);
+#endif /* TEST_FUZZ */
 	pos += 8;
 	if (random_get_bytes(pos, gtk_len) < 0)
 		ret = -1;
@@ -1596,6 +1631,9 @@ static void wpa_send_eapol(struct wpa_authenticator *wpa_auth,
 		timeout_ms = eapol_key_timeout_no_retrans;
 	if (pairwise && ctr == 1 && !(key_info & WPA_KEY_INFO_MIC))
 		sm->pending_1_of_4_timeout = 1;
+#ifdef TEST_FUZZ
+	timeout_ms = 1;
+#endif /* TEST_FUZZ */
 	wpa_printf(MSG_DEBUG, "WPA: Use EAPOL-Key timeout of %u ms (retry "
 		   "counter %u)", timeout_ms, ctr);
 	eloop_register_timeout(timeout_ms / 1000, (timeout_ms % 1000) * 1000,
@@ -2559,6 +2597,27 @@ static struct wpabuf * fils_prepare_plainbuf(struct wpa_state_machine *sm,
 	wpabuf_put(plain, tmp2 - tmp);
 
 	*len = (u8 *) wpabuf_put(plain, 0) - len - 1;
+
+#ifdef CONFIG_OCV
+	if (wpa_auth_uses_ocv(sm)) {
+		struct wpa_channel_info ci;
+		u8 *pos;
+
+		if (wpa_channel_info(sm->wpa_auth, &ci) != 0) {
+			wpa_printf(MSG_WARNING,
+				   "FILS: Failed to get channel info for OCI element");
+			wpabuf_free(plain);
+			return NULL;
+		}
+
+		pos = wpabuf_put(plain, OCV_OCI_EXTENDED_LEN);
+		if (ocv_insert_extended_oci(&ci, pos) < 0) {
+			wpabuf_free(plain);
+			return NULL;
+		}
+	}
+#endif /* CONFIG_OCV */
+
 	return plain;
 }
 
@@ -2624,6 +2683,21 @@ u8 * hostapd_eid_assoc_fils_session(struct wpa_state_machine *sm, u8 *buf,
 #endif /* CONFIG_FILS */
 
 
+#ifdef CONFIG_OCV
+int get_sta_tx_parameters(struct wpa_state_machine *sm, int ap_max_chanwidth,
+			  int ap_seg1_idx, int *bandwidth, int *seg1_idx)
+{
+	struct wpa_authenticator *wpa_auth = sm->wpa_auth;
+
+	if (!wpa_auth->cb->get_sta_tx_params)
+		return -1;
+	return wpa_auth->cb->get_sta_tx_params(wpa_auth->cb_ctx, sm->addr,
+					       ap_max_chanwidth, ap_seg1_idx,
+					       bandwidth, seg1_idx);
+}
+#endif /* CONFIG_OCV */
+
+
 SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 {
 	struct wpa_authenticator *wpa_auth = sm->wpa_auth;
@@ -2675,6 +2749,8 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 		    wpa_verify_key_mic(sm->wpa_key_mgmt, pmk_len, &PTK,
 				       sm->last_rx_eapol_key,
 				       sm->last_rx_eapol_key_len) == 0) {
+			os_memcpy(sm->PMK, pmk, pmk_len);
+			sm->pmk_len = pmk_len;
 			ok = 1;
 			break;
 		}
@@ -2746,6 +2822,32 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 				   WLAN_REASON_PREV_AUTH_NOT_VALID);
 		return;
 	}
+#ifdef CONFIG_OCV
+	if (wpa_auth_uses_ocv(sm)) {
+		struct wpa_channel_info ci;
+		int tx_chanwidth;
+		int tx_seg1_idx;
+
+		if (wpa_channel_info(wpa_auth, &ci) != 0) {
+			wpa_auth_logger(wpa_auth, sm->addr, LOGGER_INFO,
+					"Failed to get channel info to validate received OCI in EAPOL-Key 2/4");
+			return;
+		}
+
+		if (get_sta_tx_parameters(sm,
+					  channel_width_to_int(ci.chanwidth),
+					  ci.seg1_idx, &tx_chanwidth,
+					  &tx_seg1_idx) < 0)
+			return;
+
+		if (ocv_verify_tx_params(kde.oci, kde.oci_len, &ci,
+					 tx_chanwidth, tx_seg1_idx) != 0) {
+			wpa_auth_logger(wpa_auth, sm->addr, LOGGER_INFO,
+					ocv_errorstr);
+			return;
+		}
+	}
+#endif /* CONFIG_OCV */
 #ifdef CONFIG_IEEE80211R_AP
 	if (ft && ft_check_msg_2_of_4(wpa_auth, sm, &kde) < 0) {
 		wpa_sta_disconnect(wpa_auth, sm->addr,
@@ -2883,6 +2985,36 @@ static u8 * ieee80211w_kde_add(struct wpa_state_machine *sm, u8 *pos)
 #endif /* CONFIG_IEEE80211W */
 
 
+static int ocv_oci_len(struct wpa_state_machine *sm)
+{
+#ifdef CONFIG_OCV
+	if (wpa_auth_uses_ocv(sm))
+		return OCV_OCI_KDE_LEN;
+#endif /* CONFIG_OCV */
+	return 0;
+}
+
+static int ocv_oci_add(struct wpa_state_machine *sm, u8 **argpos)
+{
+#ifdef CONFIG_OCV
+	struct wpa_channel_info ci;
+
+	if (!wpa_auth_uses_ocv(sm))
+		return 0;
+
+	if (wpa_channel_info(sm->wpa_auth, &ci) != 0) {
+		wpa_printf(MSG_WARNING,
+			   "Failed to get channel info for OCI element");
+		return -1;
+	}
+
+	return ocv_insert_oci_kde(&ci, argpos);
+#else /* CONFIG_OCV */
+	return 0;
+#endif /* CONFIG_OCV */
+}
+
+
 SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 {
 	u8 rsc[WPA_KEY_RSC_LEN], *_rsc, *gtk, *kde, *pos, dummy_gtk[32];
@@ -2966,7 +3098,7 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 		}
 	}
 
-	kde_len = wpa_ie_len + ieee80211w_kde_len(sm);
+	kde_len = wpa_ie_len + ieee80211w_kde_len(sm) + ocv_oci_len(sm);
 	if (gtk)
 		kde_len += 2 + RSN_SELECTOR_LEN + 2 + gtk_len;
 #ifdef CONFIG_IEEE80211R_AP
@@ -3011,6 +3143,10 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 				  gtk, gtk_len);
 	}
 	pos = ieee80211w_kde_add(sm, pos);
+	if (ocv_oci_add(sm, &pos) < 0) {
+		os_free(kde);
+		return;
+	}
 
 #ifdef CONFIG_IEEE80211R_AP
 	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
@@ -3322,7 +3458,7 @@ SM_STATE(WPA_PTK_GROUP, REKEYNEGOTIATING)
 	}
 	if (sm->wpa == WPA_VERSION_WPA2) {
 		kde_len = 2 + RSN_SELECTOR_LEN + 2 + gsm->GTK_len +
-			ieee80211w_kde_len(sm);
+			ieee80211w_kde_len(sm) + ocv_oci_len(sm);
 		kde_buf = os_malloc(kde_len);
 		if (kde_buf == NULL)
 			return;
@@ -3333,6 +3469,10 @@ SM_STATE(WPA_PTK_GROUP, REKEYNEGOTIATING)
 		pos = wpa_add_kde(pos, RSN_KEY_DATA_GROUPKEY, hdr, 2,
 				  gtk, gsm->GTK_len);
 		pos = ieee80211w_kde_add(sm, pos);
+		if (ocv_oci_add(sm, &pos) < 0) {
+			os_free(kde_buf);
+			return;
+		}
 		kde_len = pos - kde;
 	} else {
 		kde = gtk;
@@ -3353,8 +3493,67 @@ SM_STATE(WPA_PTK_GROUP, REKEYNEGOTIATING)
 
 SM_STATE(WPA_PTK_GROUP, REKEYESTABLISHED)
 {
+#ifdef CONFIG_OCV
+	struct wpa_authenticator *wpa_auth = sm->wpa_auth;
+	const u8 *key_data, *mic;
+	struct ieee802_1x_hdr *hdr;
+	struct wpa_eapol_key *key;
+	struct wpa_eapol_ie_parse kde;
+	size_t mic_len;
+	u16 key_data_length;
+#endif /* CONFIG_OCV */
+
 	SM_ENTRY_MA(WPA_PTK_GROUP, REKEYESTABLISHED, wpa_ptk_group);
 	sm->EAPOLKeyReceived = FALSE;
+
+#ifdef CONFIG_OCV
+	mic_len = wpa_mic_len(sm->wpa_key_mgmt, sm->pmk_len);
+
+	/*
+	 * Note: last_rx_eapol_key length fields have already been validated in
+	 * wpa_receive().
+	 */
+	hdr = (struct ieee802_1x_hdr *) sm->last_rx_eapol_key;
+	key = (struct wpa_eapol_key *) (hdr + 1);
+	mic = (u8 *) (key + 1);
+	key_data = mic + mic_len + 2;
+	key_data_length = WPA_GET_BE16(mic + mic_len);
+	if (key_data_length > sm->last_rx_eapol_key_len - sizeof(*hdr) -
+	    sizeof(*key) - mic_len - 2)
+		return;
+
+	if (wpa_parse_kde_ies(key_data, key_data_length, &kde) < 0) {
+		wpa_auth_vlogger(wpa_auth, sm->addr, LOGGER_INFO,
+				 "received EAPOL-Key group msg 2/2 with invalid Key Data contents");
+		return;
+	}
+
+	if (wpa_auth_uses_ocv(sm)) {
+		struct wpa_channel_info ci;
+		int tx_chanwidth;
+		int tx_seg1_idx;
+
+		if (wpa_channel_info(wpa_auth, &ci) != 0) {
+			wpa_auth_logger(wpa_auth, sm->addr, LOGGER_INFO,
+					"Failed to get channel info to validate received OCI in EAPOL-Key group 1/2");
+			return;
+		}
+
+		if (get_sta_tx_parameters(sm,
+					  channel_width_to_int(ci.chanwidth),
+					  ci.seg1_idx, &tx_chanwidth,
+					  &tx_seg1_idx) < 0)
+			return;
+
+		if (ocv_verify_tx_params(kde.oci, kde.oci_len, &ci,
+					 tx_chanwidth, tx_seg1_idx) != 0) {
+			wpa_auth_logger(wpa_auth, sm->addr, LOGGER_INFO,
+					ocv_errorstr);
+			return;
+		}
+	}
+#endif /* CONFIG_OCV */
+
 	if (sm->GUpdateStationKeys)
 		sm->group->GKeyDoneStations--;
 	sm->GUpdateStationKeys = FALSE;
@@ -3960,6 +4159,15 @@ int wpa_auth_pairwise_set(struct wpa_state_machine *sm)
 int wpa_auth_get_pairwise(struct wpa_state_machine *sm)
 {
 	return sm->pairwise;
+}
+
+
+const u8 * wpa_auth_get_pmk(struct wpa_state_machine *sm, int *len)
+{
+	if (!sm)
+		return NULL;
+	*len = sm->pmk_len;
+	return sm->PMK;
 }
 
 
@@ -4666,7 +4874,7 @@ int wpa_auth_resend_m3(struct wpa_state_machine *sm,
 		}
 	}
 
-	kde_len = wpa_ie_len + ieee80211w_kde_len(sm);
+	kde_len = wpa_ie_len + ieee80211w_kde_len(sm) + ocv_oci_len(sm);
 	if (gtk)
 		kde_len += 2 + RSN_SELECTOR_LEN + 2 + gtk_len;
 #ifdef CONFIG_IEEE80211R_AP
@@ -4715,6 +4923,10 @@ int wpa_auth_resend_m3(struct wpa_state_machine *sm,
 		os_memset(opos, 0, 6); /* clear PN */
 	}
 #endif /* CONFIG_IEEE80211W */
+	if (ocv_oci_add(sm, &pos) < 0) {
+		os_free(kde);
+		return -1;
+	}
 
 #ifdef CONFIG_IEEE80211R_AP
 	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
@@ -4796,7 +5008,7 @@ int wpa_auth_resend_group_m1(struct wpa_state_machine *sm,
 	gtk = gsm->GTK[gsm->GN - 1];
 	if (sm->wpa == WPA_VERSION_WPA2) {
 		kde_len = 2 + RSN_SELECTOR_LEN + 2 + gsm->GTK_len +
-			ieee80211w_kde_len(sm);
+			ieee80211w_kde_len(sm) + ocv_oci_len(sm);
 		kde_buf = os_malloc(kde_len);
 		if (kde_buf == NULL)
 			return -1;
@@ -4816,6 +5028,10 @@ int wpa_auth_resend_group_m1(struct wpa_state_machine *sm,
 			os_memset(opos, 0, 6); /* clear PN */
 		}
 #endif /* CONFIG_IEEE80211W */
+		if (ocv_oci_add(sm, &pos) < 0) {
+			os_free(kde_buf);
+			return -1;
+		}
 		kde_len = pos - kde;
 	} else {
 		kde = gtk;

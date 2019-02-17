@@ -1488,6 +1488,63 @@ static int hostapd_ctrl_iface_disable(struct hostapd_iface *iface)
 }
 
 
+static int
+hostapd_ctrl_iface_kick_mismatch_psk_sta_iter(struct hostapd_data *hapd,
+					      struct sta_info *sta, void *ctx)
+{
+	struct hostapd_wpa_psk *psk;
+	const u8 *pmk;
+	int pmk_len;
+	int pmk_match;
+	int sta_match;
+	int bss_match;
+	int reason;
+
+	pmk = wpa_auth_get_pmk(sta->wpa_sm, &pmk_len);
+
+	for (psk = hapd->conf->ssid.wpa_psk; pmk && psk; psk = psk->next) {
+		pmk_match = PMK_LEN == pmk_len &&
+			os_memcmp(psk->psk, pmk, pmk_len) == 0;
+		sta_match = psk->group == 0 &&
+			os_memcmp(sta->addr, psk->addr, ETH_ALEN) == 0;
+		bss_match = psk->group == 1;
+
+		if (pmk_match && (sta_match || bss_match))
+			return 0;
+	}
+
+	wpa_printf(MSG_INFO, "STA " MACSTR
+		   " PSK/passphrase no longer valid - disconnect",
+		   MAC2STR(sta->addr));
+	reason = WLAN_REASON_PREV_AUTH_NOT_VALID;
+	hostapd_drv_sta_deauth(hapd, sta->addr, reason);
+	ap_sta_deauthenticate(hapd, sta, reason);
+
+	return 0;
+}
+
+
+static int hostapd_ctrl_iface_reload_wpa_psk(struct hostapd_data *hapd)
+{
+	struct hostapd_bss_config *conf = hapd->conf;
+	int err;
+
+	hostapd_config_clear_wpa_psk(&conf->ssid.wpa_psk);
+
+	err = hostapd_setup_wpa_psk(conf);
+	if (err < 0) {
+		wpa_printf(MSG_ERROR, "Reloading WPA-PSK passwords failed: %d",
+			   err);
+		return -1;
+	}
+
+	ap_for_each_sta(hapd, hostapd_ctrl_iface_kick_mismatch_psk_sta_iter,
+			NULL);
+
+	return 0;
+}
+
+
 #ifdef CONFIG_TESTING_OPTIONS
 
 static int hostapd_ctrl_iface_radar(struct hostapd_data *hapd, char *cmd)
@@ -2134,7 +2191,7 @@ static int hostapd_ctrl_set_key(struct hostapd_data *hapd, const char *cmd)
 	if (!pos)
 		return -1;
 	pos++;
-	if (hexstr2bin(pos, seq, sizeof(6)) < 0)
+	if (hexstr2bin(pos, seq, sizeof(seq)) < 0)
 		return -1;
 	pos += 2 * 6;
 	if (*pos != ' ')
@@ -3013,6 +3070,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strncmp(buf, "ENABLE", 6) == 0) {
 		if (hostapd_ctrl_iface_enable(hapd->iface))
 			reply_len = -1;
+	} else if (os_strcmp(buf, "RELOAD_WPA_PSK") == 0) {
+		if (hostapd_ctrl_iface_reload_wpa_psk(hapd))
+			reply_len = -1;
 	} else if (os_strncmp(buf, "RELOAD", 6) == 0) {
 		if (hostapd_ctrl_iface_reload(hapd->iface))
 			reply_len = -1;
@@ -3229,7 +3289,7 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 		if (hostapd_dpp_configurator_remove(hapd, buf + 24) < 0)
 			reply_len = -1;
 	} else if (os_strncmp(buf, "DPP_CONFIGURATOR_SIGN ", 22) == 0) {
-		if (hostapd_dpp_configurator_sign(hapd, buf + 22) < 0)
+		if (hostapd_dpp_configurator_sign(hapd, buf + 21) < 0)
 			reply_len = -1;
 	} else if (os_strncmp(buf, "DPP_CONFIGURATOR_GET_KEY ", 25) == 0) {
 		reply_len = hostapd_dpp_configurator_get_key(hapd,
@@ -3506,18 +3566,18 @@ fail:
 	}
 
 	if (hapd->conf->ctrl_interface_gid_set &&
-	    chown(hapd->conf->ctrl_interface, -1,
-		  hapd->conf->ctrl_interface_gid) < 0) {
-		wpa_printf(MSG_ERROR, "chown[ctrl_interface]: %s",
+	    lchown(hapd->conf->ctrl_interface, -1,
+		   hapd->conf->ctrl_interface_gid) < 0) {
+		wpa_printf(MSG_ERROR, "lchown[ctrl_interface]: %s",
 			   strerror(errno));
 		return -1;
 	}
 
 	if (!hapd->conf->ctrl_interface_gid_set &&
 	    hapd->iface->interfaces->ctrl_iface_group &&
-	    chown(hapd->conf->ctrl_interface, -1,
-		  hapd->iface->interfaces->ctrl_iface_group) < 0) {
-		wpa_printf(MSG_ERROR, "chown[ctrl_interface]: %s",
+	    lchown(hapd->conf->ctrl_interface, -1,
+		   hapd->iface->interfaces->ctrl_iface_group) < 0) {
+		wpa_printf(MSG_ERROR, "lchown[ctrl_interface]: %s",
 			   strerror(errno));
 		return -1;
 	}
@@ -3590,16 +3650,16 @@ fail:
 	}
 
 	if (hapd->conf->ctrl_interface_gid_set &&
-	    chown(fname, -1, hapd->conf->ctrl_interface_gid) < 0) {
-		wpa_printf(MSG_ERROR, "chown[ctrl_interface/ifname]: %s",
+	    lchown(fname, -1, hapd->conf->ctrl_interface_gid) < 0) {
+		wpa_printf(MSG_ERROR, "lchown[ctrl_interface/ifname]: %s",
 			   strerror(errno));
 		goto fail;
 	}
 
 	if (!hapd->conf->ctrl_interface_gid_set &&
 	    hapd->iface->interfaces->ctrl_iface_group &&
-	    chown(fname, -1, hapd->iface->interfaces->ctrl_iface_group) < 0) {
-		wpa_printf(MSG_ERROR, "chown[ctrl_interface/ifname]: %s",
+	    lchown(fname, -1, hapd->iface->interfaces->ctrl_iface_group) < 0) {
+		wpa_printf(MSG_ERROR, "lchown[ctrl_interface/ifname]: %s",
 			   strerror(errno));
 		goto fail;
 	}
@@ -4273,9 +4333,9 @@ fail:
 			goto fail;
 		}
 	} else if (interface->ctrl_iface_group &&
-		   chown(interface->global_iface_path, -1,
-			 interface->ctrl_iface_group) < 0) {
-		wpa_printf(MSG_ERROR, "chown[ctrl_interface]: %s",
+		   lchown(interface->global_iface_path, -1,
+			  interface->ctrl_iface_group) < 0) {
+		wpa_printf(MSG_ERROR, "lchown[ctrl_interface]: %s",
 			   strerror(errno));
 		goto fail;
 	}
@@ -4332,8 +4392,8 @@ fail:
 	}
 
 	if (interface->ctrl_iface_group &&
-	    chown(fname, -1, interface->ctrl_iface_group) < 0) {
-		wpa_printf(MSG_ERROR, "chown[ctrl_interface]: %s",
+	    lchown(fname, -1, interface->ctrl_iface_group) < 0) {
+		wpa_printf(MSG_ERROR, "lchown[ctrl_interface]: %s",
 			   strerror(errno));
 		goto fail;
 	}

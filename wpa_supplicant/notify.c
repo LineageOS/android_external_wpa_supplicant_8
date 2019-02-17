@@ -149,6 +149,15 @@ void wpas_notify_disconnect_reason(struct wpa_supplicant *wpa_s)
 }
 
 
+void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->p2p_mgmt)
+		return;
+
+	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_AUTH_STATUS_CODE);
+}
+
+
 void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s)
 {
 	if (wpa_s->p2p_mgmt)
@@ -165,6 +174,42 @@ void wpas_notify_auth_timeout(struct wpa_supplicant *wpa_s) {
 
 	wpas_hidl_notify_auth_timeout(wpa_s);
 }
+
+void wpas_notify_roam_time(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->p2p_mgmt)
+		return;
+
+	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_ROAM_TIME);
+}
+
+
+void wpas_notify_roam_complete(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->p2p_mgmt)
+		return;
+
+	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_ROAM_COMPLETE);
+}
+
+
+void wpas_notify_session_length(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->p2p_mgmt)
+		return;
+
+	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_SESSION_LENGTH);
+}
+
+
+void wpas_notify_bss_tm_status(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->p2p_mgmt)
+		return;
+
+	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_BSS_TM_STATUS);
+}
+
 
 void wpas_notify_network_changed(struct wpa_supplicant *wpa_s)
 {
@@ -788,6 +833,9 @@ static void wpas_notify_ap_sta_authorized(struct wpa_supplicant *wpa_s,
 		wpas_dbus_signal_p2p_peer_joined(wpa_s, p2p_dev_addr);
 #endif /* CONFIG_P2P */
 
+	/* Register the station */
+	wpas_dbus_register_sta(wpa_s, sta);
+
 	/* Notify listeners a new station has been authorized */
 	wpas_dbus_signal_sta_authorized(wpa_s, sta);
 
@@ -811,7 +859,8 @@ static void wpas_notify_ap_sta_deauthorized(struct wpa_supplicant *wpa_s,
 	/* Notify listeners a station has been deauthorized */
 	wpas_dbus_signal_sta_deauthorized(wpa_s, sta);
 
-	wpas_hidl_notify_ap_sta_deauthorized(wpa_s, sta, p2p_dev_addr);
+	/* Unregister the station */
+	wpas_dbus_unregister_sta(wpa_s, sta);
 }
 
 

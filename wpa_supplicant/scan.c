@@ -581,8 +581,8 @@ static struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s)
 #endif /* CONFIG_WPS */
 
 #ifdef CONFIG_HS20
-	if (wpa_s->conf->hs20 && wpabuf_resize(&extra_ie, 7) == 0)
-		wpas_hs20_add_indication(extra_ie, -1);
+	if (wpa_s->conf->hs20 && wpabuf_resize(&extra_ie, 9) == 0)
+		wpas_hs20_add_indication(extra_ie, -1, 0);
 #endif /* CONFIG_HS20 */
 
 #ifdef CONFIG_FST
@@ -2805,6 +2805,13 @@ int wpas_mac_addr_rand_scan_set(struct wpa_supplicant *wpa_s,
 				const u8 *mask)
 {
 	u8 *tmp = NULL;
+
+	if ((wpa_s->mac_addr_rand_supported & type) != type ) {
+		wpa_printf(MSG_INFO,
+			   "scan: MAC randomization type %u != supported=%u",
+			   type, wpa_s->mac_addr_rand_supported);
+		return -1;
+	}
 
 	wpas_mac_addr_rand_scan_clear(wpa_s, type);
 

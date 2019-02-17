@@ -248,6 +248,12 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 		return -1;
 	}
 
+	if (params->openssl_ecdh_curves) {
+		wpa_printf(MSG_INFO, "TLS: openssl_ecdh_curves not supported");
+		tlsv1_cred_free(cred);
+		return -1;
+	}
+
 	if (tlsv1_set_ca_cert(cred, params->ca_cert,
 			      params->ca_cert_blob, params->ca_cert_blob_len,
 			      params->ca_path)) {
@@ -353,7 +359,7 @@ int tls_global_set_params(void *tls_ctx,
 }
 
 
-int tls_global_set_verify(void *tls_ctx, int check_crl)
+int tls_global_set_verify(void *tls_ctx, int check_crl, int strict)
 {
 	struct tls_global *global = tls_ctx;
 	global->check_crl = check_crl;
@@ -720,12 +726,20 @@ int tls_connection_client_hello_ext(void *tls_ctx, struct tls_connection *conn,
 
 int tls_connection_get_failed(void *tls_ctx, struct tls_connection *conn)
 {
+#ifdef CONFIG_TLS_INTERNAL_SERVER
+	if (conn->server)
+		return tlsv1_server_get_failed(conn->server);
+#endif /* CONFIG_TLS_INTERNAL_SERVER */
 	return 0;
 }
 
 
 int tls_connection_get_read_alerts(void *tls_ctx, struct tls_connection *conn)
 {
+#ifdef CONFIG_TLS_INTERNAL_SERVER
+	if (conn->server)
+		return tlsv1_server_get_read_alerts(conn->server);
+#endif /* CONFIG_TLS_INTERNAL_SERVER */
 	return 0;
 }
 
@@ -733,6 +747,10 @@ int tls_connection_get_read_alerts(void *tls_ctx, struct tls_connection *conn)
 int tls_connection_get_write_alerts(void *tls_ctx,
 				    struct tls_connection *conn)
 {
+#ifdef CONFIG_TLS_INTERNAL_SERVER
+	if (conn->server)
+		return tlsv1_server_get_write_alerts(conn->server);
+#endif /* CONFIG_TLS_INTERNAL_SERVER */
 	return 0;
 }
 

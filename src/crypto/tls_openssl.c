@@ -104,7 +104,9 @@ static size_t SSL_SESSION_get_master_key(const SSL_SESSION *session,
 
 #endif
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || \
+	(defined(LIBRESSL_VERSION_NUMBER) && \
+	 LIBRESSL_VERSION_NUMBER < 0x20700000L)
 #ifdef CONFIG_SUITEB
 static int RSA_bits(const RSA *r)
 {
@@ -226,10 +228,16 @@ static struct tls_context *tls_global = NULL;
 struct tls_data {
 	SSL_CTX *ssl;
 	unsigned int tls_session_lifetime;
+	int check_crl;
+	int check_crl_strict;
+	char *ca_cert;
+	unsigned int crl_reload_interval;
+	struct os_reltime crl_last_reload;
 };
 
 struct tls_connection {
 	struct tls_context *context;
+	struct tls_data *data;
 	SSL_CTX *ssl_ctx;
 	SSL *ssl;
 	BIO *ssl_in, *ssl_out;
@@ -313,6 +321,36 @@ static void tls_show_errors(int level, const char *func, const char *txt)
 }
 
 #endif /* CONFIG_NO_STDOUT_DEBUG */
+
+
+static X509_STORE * tls_crl_cert_reload(const char *ca_cert, int check_crl)
+{
+	int flags;
+	X509_STORE *store;
+
+	store = X509_STORE_new();
+	if (!store) {
+		wpa_printf(MSG_DEBUG,
+			   "OpenSSL: %s - failed to allocate new certificate store",
+			   __func__);
+		return NULL;
+	}
+
+	if (ca_cert && X509_STORE_load_locations(store, ca_cert, NULL) != 1) {
+		tls_show_errors(MSG_WARNING, __func__,
+				"Failed to load root certificates");
+		X509_STORE_free(store);
+		return NULL;
+	}
+
+	flags = check_crl ? X509_V_FLAG_CRL_CHECK : 0;
+	if (check_crl == 2)
+		flags |= X509_V_FLAG_CRL_CHECK_ALL;
+
+	X509_STORE_set_flags(store, flags);
+
+	return store;
+}
 
 
 #ifdef CONFIG_NATIVE_WINDOWS
@@ -1003,8 +1041,10 @@ void * tls_init(const struct tls_config *conf)
 		return NULL;
 	}
 	data->ssl = ssl;
-	if (conf)
+	if (conf) {
 		data->tls_session_lifetime = conf->tls_session_lifetime;
+		data->crl_reload_interval = conf->crl_reload_interval;
+	}
 
 	SSL_CTX_set_options(ssl, SSL_OP_NO_SSLv2);
 	SSL_CTX_set_options(ssl, SSL_OP_NO_SSLv3);
@@ -1086,6 +1126,7 @@ void tls_deinit(void *ssl_ctx)
 		os_free(context);
 	if (data->tls_session_lifetime > 0)
 		SSL_CTX_flush_sessions(ssl, 0);
+	os_free(data->ca_cert);
 	SSL_CTX_free(ssl);
 
 	tls_openssl_ref_count--;
@@ -1319,8 +1360,16 @@ static const char * openssl_handshake_type(int content_type, const u8 *buf,
 		return "client hello";
 	case 2:
 		return "server hello";
+	case 3:
+		return "hello verify request";
 	case 4:
 		return "new session ticket";
+	case 5:
+		return "end of early data";
+	case 6:
+		return "hello retry request";
+	case 8:
+		return "encrypted extensions";
 	case 11:
 		return "certificate";
 	case 12:
@@ -1339,6 +1388,12 @@ static const char * openssl_handshake_type(int content_type, const u8 *buf,
 		return "certificate url";
 	case 22:
 		return "certificate status";
+	case 23:
+		return "supplemental data";
+	case 24:
+		return "key update";
+	case 254:
+		return "message hash";
 	default:
 		return "?";
 	}
@@ -1481,11 +1536,32 @@ struct tls_connection * tls_connection_init(void *ssl_ctx)
 	SSL_CTX *ssl = data->ssl;
 	struct tls_connection *conn;
 	long options;
+	X509_STORE *new_cert_store;
+	struct os_reltime now;
 	struct tls_context *context = SSL_CTX_get_app_data(ssl);
+
+	/* Replace X509 store if it is time to update CRL. */
+	if (data->crl_reload_interval > 0 && os_get_reltime(&now) == 0 &&
+	    os_reltime_expired(&now, &data->crl_last_reload,
+			       data->crl_reload_interval)) {
+		wpa_printf(MSG_INFO,
+			   "OpenSSL: Flushing X509 store with ca_cert file");
+		new_cert_store = tls_crl_cert_reload(data->ca_cert,
+						     data->check_crl);
+		if (!new_cert_store) {
+			wpa_printf(MSG_ERROR,
+				   "OpenSSL: Error replacing X509 store with ca_cert file");
+		} else {
+			/* Replace old store */
+			SSL_CTX_set_cert_store(ssl, new_cert_store);
+			data->crl_last_reload = now;
+		}
+	}
 
 	conn = os_zalloc(sizeof(*conn));
 	if (conn == NULL)
 		return NULL;
+	conn->data = data;
 	conn->ssl_ctx = ssl;
 	conn->ssl = SSL_new(ssl);
 	if (conn->ssl == NULL) {
@@ -2009,6 +2085,13 @@ static int tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
 			   "time mismatch");
 		preverify_ok = 1;
 	}
+	if (!preverify_ok && !conn->data->check_crl_strict &&
+	    (err == X509_V_ERR_CRL_HAS_EXPIRED ||
+	     err == X509_V_ERR_CRL_NOT_YET_VALID)) {
+		wpa_printf(MSG_DEBUG,
+			   "OpenSSL: Ignore certificate validity CRL time mismatch");
+		preverify_ok = 1;
+	}
 
 	err_str = X509_verify_cert_error_string(err);
 
@@ -2399,13 +2482,16 @@ static int tls_global_ca_cert(struct tls_data *data, const char *ca_cert)
 		SSL_CTX_set_client_CA_list(ssl_ctx,
 					   SSL_load_client_CA_file(ca_cert));
 #endif /* OPENSSL_NO_STDIO */
+
+		os_free(data->ca_cert);
+		data->ca_cert = os_strdup(ca_cert);
 	}
 
 	return 0;
 }
 
 
-int tls_global_set_verify(void *ssl_ctx, int check_crl)
+int tls_global_set_verify(void *ssl_ctx, int check_crl, int strict)
 {
 	int flags;
 
@@ -2422,6 +2508,10 @@ int tls_global_set_verify(void *ssl_ctx, int check_crl)
 		if (check_crl == 2)
 			flags |= X509_V_FLAG_CRL_CHECK_ALL;
 		X509_STORE_set_flags(cs, flags);
+
+		data->check_crl = check_crl;
+		data->check_crl_strict = strict;
+		os_get_reltime(&data->crl_last_reload);
 	}
 	return 0;
 }
@@ -2537,6 +2627,38 @@ static int tls_set_conn_flags(struct tls_connection *conn, unsigned int flags,
 	else
 		SSL_clear_options(ssl, SSL_OP_NO_TLSv1_3);
 #endif /* SSL_OP_NO_TLSv1_3 */
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	if (flags & (TLS_CONN_ENABLE_TLSv1_0 |
+		     TLS_CONN_ENABLE_TLSv1_1 |
+		     TLS_CONN_ENABLE_TLSv1_2)) {
+		int version = 0;
+
+		/* Explicit request to enable TLS versions even if needing to
+		 * override systemwide policies. */
+		if (flags & TLS_CONN_ENABLE_TLSv1_0) {
+			version = TLS1_VERSION;
+		} else if (flags & TLS_CONN_ENABLE_TLSv1_1) {
+			if (!(flags & TLS_CONN_DISABLE_TLSv1_0))
+				version = TLS1_1_VERSION;
+		} else if (flags & TLS_CONN_ENABLE_TLSv1_2) {
+			if (!(flags & (TLS_CONN_DISABLE_TLSv1_0 |
+				       TLS_CONN_DISABLE_TLSv1_1)))
+				version = TLS1_2_VERSION;
+		}
+		if (!version) {
+			wpa_printf(MSG_DEBUG,
+				   "OpenSSL: Invalid TLS version configuration");
+			return -1;
+		}
+
+		if (SSL_set_min_proto_version(ssl, version) != 1) {
+			wpa_printf(MSG_DEBUG,
+				   "OpenSSL: Failed to set minimum TLS version");
+			return -1;
+		}
+	}
+#endif /* >= 1.1.0 */
+
 #ifdef CONFIG_SUITEB
 #ifdef OPENSSL_IS_BORINGSSL
 	/* Start with defaults from BoringSSL */
@@ -2639,7 +2761,22 @@ static int tls_set_conn_flags(struct tls_connection *conn, unsigned int flags,
 			return -1;
 		}
 	}
+#else /* OPENSSL_IS_BORINGSSL */
+	if (!(flags & (TLS_CONN_SUITEB | TLS_CONN_SUITEB_NO_ECDH)) &&
+	    openssl_ciphers && SSL_set_cipher_list(ssl, openssl_ciphers) != 1) {
+		wpa_printf(MSG_INFO,
+			   "OpenSSL: Failed to set openssl_ciphers '%s'",
+			   openssl_ciphers);
+		return -1;
+	}
 #endif /* OPENSSL_IS_BORINGSSL */
+#else /* CONFIG_SUITEB */
+	if (openssl_ciphers && SSL_set_cipher_list(ssl, openssl_ciphers) != 1) {
+		wpa_printf(MSG_INFO,
+			   "OpenSSL: Failed to set openssl_ciphers '%s'",
+			   openssl_ciphers);
+		return -1;
+	}
 #endif /* CONFIG_SUITEB */
 
 	return 0;
@@ -2761,6 +2898,15 @@ static int tls_connection_client_cert(struct tls_connection *conn,
 		return 0;
 	}
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)\
+	     && !defined(ANDROID)
+	if (SSL_use_certificate_chain_file(conn->ssl, client_cert) == 1) {
+		ERR_clear_error();
+		wpa_printf(MSG_DEBUG, "OpenSSL: SSL_use_certificate_chain_file"
+			   " --> OK");
+		return 0;
+	}
+#else
 	if (SSL_use_certificate_file(conn->ssl, client_cert,
 				     SSL_FILETYPE_PEM) == 1) {
 		ERR_clear_error();
@@ -2768,6 +2914,7 @@ static int tls_connection_client_cert(struct tls_connection *conn,
 			   " --> OK");
 		return 0;
 	}
+#endif
 
 	tls_show_errors(MSG_DEBUG, __func__,
 			"SSL_use_certificate_file failed");
@@ -4521,6 +4668,40 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 		return -1;
 	}
 
+	if (!params->openssl_ecdh_curves) {
+#ifndef OPENSSL_IS_BORINGSSL
+#ifndef OPENSSL_NO_EC
+#if (OPENSSL_VERSION_NUMBER >= 0x10002000L) && \
+	(OPENSSL_VERSION_NUMBER < 0x10100000L)
+		if (SSL_set_ecdh_auto(conn->ssl, 1) != 1) {
+			wpa_printf(MSG_INFO,
+				   "OpenSSL: Failed to set ECDH curves to auto");
+			return -1;
+		}
+#endif /* >= 1.0.2 && < 1.1.0 */
+#endif /* OPENSSL_NO_EC */
+#endif /* OPENSSL_IS_BORINGSSL */
+	} else if (params->openssl_ecdh_curves[0]) {
+#if defined(OPENSSL_IS_BORINGSSL) || (OPENSSL_VERSION_NUMBER < 0x10002000L)
+		wpa_printf(MSG_INFO,
+			"OpenSSL: ECDH configuration nnot supported");
+		return -1;
+#else /* OPENSSL_IS_BORINGSSL || < 1.0.2 */
+#ifndef OPENSSL_NO_EC
+		if (SSL_set1_curves_list(conn->ssl,
+					 params->openssl_ecdh_curves) != 1) {
+			wpa_printf(MSG_INFO,
+				   "OpenSSL: Failed to set ECDH curves '%s'",
+				   params->openssl_ecdh_curves);
+			return -1;
+		}
+#else /* OPENSSL_NO_EC */
+		wpa_printf(MSG_INFO, "OpenSSL: ECDH not supported");
+		return -1;
+#endif /* OPENSSL_NO_EC */
+#endif /* OPENSSL_IS_BORINGSSL */
+	}
+
 	if (tls_set_conn_flags(conn, params->flags,
 			       params->openssl_ciphers) < 0)
 		return -1;
@@ -4585,6 +4766,41 @@ int tls_global_set_params(void *tls_ctx,
 			   "OpenSSL: Failed to set cipher string '%s'",
 			   params->openssl_ciphers);
 		return -1;
+	}
+
+	if (!params->openssl_ecdh_curves) {
+#ifndef OPENSSL_IS_BORINGSSL
+#ifndef OPENSSL_NO_EC
+#if (OPENSSL_VERSION_NUMBER >= 0x10002000L) && \
+	(OPENSSL_VERSION_NUMBER < 0x10100000L)
+		if (SSL_CTX_set_ecdh_auto(ssl_ctx, 1) != 1) {
+			wpa_printf(MSG_INFO,
+				   "OpenSSL: Failed to set ECDH curves to auto");
+			return -1;
+		}
+#endif /* >= 1.0.2 && < 1.1.0 */
+#endif /* OPENSSL_NO_EC */
+#endif /* OPENSSL_IS_BORINGSSL */
+	} else if (params->openssl_ecdh_curves[0]) {
+#if defined(OPENSSL_IS_BORINGSSL) || (OPENSSL_VERSION_NUMBER < 0x10002000L)
+		wpa_printf(MSG_INFO,
+			"OpenSSL: ECDH configuration nnot supported");
+		return -1;
+#else /* OPENSSL_IS_BORINGSSL || < 1.0.2 */
+#ifndef OPENSSL_NO_EC
+		if (SSL_CTX_set1_curves_list(ssl_ctx,
+					     params->openssl_ecdh_curves) !=
+		    1) {
+			wpa_printf(MSG_INFO,
+				   "OpenSSL: Failed to set ECDH curves '%s'",
+				   params->openssl_ecdh_curves);
+			return -1;
+		}
+#else /* OPENSSL_NO_EC */
+		wpa_printf(MSG_INFO, "OpenSSL: ECDH not supported");
+		return -1;
+#endif /* OPENSSL_NO_EC */
+#endif /* OPENSSL_IS_BORINGSSL */
 	}
 
 #ifdef SSL_OP_NO_TICKET

@@ -880,6 +880,12 @@ static int wpa_ft_parse_ftie(const u8 *ie, size_t ie_len,
 			parse->igtk_len = len;
 			break;
 #endif /* CONFIG_IEEE80211W */
+#ifdef CONFIG_OCV
+		case FTIE_SUBELEM_OCI:
+			parse->oci = pos;
+			parse->oci_len = len;
+			break;
+#endif /* CONFIG_OCV */
 		default:
 			wpa_printf(MSG_DEBUG, "FT: Unknown subelem id %u", id);
 			break;
@@ -1202,6 +1208,8 @@ int wpa_parse_wpa_ie_rsn(const u8 *rsn_ie, size_t rsn_ie_len,
 		pos = rsn_ie + 6;
 		left = rsn_ie_len - 6;
 
+		data->group_cipher = WPA_CIPHER_GTK_NOT_USED;
+		data->key_mgmt = WPA_KEY_MGMT_OSEN;
 		data->proto = WPA_PROTO_OSEN;
 	} else {
 		const struct rsn_ie_hdr *hdr;

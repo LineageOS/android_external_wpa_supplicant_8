@@ -1172,9 +1172,9 @@ int p2p_find(struct p2p_data *p2p, unsigned int timeout,
 	     u8 seek_count, const char **seek, int freq)
 {
 	int res;
+	struct os_reltime start;
 
 	p2p_dbg(p2p, "Starting find (type=%d)", type);
-	os_get_reltime(&p2p->find_start);
 	if (p2p->p2p_scan_running) {
 		p2p_dbg(p2p, "p2p_scan is already running");
 	}
@@ -1258,6 +1258,7 @@ int p2p_find(struct p2p_data *p2p, unsigned int timeout,
 	if (timeout)
 		eloop_register_timeout(timeout, 0, p2p_find_timeout,
 				       p2p, NULL);
+	os_get_reltime(&start);
 	switch (type) {
 	case P2P_FIND_START_WITH_FULL:
 		if (freq > 0) {
@@ -1288,6 +1289,9 @@ int p2p_find(struct p2p_data *p2p, unsigned int timeout,
 	default:
 		return -1;
 	}
+
+	if (!res)
+		p2p->find_start = start;
 
 	if (res != 0 && p2p->p2p_scan_running) {
 		p2p_dbg(p2p, "Failed to start p2p_scan - another p2p_scan was already running");
@@ -1470,7 +1474,8 @@ static void p2p_prepare_channel_best(struct p2p_data *p2p)
 		p2p->op_channel = p2p->cfg->op_channel;
 	} else if (p2p_channel_random_social(&p2p->cfg->channels,
 					     &p2p->op_reg_class,
-					     &p2p->op_channel) == 0) {
+					     &p2p->op_channel,
+					     NULL, NULL) == 0) {
 		p2p_dbg(p2p, "Select random available social channel (op_class %u channel %u) as operating channel preference",
 			p2p->op_reg_class, p2p->op_channel);
 	} else {
@@ -4769,9 +4774,12 @@ void p2p_set_managed_oper(struct p2p_data *p2p, int enabled)
 
 
 int p2p_config_get_random_social(struct p2p_config *p2p, u8 *op_class,
-				 u8 *op_channel)
+				 u8 *op_channel,
+				 struct wpa_freq_range_list *avoid_list,
+				 struct wpa_freq_range_list *disallow_list)
 {
-	return p2p_channel_random_social(&p2p->channels, op_class, op_channel);
+	return p2p_channel_random_social(&p2p->channels, op_class, op_channel,
+					 avoid_list, disallow_list);
 }
 
 

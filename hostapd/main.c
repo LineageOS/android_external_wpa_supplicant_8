@@ -1,6 +1,6 @@
 /*
  * hostapd / main()
- * Copyright (c) 2002-2017, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2002-2019, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -255,7 +255,7 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
  *
  * This function is used to parse configuration file for a full interface (one
  * or more BSSes sharing the same radio) and allocate memory for the BSS
- * interfaces. No actiual driver operations are started.
+ * interfaces. No actual driver operations are started.
  */
 static struct hostapd_iface *
 hostapd_interface_init(struct hapd_interfaces *interfaces, const char *if_name,
@@ -458,7 +458,7 @@ static void show_version(void)
 		"hostapd v" VERSION_STR "\n"
 		"User space daemon for IEEE 802.11 AP management,\n"
 		"IEEE 802.1X/WPA/WPA2/EAP/RADIUS Authenticator\n"
-		"Copyright (c) 2002-2017, Jouni Malinen <j@w1.fi> "
+		"Copyright (c) 2002-2019, Jouni Malinen <j@w1.fi> "
 		"and contributors\n");
 }
 
@@ -877,27 +877,8 @@ int main(int argc, char *argv[])
 	 */
 	interfaces.terminate_on_error = interfaces.count;
 	for (i = 0; i < interfaces.count; i++) {
-		if (hostapd_driver_init(interfaces.iface[i]))
-			goto out;
-#ifdef CONFIG_MBO
-		for (j = 0; j < interfaces.iface[i]->num_bss; j++) {
-			struct hostapd_data *hapd = interfaces.iface[i]->bss[j];
-
-			if (hapd && (hapd->conf->oce & OCE_STA_CFON) &&
-			    (interfaces.iface[i]->drv_flags &
-			     WPA_DRIVER_FLAGS_OCE_STA_CFON))
-				hapd->enable_oce = OCE_STA_CFON;
-
-			if (hapd && (hapd->conf->oce & OCE_AP) &&
-			    (interfaces.iface[i]->drv_flags &
-			     WPA_DRIVER_FLAGS_OCE_STA_CFON)) {
-				/* TODO: Need to add OCE-AP support */
-				wpa_printf(MSG_ERROR,
-					   "OCE-AP feature is not yet supported");
-			}
-		}
-#endif /* CONFIG_MBO */
-		if (hostapd_setup_interface(interfaces.iface[i]))
+		if (hostapd_driver_init(interfaces.iface[i]) ||
+		    hostapd_setup_interface(interfaces.iface[i]))
 			goto out;
 	}
 
