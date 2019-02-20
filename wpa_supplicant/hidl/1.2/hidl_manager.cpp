@@ -1486,7 +1486,7 @@ void HidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
 }
 
 /**
- * Notify listener about a new DPP configuration success event
+ * Notify listener about a new DPP configuration received success event
  *
  * @param ifname Interface name
  * @param config Configuration object
@@ -1526,18 +1526,17 @@ void HidlManager::notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 }
 
 /**
- * Notify listener about a DPP success event
+ * Notify listener about a DPP configuration sent success event
  *
  * @param ifname Interface name
- * @param code Status code
  */
-void HidlManager::notifyDppSuccess(struct wpa_supplicant *wpa_s, DppSuccessCode code)
+void HidlManager::notifyDppConfigSent(struct wpa_supplicant *wpa_s)
 {
 	std::string hidl_ifname = wpa_s->ifname;
 
 	callWithEachStaIfaceCallback_1_2(hidl_ifname,
-			std::bind(&V1_2::ISupplicantStaIfaceCallback::onDppSuccess,
-					std::placeholders::_1, code));
+			std::bind(&V1_2::ISupplicantStaIfaceCallback::onDppSuccessConfigSent,
+					std::placeholders::_1));
 }
 
 /**

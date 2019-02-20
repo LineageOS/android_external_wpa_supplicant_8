@@ -130,7 +130,7 @@ public:
 	void notifyEapError(struct wpa_supplicant *wpa_s, int error_code);
 	void notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 			struct wpa_ssid *config);
-	void notifyDppSuccess(struct wpa_supplicant *wpa_s, DppSuccessCode code);
+	void notifyDppConfigSent(struct wpa_supplicant *wpa_s);
 	void notifyDppFailure(struct wpa_supplicant *wpa_s, DppFailureCode code);
 	void notifyDppProgress(struct wpa_supplicant *wpa_s, DppProgressCode code);
 
