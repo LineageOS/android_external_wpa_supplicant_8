@@ -6611,6 +6611,11 @@ void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid)
 			"disconnected state");
 		return;
 	}
+	if (wpa_s->auto_reconnect_disabled) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Ignore connection failure "
+			"indication since auto connect is disabled");
+		return;
+	}
 
 	/*
 	 * Add the failed BSSID into the blacklist and speed up next scan
