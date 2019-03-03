@@ -859,6 +859,7 @@ static void wpas_notify_ap_sta_deauthorized(struct wpa_supplicant *wpa_s,
 	/* Notify listeners a station has been deauthorized */
 	wpas_dbus_signal_sta_deauthorized(wpa_s, sta);
 
+        wpas_hidl_notify_ap_sta_deauthorized(wpa_s, sta, p2p_dev_addr);
 	/* Unregister the station */
 	wpas_dbus_unregister_sta(wpa_s, sta);
 }
