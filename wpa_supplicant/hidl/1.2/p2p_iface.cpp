@@ -115,11 +115,20 @@ void setBandScanFreqsList(
 		params->freqs[count++] = mode->channels[i].freq;
 	}
 }
+/*
+ * isAnyEtherAddr - match any ether address
+ *
+ */
+int isAnyEtherAddr(const u8 *a)
+{
+	// 02:00:00:00:00:00
+	return (a[0] == 2) && !(a[1] | a[2] | a[3] | a[4] | a[5]);
+}
 
 /**
  * findBssBySsid - Fetch a BSS table entry based on SSID and optional BSSID.
  * @wpa_s: Pointer to wpa_supplicant data
- * @bssid: BSSID, zero addr matches any bssid
+ * @bssid: BSSID, 02:00:00:00:00:00 matches any bssid
  * @ssid: SSID
  * @ssid_len: Length of @ssid
  * Returns: Pointer to the BSS entry or %NULL if not found
@@ -130,7 +139,7 @@ struct wpa_bss* findBssBySsid(
 {
 	struct wpa_bss *bss;
 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
-		if ((is_zero_ether_addr(bssid) ||
+		if ((isAnyEtherAddr(bssid) ||
 		    os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0) &&
 		    bss->ssid_len == ssid_len &&
 		    os_memcmp(bss->ssid, ssid, ssid_len) == 0)
