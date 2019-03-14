@@ -11,8 +11,6 @@
 #ifdef CONFIG_CTRL_IFACE
 
 #ifdef CONFIG_CTRL_IFACE_UNIX
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -143,19 +141,6 @@ try_again:
 		return NULL;
 	}
 	tries++;
-#ifdef ANDROID
-	/* Set client socket file permissions so that bind() creates the client
-	 * socket with these permissions and there is no need to try to change
-	 * them with chmod() after bind() which would have potential issues with
-	 * race conditions. These permissions are needed to make sure the server
-	 * side (wpa_supplicant or hostapd) can reply to the control interface
-	 * messages.
-	 *
-	 * The lchown() calls below after bind() are also part of the needed
-	 * operations to allow the response to go through. Those are using the
-	 * no-deference-symlinks version to avoid races. */
-	fchmod(ctrl->s, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-#endif /* ANDROID */
 	if (bind(ctrl->s, (struct sockaddr *) &ctrl->local,
 		    sizeof(ctrl->local)) < 0) {
 		if (errno == EADDRINUSE && tries < 2) {
@@ -175,6 +160,7 @@ try_again:
 
 #ifdef ANDROID
 	/* Set group even if we do not have privileges to change owner */
+	chmod(ctrl->local.sun_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 	grp_wifi = getgrnam("wifi");
 	gid_wifi = grp_wifi ? grp_wifi->gr_gid : 0;
 	pwd_system = getpwnam("system");
@@ -185,8 +171,8 @@ try_again:
 		os_free(ctrl);
 		return NULL;
 	}
-	lchown(ctrl->local.sun_path, -1, gid_wifi);
-	lchown(ctrl->local.sun_path, uid_system, gid_wifi);
+	chown(ctrl->local.sun_path, -1, gid_wifi);
+	chown(ctrl->local.sun_path, uid_system, gid_wifi);
 
 	if (os_strncmp(ctrl_path, "@android:", 9) == 0) {
 		if (socket_local_client_connect(
