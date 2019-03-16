@@ -1867,7 +1867,7 @@ SupplicantStatus StaNetwork::enableTlsSuiteBEapPhase1ParamInternal(bool enable)
 SupplicantStatus StaNetwork::enableSuiteBEapOpenSslCiphersInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	const char openssl_suiteb_cipher[] = "SUITE_B_192";
+	const char openssl_suiteb_cipher[] = "SUITEB192";
 
 	if (setStringKeyFieldAndResetState(
 		openssl_suiteb_cipher, &(wpa_ssid->eap.openssl_ciphers),
