@@ -1539,6 +1539,10 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->p2p_interface_random_mac_addr)
 		fprintf(f, "p2p_interface_random_mac_addr=%d\n",
 			config->p2p_interface_random_mac_addr);
+	if (config->bss_no_flush_when_down)
+		fprintf(f, "bss_no_flush_when_down=%d\n",
+			config->bss_no_flush_when_down);
+
 }
 
 #endif /* CONFIG_NO_CONFIG_WRITE */
