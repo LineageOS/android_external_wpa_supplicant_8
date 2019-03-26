@@ -1675,21 +1675,22 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 
 	wpa_printf(MSG_INFO, "No matched BSS exists, try to find it by scan");
 
-	if (wpa_s->scan_res_handler) {
-		wpa_printf(MSG_WARNING, "There is on-going scanning, cannot start another scan.");
-		return {SupplicantStatusCode::FAILURE_UNKNOWN,
-		    "Failed to start scan due to device busy."};
-	}
-
 	if (pending_scan_res_join_callback != NULL) {
-		wpa_printf(MSG_WARNING, "There is running group join scan.");
-		return {SupplicantStatusCode::FAILURE_UNKNOWN,
-		    "Failed to start scan due to device busy."};
+		wpa_printf(MSG_WARNING, "P2P: Renew scan result callback with new request.");
 	}
 
 	pending_join_scan_callback =
 	    [wpa_s, ssid, freq]() {
-		if (0 != joinScanReq(wpa_s, ssid, freq)) {
+		int ret = joinScanReq(wpa_s, ssid, freq);
+		// for BUSY case, the scan might be occupied by WiFi.
+		// Do not give up immediately, but try again later.
+		if (-EBUSY == ret) {
+			// re-schedule this join scan and don't consume retry count.
+			if (pending_scan_res_join_callback) {
+				wpa_s->p2p_join_scan_count--;
+				pending_scan_res_join_callback();
+			}
+		} else if (0 != ret) {
 			notifyGroupJoinFailure(wpa_s);
 			pending_scan_res_join_callback = NULL;
 		}
@@ -1732,8 +1733,8 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 	};
 
 	wpa_s->p2p_join_scan_count = 0;
-	if (0 != joinScanReq(wpa_s, ssid, freq)) {
-		pending_scan_res_join_callback = NULL;
+	pending_join_scan_callback();
+	if (pending_scan_res_join_callback == NULL) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, "Failed to start scan."};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
