@@ -2781,6 +2781,42 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 		}
 	}
 
+	wpa_s->connection_vht_max_eight_spatial_streams = 0;
+	wpa_s->connection_twt = 0;
+	if (wpa_s->connection_set && wpa_s->connection_vht) {
+		const u8 *ie;
+		int twt_req_support, twt_resp_support;
+
+		ie = get_ie(data->assoc_info.resp_ies,
+			    data->assoc_info.resp_ies_len,
+			    WLAN_EID_VHT_CAP);
+
+		if (ie && ie[1] >= 4) {
+			struct ieee80211_vht_capabilities *vht_capa;
+
+			vht_capa = (struct ieee80211_vht_capabilities *) &ie[2];
+
+			if ((le_to_host32(vht_capa->vht_capabilities_info) &
+			    VHT_CAP_BEAMFORMEE_STS_MAX) == VHT_CAP_BEAMFORMEE_STS_MAX)
+				wpa_s->connection_vht_max_eight_spatial_streams = 1;
+		}
+
+		ie = get_ie(data->assoc_info.req_ies,
+			    data->assoc_info.req_ies_len,
+			    WLAN_EID_EXT_CAPAB);
+
+		twt_req_support = ieee802_11_ext_capab(ie, 77);
+
+		ie = get_ie(data->assoc_info.resp_ies,
+			    data->assoc_info.resp_ies_len,
+			    WLAN_EID_EXT_CAPAB);
+
+		twt_resp_support = ieee802_11_ext_capab(ie, 78);
+
+		if (twt_req_support && twt_resp_support)
+			wpa_s->connection_twt = 1;
+	}
+
 	p = data->assoc_info.req_ies;
 	l = data->assoc_info.req_ies_len;
 
