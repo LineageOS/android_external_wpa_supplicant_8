@@ -504,9 +504,6 @@ struct wpa_supplicant {
 #ifdef CONFIG_MATCH_IFACE
 	int matched;
 #endif /* CONFIG_MATCH_IFACE */
-#ifdef CONFIG_CTRL_IFACE_DBUS
-	char *dbus_path;
-#endif /* CONFIG_CTRL_IFACE_DBUS */
 #ifdef CONFIG_CTRL_IFACE_DBUS_NEW
 	char *dbus_new_path;
 	char *dbus_groupobj_path;
@@ -751,6 +748,10 @@ struct wpa_supplicant {
 	unsigned int wnmsleep_used:1;
 	unsigned int owe_transition_select:1;
 	unsigned int owe_transition_search:1;
+	unsigned int connection_set:1;
+	unsigned int connection_ht:1;
+	unsigned int connection_vht:1;
+	unsigned int connection_he:1;
 
 	struct os_reltime last_mac_addr_change;
 	int last_mac_addr_style;
@@ -1208,9 +1209,7 @@ struct wpa_supplicant {
 	int last_auth_timeout_sec;
 
 #ifdef CONFIG_DPP
-	struct dl_list dpp_bootstrap; /* struct dpp_bootstrap_info */
-	struct dl_list dpp_configurator; /* struct dpp_configurator */
-	int dpp_init_done;
+	struct dpp_global *dpp;
 	struct dpp_authentication *dpp_auth;
 	struct wpa_radio_work *dpp_listen_work;
 	unsigned int dpp_pending_listen_freq;
@@ -1237,6 +1236,9 @@ struct wpa_supplicant {
 	unsigned int dpp_resp_wait_time;
 	unsigned int dpp_resp_max_tries;
 	unsigned int dpp_resp_retry_time;
+#ifdef CONFIG_DPP2
+	struct dpp_pfs *dpp_pfs;
+#endif /* CONFIG_DPP2 */
 #ifdef CONFIG_TESTING_OPTIONS
 	char *dpp_config_obj_override;
 	char *dpp_discovery_override;
@@ -1402,6 +1404,7 @@ struct wpabuf * mbo_build_anqp_buf(struct wpa_supplicant *wpa_s,
 void mbo_parse_rx_anqp_resp(struct wpa_supplicant *wpa_s,
 			    struct wpa_bss *bss, const u8 *sa,
 			    const u8 *data, size_t slen);
+void wpas_update_mbo_connect_params(struct wpa_supplicant *wpa_s);
 
 /* op_classes.c */
 enum chan_allowed {

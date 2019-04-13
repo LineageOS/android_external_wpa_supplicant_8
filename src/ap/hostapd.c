@@ -1,6 +1,6 @@
 /*
  * hostapd / Initialization and configuration
- * Copyright (c) 2002-2014, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2002-2019, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -348,7 +348,7 @@ static void hostapd_free_hapd_data(struct hostapd_data *hapd)
 
 	if (!hapd->started) {
 		wpa_printf(MSG_ERROR, "%s: Interface %s wasn't started",
-			   __func__, hapd->conf->iface);
+			   __func__, hapd->conf ? hapd->conf->iface : "N/A");
 		return;
 	}
 	hapd->started = 0;
@@ -417,6 +417,20 @@ static void hostapd_free_hapd_data(struct hostapd_data *hapd)
 
 	hostapd_clean_rrm(hapd);
 	fils_hlp_deinit(hapd);
+
+#ifdef CONFIG_SAE
+	{
+		struct hostapd_sae_commit_queue *q;
+
+		while ((q = dl_list_first(&hapd->sae_commit_queue,
+					  struct hostapd_sae_commit_queue,
+					  list))) {
+			dl_list_del(&q->list);
+			os_free(q);
+		}
+	}
+	eloop_cancel_timeout(auth_sae_process_commit, hapd, NULL);
+#endif /* CONFIG_SAE */
 }
 
 
@@ -431,7 +445,7 @@ static void hostapd_free_hapd_data(struct hostapd_data *hapd)
 static void hostapd_cleanup(struct hostapd_data *hapd)
 {
 	wpa_printf(MSG_DEBUG, "%s(hapd=%p (%s))", __func__, hapd,
-		   hapd->conf->iface);
+		   hapd->conf ? hapd->conf->iface : "N/A");
 	if (hapd->iface->interfaces &&
 	    hapd->iface->interfaces->ctrl_iface_deinit) {
 		wpa_msg(hapd->msg_ctx, MSG_INFO, WPA_EVENT_TERMINATING);
@@ -506,7 +520,7 @@ static void hostapd_cleanup_iface(struct hostapd_iface *iface)
 
 static void hostapd_clear_wep(struct hostapd_data *hapd)
 {
-	if (hapd->drv_priv && !hapd->iface->driver_ap_teardown) {
+	if (hapd->drv_priv && !hapd->iface->driver_ap_teardown && hapd->conf) {
 		hostapd_set_privacy(hapd, 0);
 		hostapd_broadcast_wep_clear(hapd);
 	}
@@ -658,8 +672,10 @@ static int hostapd_validate_bssid_configuration(struct hostapd_iface *iface)
 	for (i = 5; i > 5 - j; i--)
 		mask[i] = 0;
 	j = bits % 8;
-	while (j--)
+	while (j) {
+		j--;
 		mask[i] <<= 1;
+	}
 
 skip_mask_ext:
 	wpa_printf(MSG_DEBUG, "BSS count %lu, BSSID mask " MACSTR " (%d bits)",
@@ -1867,15 +1883,17 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
 		}
 	}
 
-	if (hapd->iconf->rts_threshold > -1 &&
-	    hostapd_set_rts(hapd, hapd->iconf->rts_threshold)) {
+	if (hapd->iconf->rts_threshold >= -1 &&
+	    hostapd_set_rts(hapd, hapd->iconf->rts_threshold) &&
+	    hapd->iconf->rts_threshold >= -1) {
 		wpa_printf(MSG_ERROR, "Could not set RTS threshold for "
 			   "kernel driver");
 		goto fail;
 	}
 
-	if (hapd->iconf->fragm_threshold > -1 &&
-	    hostapd_set_frag(hapd, hapd->iconf->fragm_threshold)) {
+	if (hapd->iconf->fragm_threshold >= -1 &&
+	    hostapd_set_frag(hapd, hapd->iconf->fragm_threshold) &&
+	    hapd->iconf->fragm_threshold != -1) {
 		wpa_printf(MSG_ERROR, "Could not set fragmentation threshold "
 			   "for kernel driver");
 		goto fail;
@@ -1888,11 +1906,14 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
 		if (j)
 			os_memcpy(hapd->own_addr, prev_addr, ETH_ALEN);
 		if (hostapd_setup_bss(hapd, j == 0)) {
-			do {
+			for (;;) {
 				hapd = iface->bss[j];
 				hostapd_bss_deinit_no_free(hapd);
 				hostapd_free_hapd_data(hapd);
-			} while (j-- > 0);
+				if (j == 0)
+					break;
+				j--;
+			}
 			goto fail;
 		}
 		if (is_zero_ether_addr(hapd->conf->bssid))
@@ -2145,6 +2166,9 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
 	dl_list_init(&hapd->l2_queue);
 	dl_list_init(&hapd->l2_oui_queue);
 #endif /* CONFIG_IEEE80211R_AP */
+#ifdef CONFIG_SAE
+	dl_list_init(&hapd->sae_commit_queue);
+#endif /* CONFIG_SAE */
 
 	return hapd;
 }
@@ -2155,7 +2179,7 @@ static void hostapd_bss_deinit(struct hostapd_data *hapd)
 	if (!hapd)
 		return;
 	wpa_printf(MSG_DEBUG, "%s: deinit bss %s", __func__,
-		   hapd->conf->iface);
+		   hapd->conf ? hapd->conf->iface : "N/A");
 	hostapd_bss_deinit_no_free(hapd);
 	wpa_msg(hapd->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
 	hostapd_cleanup(hapd);
@@ -2182,7 +2206,7 @@ void hostapd_interface_deinit(struct hostapd_iface *iface)
 	}
 #endif /* CONFIG_FST */
 
-	for (j = iface->num_bss - 1; j >= 0; j--) {
+	for (j = (int) iface->num_bss - 1; j >= 0; j--) {
 		if (!iface->bss)
 			break;
 		hostapd_bss_deinit(iface->bss[j]);

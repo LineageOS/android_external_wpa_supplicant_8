@@ -1406,7 +1406,7 @@ SupplicantStatus P2pIface::startWpsPbcInternal(
 		return {SupplicantStatusCode::SUCCESS, ""};
 	}
 #endif /* CONFIG_AP */
-	if (wpas_wps_start_pbc(wpa_group_s, bssid_addr, 0)) {
+	if (wpas_wps_start_pbc(wpa_group_s, bssid_addr, 0, 0)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};

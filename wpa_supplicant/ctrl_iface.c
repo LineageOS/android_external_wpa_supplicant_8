@@ -1168,8 +1168,11 @@ static int wpa_supplicant_ctrl_iface_wps_pbc(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_AP
 	u8 *_p2p_dev_addr = NULL;
 #endif /* CONFIG_AP */
+	char *pos;
+	int multi_ap = 0;
 
-	if (cmd == NULL || os_strcmp(cmd, "any") == 0) {
+	if (!cmd || os_strcmp(cmd, "any") == 0 ||
+	    os_strncmp(cmd, "any ", 4) == 0) {
 		_bssid = NULL;
 #ifdef CONFIG_P2P
 	} else if (os_strncmp(cmd, "p2p_dev_addr=", 13) == 0) {
@@ -1181,10 +1184,21 @@ static int wpa_supplicant_ctrl_iface_wps_pbc(struct wpa_supplicant *wpa_s,
 		}
 		_p2p_dev_addr = p2p_dev_addr;
 #endif /* CONFIG_P2P */
+	} else if (os_strncmp(cmd, "multi_ap=", 9) == 0) {
+		_bssid = NULL;
+		multi_ap = atoi(cmd + 9);
 	} else if (hwaddr_aton(cmd, bssid)) {
 		wpa_printf(MSG_DEBUG, "CTRL_IFACE WPS_PBC: invalid BSSID '%s'",
 			   cmd);
 		return -1;
+	}
+
+	if (cmd) {
+		pos = os_strstr(cmd, " multi_ap=");
+		if (pos) {
+			pos += 10;
+			multi_ap = atoi(pos);
+		}
 	}
 
 #ifdef CONFIG_AP
@@ -1192,7 +1206,7 @@ static int wpa_supplicant_ctrl_iface_wps_pbc(struct wpa_supplicant *wpa_s,
 		return wpa_supplicant_ap_wps_pbc(wpa_s, _bssid, _p2p_dev_addr);
 #endif /* CONFIG_AP */
 
-	return wpas_wps_start_pbc(wpa_s, _bssid, 0);
+	return wpas_wps_start_pbc(wpa_s, _bssid, 0, multi_ap);
 }
 
 
@@ -2113,6 +2127,18 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 				ret = 0;
 				break;
 			}
+			if (os_snprintf_error(end - pos, ret))
+				return pos - buf;
+			pos += ret;
+		}
+
+		if (wpa_s->connection_set &&
+		    (wpa_s->connection_ht || wpa_s->connection_vht ||
+		     wpa_s->connection_he)) {
+			ret = os_snprintf(pos, end - pos,
+					  "wifi_generation=%u\n",
+					  wpa_s->connection_he ? 6 :
+					  (wpa_s->connection_vht ? 5 : 4));
 			if (os_snprintf_error(end - pos, ret))
 				return pos - buf;
 			pos += ret;
@@ -4417,6 +4443,19 @@ static int wpa_supplicant_ctrl_iface_get_capability(
 		return res;
 	}
 
+#ifdef CONFIG_DPP
+	if (os_strcmp(field, "dpp") == 0) {
+#ifdef CONFIG_DPP2
+		res = os_snprintf(buf, buflen, "DPP=2");
+#else /* CONFIG_DPP2 */
+		res = os_snprintf(buf, buflen, "DPP=1");
+#endif /* CONFIG_DPP2 */
+		if (os_snprintf_error(buflen, res))
+			return -1;
+		return res;
+	}
+#endif /* CONFIG_DPP */
+
 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: Unknown GET_CAPABILITY field '%s'",
 		   field);
 
@@ -5057,10 +5096,11 @@ static int wpa_supplicant_ctrl_iface_bss(struct wpa_supplicant *wpa_s,
 		bss = NULL;
 		dl_list_for_each(tmp, &wpa_s->bss_id, struct wpa_bss, list_id)
 		{
-			if (i-- == 0) {
+			if (i == 0) {
 				bss = tmp;
 				break;
 			}
+			i--;
 		}
 	}
 
@@ -6391,6 +6431,8 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
 			wpa_s->p2p_go_acs_band = HOSTAPD_MODE_IEEE80211ANY;
 			wpa_s->p2p_go_do_acs = 1;
 		}
+	} else {
+		wpa_s->p2p_go_do_acs = 0;
 	}
 #endif /* CONFIG_ACS */
 
@@ -10634,7 +10676,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "DPP_BOOTSTRAP_GEN ", 18) == 0) {
 		int res;
 
-		res = wpas_dpp_bootstrap_gen(wpa_s, buf + 18);
+		res = dpp_bootstrap_gen(wpa_s->dpp, buf + 18);
 		if (res < 0) {
 			reply_len = -1;
 		} else {
@@ -10643,12 +10685,12 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 				reply_len = -1;
 		}
 	} else if (os_strncmp(buf, "DPP_BOOTSTRAP_REMOVE ", 21) == 0) {
-		if (wpas_dpp_bootstrap_remove(wpa_s, buf + 21) < 0)
+		if (dpp_bootstrap_remove(wpa_s->dpp, buf + 21) < 0)
 			reply_len = -1;
 	} else if (os_strncmp(buf, "DPP_BOOTSTRAP_GET_URI ", 22) == 0) {
 		const char *uri;
 
-		uri = wpas_dpp_bootstrap_get_uri(wpa_s, atoi(buf + 22));
+		uri = dpp_bootstrap_get_uri(wpa_s->dpp, atoi(buf + 22));
 		if (!uri) {
 			reply_len = -1;
 		} else {
@@ -10657,8 +10699,8 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 				reply_len = -1;
 		}
 	} else if (os_strncmp(buf, "DPP_BOOTSTRAP_INFO ", 19) == 0) {
-		reply_len = wpas_dpp_bootstrap_info(wpa_s, atoi(buf + 19),
-						    reply, reply_size);
+		reply_len = dpp_bootstrap_info(wpa_s->dpp, atoi(buf + 19),
+					       reply, reply_size);
 	} else if (os_strncmp(buf, "DPP_AUTH_INIT ", 14) == 0) {
 		if (wpas_dpp_auth_init(wpa_s, buf + 13) < 0)
 			reply_len = -1;
@@ -10671,7 +10713,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "DPP_CONFIGURATOR_ADD", 20) == 0) {
 		int res;
 
-		res = wpas_dpp_configurator_add(wpa_s, buf + 20);
+		res = dpp_configurator_add(wpa_s->dpp, buf + 20);
 		if (res < 0) {
 			reply_len = -1;
 		} else {
@@ -10680,14 +10722,15 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 				reply_len = -1;
 		}
 	} else if (os_strncmp(buf, "DPP_CONFIGURATOR_REMOVE ", 24) == 0) {
-		if (wpas_dpp_configurator_remove(wpa_s, buf + 24) < 0)
+		if (dpp_configurator_remove(wpa_s->dpp, buf + 24) < 0)
 			reply_len = -1;
 	} else if (os_strncmp(buf, "DPP_CONFIGURATOR_SIGN ", 22) == 0) {
 		if (wpas_dpp_configurator_sign(wpa_s, buf + 21) < 0)
 			reply_len = -1;
 	} else if (os_strncmp(buf, "DPP_CONFIGURATOR_GET_KEY ", 25) == 0) {
-		reply_len = wpas_dpp_configurator_get_key(wpa_s, atoi(buf + 25),
-							  reply, reply_size);
+		reply_len = dpp_configurator_get_key_id(wpa_s->dpp,
+							atoi(buf + 25),
+							reply, reply_size);
 	} else if (os_strncmp(buf, "DPP_PKEX_ADD ", 13) == 0) {
 		int res;
 
