@@ -2333,6 +2333,14 @@ static int parse_sae_password(struct hostapd_bss_config *bss, const char *val)
 		pos = pos2 + ETH_ALEN * 3 - 1;
 	}
 
+	pos2 = os_strstr(pos, "|vlanid=");
+	if (pos2) {
+		if (!end)
+			end = pos2;
+		pos2 += 8;
+		pw->vlan_id = atoi(pos2);
+	}
+
 	pos2 = os_strstr(pos, "|id=");
 	if (pos2) {
 		if (!end)
@@ -2517,6 +2525,16 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 	} else if (os_strcmp(buf, "private_key_passwd") == 0) {
 		os_free(bss->private_key_passwd);
 		bss->private_key_passwd = os_strdup(pos);
+	} else if (os_strcmp(buf, "check_cert_subject") == 0) {
+		if (!pos[0]) {
+			wpa_printf(MSG_ERROR, "Line %d: unknown check_cert_subject '%s'",
+				   line, pos);
+			return 1;
+		}
+		os_free(bss->check_cert_subject);
+		bss->check_cert_subject = os_strdup(pos);
+		if (!bss->check_cert_subject)
+			return 1;
 	} else if (os_strcmp(buf, "check_crl") == 0) {
 		bss->check_crl = atoi(pos);
 	} else if (os_strcmp(buf, "check_crl_strict") == 0) {
@@ -3118,9 +3136,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		 * cause problems with the current implementation.
 		 * Since it is unlikely that this small numbers are
 		 * useful in real life scenarios, do not allow beacon
-		 * period to be set below 15 TU. */
-		if (val < 15 || val > 65535) {
-			wpa_printf(MSG_ERROR, "Line %d: invalid beacon_int %d (expected 15..65535)",
+		 * period to be set below 10 TU. */
+		if (val < 10 || val > 65535) {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: invalid beacon_int %d (expected 10..65535)",
 				   line, val);
 			return 1;
 		}
@@ -3604,6 +3623,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		}
 	} else if (os_strcmp(buf, "wps_cred_processing") == 0) {
 		bss->wps_cred_processing = atoi(pos);
+	} else if (os_strcmp(buf, "wps_cred_add_sae") == 0) {
+		bss->wps_cred_add_sae = atoi(pos);
 	} else if (os_strcmp(buf, "ap_settings") == 0) {
 		os_free(bss->ap_settings);
 		bss->ap_settings =
@@ -3613,6 +3634,56 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 				   line, pos);
 			return 1;
 		}
+	} else if (os_strcmp(buf, "multi_ap_backhaul_ssid") == 0) {
+		size_t slen;
+		char *str = wpa_config_parse_string(pos, &slen);
+
+		if (!str || slen < 1 || slen > SSID_MAX_LEN) {
+			wpa_printf(MSG_ERROR, "Line %d: invalid SSID '%s'",
+				   line, pos);
+			os_free(str);
+			return 1;
+		}
+		os_memcpy(bss->multi_ap_backhaul_ssid.ssid, str, slen);
+		bss->multi_ap_backhaul_ssid.ssid_len = slen;
+		bss->multi_ap_backhaul_ssid.ssid_set = 1;
+		os_free(str);
+	} else if (os_strcmp(buf, "multi_ap_backhaul_wpa_passphrase") == 0) {
+		int len = os_strlen(pos);
+
+		if (len < 8 || len > 63) {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: invalid WPA passphrase length %d (expected 8..63)",
+				   line, len);
+			return 1;
+		}
+		os_free(bss->multi_ap_backhaul_ssid.wpa_passphrase);
+		bss->multi_ap_backhaul_ssid.wpa_passphrase = os_strdup(pos);
+		if (bss->multi_ap_backhaul_ssid.wpa_passphrase) {
+			hostapd_config_clear_wpa_psk(
+				&bss->multi_ap_backhaul_ssid.wpa_psk);
+			bss->multi_ap_backhaul_ssid.wpa_passphrase_set = 1;
+		}
+	} else if (os_strcmp(buf, "multi_ap_backhaul_wpa_psk") == 0) {
+		hostapd_config_clear_wpa_psk(
+			&bss->multi_ap_backhaul_ssid.wpa_psk);
+		bss->multi_ap_backhaul_ssid.wpa_psk =
+			os_zalloc(sizeof(struct hostapd_wpa_psk));
+		if (!bss->multi_ap_backhaul_ssid.wpa_psk)
+			return 1;
+		if (hexstr2bin(pos, bss->multi_ap_backhaul_ssid.wpa_psk->psk,
+			       PMK_LEN) ||
+		    pos[PMK_LEN * 2] != '\0') {
+			wpa_printf(MSG_ERROR, "Line %d: Invalid PSK '%s'.",
+				   line, pos);
+			hostapd_config_clear_wpa_psk(
+				&bss->multi_ap_backhaul_ssid.wpa_psk);
+			return 1;
+		}
+		bss->multi_ap_backhaul_ssid.wpa_psk->group = 1;
+		os_free(bss->multi_ap_backhaul_ssid.wpa_passphrase);
+		bss->multi_ap_backhaul_ssid.wpa_passphrase = NULL;
+		bss->multi_ap_backhaul_ssid.wpa_psk_set = 1;
 	} else if (os_strcmp(buf, "upnp_iface") == 0) {
 		os_free(bss->upnp_iface);
 		bss->upnp_iface = os_strdup(pos);

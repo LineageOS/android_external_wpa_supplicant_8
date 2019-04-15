@@ -1,6 +1,6 @@
 /*
  * RADIUS authentication server
- * Copyright (c) 2005-2009, 2011-2014, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2005-2009, 2011-2019, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -676,6 +676,23 @@ static void radius_server_testing_options(struct radius_session *sess,
 }
 
 
+#ifdef CONFIG_ERP
+static struct eap_server_erp_key *
+radius_server_erp_find_key(struct radius_server_data *data, const char *keyname)
+{
+	struct eap_server_erp_key *erp;
+
+	dl_list_for_each(erp, &data->erp_keys, struct eap_server_erp_key,
+			 list) {
+		if (os_strcmp(erp->keyname_nai, keyname) == 0)
+			return erp;
+	}
+
+	return NULL;
+}
+#endif /* CONFIG_ERP */
+
+
 static struct radius_session *
 radius_server_get_new_session(struct radius_server_data *data,
 			      struct radius_client *client,
@@ -686,7 +703,7 @@ radius_server_get_new_session(struct radius_server_data *data,
 	int res;
 	struct radius_session *sess;
 	struct eap_config eap_conf;
-	struct eap_user tmp;
+	struct eap_user *tmp;
 
 	RADIUS_DEBUG("Creating a new session");
 
@@ -697,12 +714,27 @@ radius_server_get_new_session(struct radius_server_data *data,
 	}
 	RADIUS_DUMP_ASCII("User-Name", user, user_len);
 
-	os_memset(&tmp, 0, sizeof(tmp));
-	res = data->get_eap_user(data->conf_ctx, user, user_len, 0, &tmp);
-	bin_clear_free(tmp.password, tmp.password_len);
+	tmp = os_zalloc(sizeof(*tmp));
+	if (!tmp)
+		return NULL;
 
+	res = data->get_eap_user(data->conf_ctx, user, user_len, 0, tmp);
+#ifdef CONFIG_ERP
+	if (res != 0 && data->erp) {
+		char *username;
+
+		username = os_zalloc(user_len + 1);
+		if (username) {
+			os_memcpy(username, user, user_len);
+			if (radius_server_erp_find_key(data, username))
+				res = 0;
+			os_free(username);
+		}
+	}
+#endif /* CONFIG_ERP */
 	if (res != 0) {
 		RADIUS_DEBUG("User-Name not found from user database");
+		eap_user_free(tmp);
 		return NULL;
 	}
 
@@ -710,10 +742,12 @@ radius_server_get_new_session(struct radius_server_data *data,
 	sess = radius_server_new_session(data, client);
 	if (sess == NULL) {
 		RADIUS_DEBUG("Failed to create a new session");
+		eap_user_free(tmp);
 		return NULL;
 	}
-	sess->accept_attr = tmp.accept_attr;
-	sess->macacl = tmp.macacl;
+	sess->accept_attr = tmp->accept_attr;
+	sess->macacl = tmp->macacl;
+	eap_user_free(tmp);
 
 	sess->username = os_malloc(user_len * 4 + 1);
 	if (sess->username == NULL) {
@@ -2251,7 +2285,7 @@ radius_server_read_clients(const char *client_file, int ipv6)
 			entry->addr.s_addr = addr.s_addr;
 			val = 0;
 			for (i = 0; i < mask; i++)
-				val |= 1 << (31 - i);
+				val |= 1U << (31 - i);
 			entry->mask.s_addr = htonl(val);
 		}
 #ifdef CONFIG_IPV6
@@ -2702,15 +2736,8 @@ radius_server_erp_get_key(void *ctx, const char *keyname)
 {
 	struct radius_session *sess = ctx;
 	struct radius_server_data *data = sess->server;
-	struct eap_server_erp_key *erp;
 
-	dl_list_for_each(erp, &data->erp_keys, struct eap_server_erp_key,
-			 list) {
-		if (os_strcmp(erp->keyname_nai, keyname) == 0)
-			return erp;
-	}
-
-	return NULL;
+	return radius_server_erp_find_key(data, keyname);
 }
 
 

@@ -925,7 +925,7 @@ SupplicantStatus StaIface::startWpsPbcInternal(
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	const uint8_t *bssid_addr =
 	    is_zero_ether_addr(bssid.data()) ? nullptr : bssid.data();
-	if (wpas_wps_start_pbc(wpa_s, bssid_addr, 0)) {
+	if (wpas_wps_start_pbc(wpa_s, bssid_addr, 0, 0)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -1160,7 +1160,7 @@ SupplicantStatus StaIface::removeDppUriInternal(uint32_t bootstrap_id)
 		bootstrap_id_str = std::to_string(bootstrap_id);
 	}
 
-	if (wpas_dpp_bootstrap_remove(wpa_s, bootstrap_id_str.c_str()) >= 0) {
+	if (dpp_bootstrap_remove(wpa_s->dpp, bootstrap_id_str.c_str()) >= 0) {
 		return {SupplicantStatusCode::SUCCESS, ""};
 	}
 #endif
