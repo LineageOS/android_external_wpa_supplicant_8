@@ -1010,9 +1010,8 @@ SupplicantStatus StaNetwork::setWepTxKeyIdxInternal(uint32_t key_idx)
 SupplicantStatus StaNetwork::setRequirePmfInternal(bool enable)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (enable) {
-		wpa_ssid->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
-	}
+	wpa_ssid->ieee80211w =
+	    enable ? MGMT_FRAME_PROTECTION_REQUIRED : NO_MGMT_FRAME_PROTECTION;
 	resetInternalStateAfterParamsUpdate();
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
