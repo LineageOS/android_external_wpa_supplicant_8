@@ -1054,6 +1054,9 @@ int crypto_hash_finish(struct crypto_hash *ctx, u8 *mac, size_t *len)
 	HMAC_CTX_free(ctx->ctx);
 	bin_clear_free(ctx, sizeof(*ctx));
 
+	if (TEST_FAIL())
+		return -1;
+
 	if (res == 1) {
 		*len = mdlen;
 		return 0;
@@ -1317,6 +1320,8 @@ int crypto_bignum_to_bin(const struct crypto_bignum *a,
 
 int crypto_bignum_rand(struct crypto_bignum *r, const struct crypto_bignum *m)
 {
+	if (TEST_FAIL())
+		return -1;
 	return BN_rand_range((BIGNUM *) r, (const BIGNUM *) m) == 1 ? 0 : -1;
 }
 
@@ -1628,13 +1633,6 @@ void crypto_ec_deinit(struct crypto_ec *e)
 	EC_GROUP_free(e->group);
 	BN_CTX_free(e->bnctx);
 	os_free(e);
-}
-
-
-int crypto_ec_cofactor(struct crypto_ec *e, struct crypto_bignum *cofactor)
-{
-	return EC_GROUP_get_cofactor(e->group, (BIGNUM *) cofactor,
-				     e->bnctx) == 0 ? -1 : 0;
 }
 
 
