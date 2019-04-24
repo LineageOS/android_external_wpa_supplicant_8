@@ -265,7 +265,11 @@ int joinScanReq(
 				return -1;
 			}
 
-			params.freqs = (int *) os_malloc(sizeof(int) * 2);
+			/*
+			 * Allocate memory for frequency array, allocate one extra
+			 * slot for the zero-terminator.
+			 */
+			params.freqs = (int *) os_calloc(2, sizeof(int));
 			if (params.freqs) {
 				params.freqs[0] = freq;
 			} else {
