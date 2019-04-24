@@ -363,6 +363,8 @@ private:
 	    const uint8_t* value, const size_t value_len,
 	    uint8_t** to_update_field, size_t* to_update_field_len,
 	    const char* hexdump_prefix);
+	void setFastTransitionKeyMgmt(uint32_t &key_mgmt_mask);
+	void resetFastTransitionKeyMgmt(uint32_t &key_mgmt_mask);
 
 	// Reference to the global wpa_struct. This is assumed to be valid
 	// for the lifetime of the process.

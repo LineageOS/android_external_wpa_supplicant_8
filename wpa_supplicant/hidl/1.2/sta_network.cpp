@@ -875,6 +875,7 @@ SupplicantStatus StaNetwork::setKeyMgmtInternal(uint32_t key_mgmt_mask)
 	if (key_mgmt_mask & ~kAllowedKeyMgmtMask) {
 		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
 	}
+	setFastTransitionKeyMgmt(key_mgmt_mask);
 	wpa_ssid->key_mgmt = key_mgmt_mask;
 	wpa_printf(MSG_MSGDUMP, "key_mgmt: 0x%x", wpa_ssid->key_mgmt);
 	resetInternalStateAfterParamsUpdate();
@@ -1320,8 +1321,10 @@ std::pair<SupplicantStatus, bool> StaNetwork::getScanSsidInternal()
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getKeyMgmtInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	return {{SupplicantStatusCode::SUCCESS, ""},
-		wpa_ssid->key_mgmt & kAllowedKeyMgmtMask};
+	uint32_t key_mgmt_mask = wpa_ssid->key_mgmt & kAllowedKeyMgmtMask;
+
+	resetFastTransitionKeyMgmt(key_mgmt_mask);
+	return {{SupplicantStatusCode::SUCCESS, ""}, key_mgmt_mask};
 }
 
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getProtoInternal()
@@ -2119,6 +2122,44 @@ int StaNetwork::setByteArrayKeyFieldAndResetState(
 	    *to_update_field_len);
 	resetInternalStateAfterParamsUpdate();
 	return 0;
+}
+
+/**
+ * Helper function to set the fast transition bits in the key management
+ * bitmask, to allow FT support when possible.
+ */
+void StaNetwork::setFastTransitionKeyMgmt(uint32_t &key_mgmt_mask)
+{
+	if (key_mgmt_mask & WPA_KEY_MGMT_SAE) {
+		key_mgmt_mask |= WPA_KEY_MGMT_FT_SAE;
+	}
+
+	if (key_mgmt_mask & WPA_KEY_MGMT_PSK) {
+		key_mgmt_mask |= WPA_KEY_MGMT_FT_PSK;
+	}
+
+	if (key_mgmt_mask & WPA_KEY_MGMT_IEEE8021X) {
+		key_mgmt_mask |= WPA_KEY_MGMT_FT_IEEE8021X;
+	}
+}
+
+/**
+ * Helper function to reset the fast transition bits in the key management
+ * bitmask.
+ */
+void StaNetwork::resetFastTransitionKeyMgmt(uint32_t &key_mgmt_mask)
+{
+	if (key_mgmt_mask & WPA_KEY_MGMT_SAE) {
+		key_mgmt_mask &= ~WPA_KEY_MGMT_FT_SAE;
+	}
+
+	if (key_mgmt_mask & WPA_KEY_MGMT_PSK) {
+		key_mgmt_mask &= ~WPA_KEY_MGMT_FT_PSK;
+	}
+
+	if (key_mgmt_mask & WPA_KEY_MGMT_IEEE8021X) {
+		key_mgmt_mask &= ~WPA_KEY_MGMT_FT_IEEE8021X;
+	}
 }
 }  // namespace implementation
 }  // namespace V1_2
