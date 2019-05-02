@@ -60,14 +60,13 @@ void wpas_notify_supplicant_deinitialized(struct wpa_global *global)
 
 int wpas_notify_iface_added(struct wpa_supplicant *wpa_s)
 {
-	if (wpa_s->p2p_mgmt)
-		return 0;
+	if (!wpa_s->p2p_mgmt) {
+		if (wpas_dbus_register_interface(wpa_s))
+			return -1;
+	}
 
 	/* HIDL interface wants to keep track of the P2P mgmt iface. */
 	if (wpas_hidl_register_interface(wpa_s))
-		return -1;
-
-	if (wpas_dbus_register_interface(wpa_s))
 		return -1;
 
 	return 0;
@@ -76,14 +75,13 @@ int wpas_notify_iface_added(struct wpa_supplicant *wpa_s)
 
 void wpas_notify_iface_removed(struct wpa_supplicant *wpa_s)
 {
-	if (wpa_s->p2p_mgmt)
-		return;
+	if (!wpa_s->p2p_mgmt) {
+		/* unregister interface in new DBus ctrl iface */
+		wpas_dbus_unregister_interface(wpa_s);
+	}
 
 	/* HIDL interface wants to keep track of the P2P mgmt iface. */
 	wpas_hidl_unregister_interface(wpa_s);
-
-	/* unregister interface in new DBus ctrl iface */
-	wpas_dbus_unregister_interface(wpa_s);
 }
 
 
