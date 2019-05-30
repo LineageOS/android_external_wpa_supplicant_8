@@ -95,7 +95,6 @@ INCLUDES += $(LOCAL_PATH)/src/eap_common
 INCLUDES += $(LOCAL_PATH)/src/eapol_supp
 INCLUDES += $(LOCAL_PATH)/src/eap_peer
 INCLUDES += $(LOCAL_PATH)/src/eap_server
-INCLUDES += $(LOCAL_PATH)/src/hlr_auc_gw
 INCLUDES += $(LOCAL_PATH)/src/l2_packet
 INCLUDES += $(LOCAL_PATH)/src/radius
 INCLUDES += $(LOCAL_PATH)/src/rsn_supp
