@@ -1750,6 +1750,14 @@ SupplicantStatus P2pIface::setMacRandomizationInternal(bool enable)
 	bool currentEnabledState = !!wpa_s->conf->p2p_device_random_mac_addr;
 	u8 *addr = NULL;
 
+	// A dedicated p2p device is not managed by supplicant,
+	// supplicant could not change its MAC address.
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE) {
+		wpa_printf(MSG_ERROR,
+			"Dedicated P2P device don't support MAC randomization");
+		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, "NotSupported"};
+	}
+
 	// The same state, no change is needed.
 	if (currentEnabledState == enable) {
 		wpa_printf(MSG_DEBUG, "The random MAC is %s already.",
