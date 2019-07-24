@@ -180,7 +180,7 @@ std::pair<SupplicantStatus, bool> P2pNetwork::isGoInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	return {{SupplicantStatusCode::SUCCESS, ""},
-		(wpa_ssid->mode == wpa_ssid::wpas_mode::WPAS_MODE_P2P_GO)};
+		(wpa_ssid->mode == wpas_mode::WPAS_MODE_P2P_GO)};
 }
 
 SupplicantStatus P2pNetwork::setClientListInternal(

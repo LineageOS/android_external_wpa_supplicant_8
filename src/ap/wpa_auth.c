@@ -320,6 +320,19 @@ static void wpa_rekey_ptk(void *eloop_ctx, void *timeout_ctx)
 }
 
 
+void wpa_auth_set_ptk_rekey_timer(struct wpa_state_machine *sm)
+{
+	if (sm && sm->wpa_auth->conf.wpa_ptk_rekey) {
+		wpa_printf(MSG_DEBUG, "WPA: Start PTK rekeying timer for "
+			   MACSTR " (%d seconds)", MAC2STR(sm->addr),
+			   sm->wpa_auth->conf.wpa_ptk_rekey);
+		eloop_cancel_timeout(wpa_rekey_ptk, sm->wpa_auth, sm);
+		eloop_register_timeout(sm->wpa_auth->conf.wpa_ptk_rekey, 0,
+				       wpa_rekey_ptk, sm->wpa_auth, sm);
+	}
+}
+
+
 static int wpa_auth_pmksa_clear_cb(struct wpa_state_machine *sm, void *ctx)
 {
 	if (sm->pmksa == ctx)
@@ -921,6 +934,7 @@ static int wpa_try_alt_snonce(struct wpa_state_machine *sm, u8 *data,
 
 	os_memcpy(sm->SNonce, sm->alt_SNonce, WPA_NONCE_LEN);
 	os_memcpy(&sm->PTK, &PTK, sizeof(PTK));
+	forced_memzero(&PTK, sizeof(PTK));
 	sm->PTK_valid = TRUE;
 
 	return 0;
@@ -1394,6 +1408,8 @@ static int wpa_gmk_to_gtk(const u8 *gmk, const char *label, const u8 *addr,
 #endif /* CONFIG_SHA256 */
 #endif /* CONFIG_SHA384 */
 
+	forced_memzero(data, sizeof(data));
+
 	return ret;
 }
 
@@ -1735,6 +1751,8 @@ int wpa_auth_sm_event(struct wpa_state_machine *sm, enum wpa_event event)
 		sm->pmk_len = 0;
 		os_memset(sm->xxkey, 0, sizeof(sm->xxkey));
 		sm->xxkey_len = 0;
+		os_memset(sm->pmk_r1, 0, sizeof(sm->pmk_r1));
+		sm->pmk_r1_len = 0;
 #endif /* CONFIG_IEEE80211R_AP */
 		break;
 	case WPA_REAUTH:
@@ -1776,6 +1794,7 @@ int wpa_auth_sm_event(struct wpa_state_machine *sm, enum wpa_event event)
 
 		/* Using FT protocol, not WPA auth state machine */
 		sm->ft_completed = 1;
+		wpa_auth_set_ptk_rekey_timer(sm);
 		return 0;
 #else /* CONFIG_IEEE80211R_AP */
 		break;
@@ -2030,7 +2049,7 @@ SM_STATE(WPA_PTK, INITPMK)
 		sm->Disconnect = TRUE;
 		return;
 	}
-	os_memset(msk, 0, sizeof(msk));
+	forced_memzero(msk, sizeof(msk));
 
 	sm->req_replay_counter_used = 0;
 	/* IEEE 802.11i does not set keyRun to FALSE, but not doing this
@@ -2130,6 +2149,29 @@ SM_STATE(WPA_PTK, PTKSTART)
 			wpa_printf(MSG_DEBUG,
 				   "RSN: No KCK available to derive PMKID for message 1/4");
 			pmkid = NULL;
+#ifdef CONFIG_FILS
+		} else if (wpa_key_mgmt_fils(sm->wpa_key_mgmt)) {
+			if (sm->pmkid_set) {
+				wpa_hexdump(MSG_DEBUG,
+					    "RSN: Message 1/4 PMKID from FILS/ERP",
+					    sm->pmkid, PMKID_LEN);
+				os_memcpy(&pmkid[2 + RSN_SELECTOR_LEN],
+					  sm->pmkid, PMKID_LEN);
+			} else {
+				/* No PMKID available */
+				wpa_printf(MSG_DEBUG,
+					   "RSN: No FILS/ERP PMKID available for message 1/4");
+				pmkid = NULL;
+			}
+#endif /* CONFIG_FILS */
+#ifdef CONFIG_IEEE80211R_AP
+		} else if (wpa_key_mgmt_ft(sm->wpa_key_mgmt) &&
+			   sm->ft_completed) {
+			wpa_printf(MSG_DEBUG,
+				   "FT: No PMKID in message 1/4 when using FT protocol");
+			pmkid = NULL;
+			pmkid_len = 0;
+#endif /* CONFIG_IEEE80211R_AP */
 #ifdef CONFIG_SAE
 		} else if (wpa_key_mgmt_sae(sm->wpa_key_mgmt)) {
 			if (sm->pmkid_set) {
@@ -2172,8 +2214,20 @@ static int wpa_derive_ptk(struct wpa_state_machine *sm, const u8 *snonce,
 	size_t z_len = 0;
 
 #ifdef CONFIG_IEEE80211R_AP
-	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt))
-		return wpa_auth_derive_ptk_ft(sm, pmk, ptk);
+	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
+		if (sm->ft_completed) {
+			u8 ptk_name[WPA_PMK_NAME_LEN];
+
+			return wpa_pmk_r1_to_ptk(sm->pmk_r1, sm->pmk_r1_len,
+						 sm->SNonce, sm->ANonce,
+						 sm->addr, sm->wpa_auth->addr,
+						 sm->pmk_r1_name,
+						 ptk, ptk_name,
+						 sm->wpa_key_mgmt,
+						 sm->pairwise);
+		}
+		return wpa_auth_derive_ptk_ft(sm, ptk);
+	}
 #endif /* CONFIG_IEEE80211R_AP */
 
 #ifdef CONFIG_DPP2
@@ -2234,12 +2288,12 @@ int fils_auth_pmk_to_ptk(struct wpa_state_machine *sm, const u8 *pmk,
 		wpa_hexdump(MSG_DEBUG, "FILS+FT: PMKR0Name",
 			    pmk_r0_name, WPA_PMK_NAME_LEN);
 		wpa_ft_store_pmk_fils(sm, pmk_r0, pmk_r0_name);
-		os_memset(fils_ft, 0, sizeof(fils_ft));
+		forced_memzero(fils_ft, sizeof(fils_ft));
 
 		res = wpa_derive_pmk_r1_name(pmk_r0_name, conf->r1_key_holder,
 					     sm->addr, sm->pmk_r1_name,
 					     use_sha384);
-		os_memset(pmk_r0, 0, PMK_LEN_MAX);
+		forced_memzero(pmk_r0, PMK_LEN_MAX);
 		if (res < 0)
 			return -1;
 		wpa_hexdump(MSG_DEBUG, "FILS+FT: PMKR1Name", sm->pmk_r1_name,
@@ -2257,7 +2311,7 @@ int fils_auth_pmk_to_ptk(struct wpa_state_machine *sm, const u8 *pmk,
 			       sm->wpa_key_mgmt, sm->fils_key_auth_sta,
 			       sm->fils_key_auth_ap,
 			       &sm->fils_key_auth_len);
-	os_memset(ick, 0, sizeof(ick));
+	forced_memzero(ick, sizeof(ick));
 
 	/* Store nonces for (Re)Association Request/Response frame processing */
 	os_memcpy(sm->SNonce, snonce, FILS_NONCE_LEN);
@@ -2559,7 +2613,7 @@ int fils_encrypt_assoc(struct wpa_state_machine *sm, u8 *buf,
 	if (pos + wpabuf_len(plain) + AES_BLOCK_SIZE > end) {
 		wpa_printf(MSG_DEBUG,
 			   "FILS: Not enough room for FILS elements");
-		wpabuf_free(plain);
+		wpabuf_clear_free(plain);
 		return -1;
 	}
 
@@ -2569,7 +2623,7 @@ int fils_encrypt_assoc(struct wpa_state_machine *sm, u8 *buf,
 	if (aes_siv_encrypt(sm->PTK.kek, sm->PTK.kek_len,
 			    wpabuf_head(plain), wpabuf_len(plain),
 			    5, aad, aad_len, pos) < 0) {
-		wpabuf_free(plain);
+		wpabuf_clear_free(plain);
 		return -1;
 	}
 
@@ -2577,7 +2631,7 @@ int fils_encrypt_assoc(struct wpa_state_machine *sm, u8 *buf,
 		    "FILS: Encrypted Association Response elements",
 		    pos, AES_BLOCK_SIZE + wpabuf_len(plain));
 	current_len += wpabuf_len(plain) + AES_BLOCK_SIZE;
-	wpabuf_free(plain);
+	wpabuf_clear_free(plain);
 
 	sm->fils_completed = 1;
 
@@ -2631,7 +2685,7 @@ static struct wpabuf * fils_prepare_plainbuf(struct wpa_state_machine *sm,
 		 * of GTK in the BSS.
 		 */
 		if (random_get_bytes(dummy_gtk, gtk_len) < 0) {
-			wpabuf_free(plain);
+			wpabuf_clear_free(plain);
 			return NULL;
 		}
 		gtk = dummy_gtk;
@@ -2658,13 +2712,13 @@ static struct wpabuf * fils_prepare_plainbuf(struct wpa_state_machine *sm,
 		if (wpa_channel_info(sm->wpa_auth, &ci) != 0) {
 			wpa_printf(MSG_WARNING,
 				   "FILS: Failed to get channel info for OCI element");
-			wpabuf_free(plain);
+			wpabuf_clear_free(plain);
 			return NULL;
 		}
 
 		pos = wpabuf_put(plain, OCV_OCI_EXTENDED_LEN);
 		if (ocv_insert_extended_oci(&ci, pos) < 0) {
-			wpabuf_free(plain);
+			wpabuf_clear_free(plain);
 			return NULL;
 		}
 	}
@@ -2727,7 +2781,7 @@ u8 * hostapd_eid_assoc_fils_session(struct wpa_state_machine *sm, u8 *buf,
 
 	wpa_printf(MSG_DEBUG, "%s: plain buf_len: %u", __func__,
 		   (unsigned int) wpabuf_len(plain));
-	wpabuf_free(plain);
+	wpabuf_clear_free(plain);
 	sm->fils_completed = 1;
 	return pos;
 }
@@ -2794,6 +2848,12 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 		} else {
 			pmk = sm->PMK;
 			pmk_len = sm->pmk_len;
+		}
+
+		if ((!pmk || !pmk_len) && sm->pmksa) {
+			wpa_printf(MSG_DEBUG, "WPA: Use PMK from PMKSA cache");
+			pmk = sm->pmksa->pmk;
+			pmk_len = sm->pmksa->pmk_len;
 		}
 
 		if (wpa_derive_ptk(sm, sm->SNonce, pmk, pmk_len, &PTK) < 0)
@@ -2973,6 +3033,7 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 	sm->MICVerified = TRUE;
 
 	os_memcpy(&sm->PTK, &PTK, sizeof(PTK));
+	forced_memzero(&PTK, sizeof(PTK));
 	sm->PTK_valid = TRUE;
 }
 
@@ -3293,12 +3354,7 @@ SM_STATE(WPA_PTK, PTKINITDONE)
 		/* FIX: MLME-SetProtection.Request(TA, Tx_Rx) */
 		sm->pairwise_set = TRUE;
 
-		if (sm->wpa_auth->conf.wpa_ptk_rekey) {
-			eloop_cancel_timeout(wpa_rekey_ptk, sm->wpa_auth, sm);
-			eloop_register_timeout(sm->wpa_auth->conf.
-					       wpa_ptk_rekey, 0, wpa_rekey_ptk,
-					       sm->wpa_auth, sm);
-		}
+		wpa_auth_set_ptk_rekey_timer(sm);
 
 		if (wpa_key_mgmt_wpa_psk(sm->wpa_key_mgmt) ||
 		    sm->wpa_key_mgmt == WPA_KEY_MGMT_DPP ||
@@ -4307,6 +4363,15 @@ int wpa_auth_pmksa_add(struct wpa_state_machine *sm, const u8 *pmk,
 	    sm->wpa_auth->conf.disable_pmksa_caching)
 		return -1;
 
+#ifdef CONFIG_IEEE80211R_AP
+	if (pmk_len >= 2 * PMK_LEN && wpa_key_mgmt_ft(sm->wpa_key_mgmt) &&
+	    wpa_key_mgmt_wpa_ieee8021x(sm->wpa_key_mgmt) &&
+	    !wpa_key_mgmt_sha384(sm->wpa_key_mgmt)) {
+		/* Cache MPMK/XXKey instead of initial part from MSK */
+		pmk = pmk + PMK_LEN;
+		pmk_len = PMK_LEN;
+	} else
+#endif /* CONFIG_IEEE80211R_AP */
 	if (wpa_key_mgmt_sha384(sm->wpa_key_mgmt)) {
 		if (pmk_len > PMK_LEN_SUITE_B_192)
 			pmk_len = PMK_LEN_SUITE_B_192;
@@ -4314,6 +4379,7 @@ int wpa_auth_pmksa_add(struct wpa_state_machine *sm, const u8 *pmk,
 		pmk_len = PMK_LEN;
 	}
 
+	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK", pmk, pmk_len);
 	if (pmksa_cache_auth_add(sm->wpa_auth->pmksa, pmk, pmk_len, NULL,
 				 sm->PTK.kck, sm->PTK.kck_len,
 				 sm->wpa_auth->addr, sm->addr, session_timeout,
@@ -4332,6 +4398,7 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
 	if (wpa_auth == NULL)
 		return -1;
 
+	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK from preauth", pmk, len);
 	if (pmksa_cache_auth_add(wpa_auth->pmksa, pmk, len, NULL,
 				 NULL, 0,
 				 wpa_auth->addr,
@@ -4349,6 +4416,7 @@ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 	if (wpa_auth->conf.disable_pmksa_caching)
 		return -1;
 
+	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK from SAE", pmk, PMK_LEN);
 	if (pmksa_cache_auth_add(wpa_auth->pmksa, pmk, PMK_LEN, pmkid,
 				 NULL, 0,
 				 wpa_auth->addr, addr, 0, NULL,
@@ -4373,6 +4441,7 @@ int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
 	if (wpa_auth->conf.disable_pmksa_caching)
 		return -1;
 
+	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK (2)", pmk, PMK_LEN);
 	if (pmksa_cache_auth_add(wpa_auth->pmksa, pmk, pmk_len, pmkid,
 				 NULL, 0, wpa_auth->addr, addr, session_timeout,
 				 NULL, akmp))
@@ -4844,6 +4913,16 @@ void wpa_auth_get_fils_aead_params(struct wpa_state_machine *sm,
 	os_memcpy(fils_snonce, sm->SNonce, WPA_NONCE_LEN);
 	os_memcpy(fils_kek, sm->PTK.kek, WPA_KEK_MAX_LEN);
 	*fils_kek_len = sm->PTK.kek_len;
+}
+
+
+void wpa_auth_add_fils_pmk_pmkid(struct wpa_state_machine *sm, const u8 *pmk,
+				 size_t pmk_len, const u8 *pmkid)
+{
+	os_memcpy(sm->PMK, pmk, pmk_len);
+	sm->pmk_len = pmk_len;
+	os_memcpy(sm->pmkid, pmkid, PMKID_LEN);
+	sm->pmkid_set = 1;
 }
 
 #endif /* CONFIG_FILS */

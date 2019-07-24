@@ -894,6 +894,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(owe_group);
 	INT(owe_only);
 	INT(multi_ap_backhaul_sta);
+	INT(ft_eap_pmksa_caching);
 #ifdef CONFIG_HT_OVERRIDES
 	INT_DEF(disable_ht, DEFAULT_DISABLE_HT);
 	INT_DEF(disable_ht40, DEFAULT_DISABLE_HT40);
@@ -1547,7 +1548,8 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->bss_no_flush_when_down)
 		fprintf(f, "bss_no_flush_when_down=%d\n",
 			config->bss_no_flush_when_down);
-
+	if (config->disable_btm)
+		fprintf(f, "disable_btm=1\n");
 }
 
 #endif /* CONFIG_NO_CONFIG_WRITE */

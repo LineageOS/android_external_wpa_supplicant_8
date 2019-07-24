@@ -232,6 +232,10 @@ struct hostapd_data {
 	struct wps_stat wps_stats;
 #endif /* CONFIG_WPS */
 
+#ifdef CONFIG_MACSEC
+	struct ieee802_1x_kay *kay;
+#endif /* CONFIG_MACSEC */
+
 	struct hostapd_probereq_cb *probereq_cb;
 	size_t num_probereq_cb;
 
@@ -379,6 +383,13 @@ struct hostapd_data {
 	unsigned int dpp_ignore_netaccesskey_mismatch:1;
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_DPP */
+
+#ifdef CONFIG_AIRTIME_POLICY
+	unsigned int num_backlogged_sta;
+	unsigned int airtime_weight;
+#endif /* CONFIG_AIRTIME_POLICY */
+
+	u8 last_1x_eapol_key_replay_counter[8];
 };
 
 
@@ -542,6 +553,12 @@ struct hostapd_iface {
 	unsigned int num_sta_seen;
 
 	u8 dfs_domain;
+#ifdef CONFIG_AIRTIME_POLICY
+	unsigned int airtime_quantum;
+#endif /* CONFIG_AIRTIME_POLICY */
+
+	/* Previous WMM element information */
+	struct hostapd_wmm_ac_params prev_wmm[WMM_AC_NUM];
 };
 
 /* hostapd.c */
@@ -608,7 +625,8 @@ int hostapd_probe_req_rx(struct hostapd_data *hapd, const u8 *sa, const u8 *da,
 			 const u8 *bssid, const u8 *ie, size_t ie_len,
 			 int ssi_signal);
 void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
-			     int offset, int width, int cf1, int cf2);
+			     int offset, int width, int cf1, int cf2,
+			     int finished);
 struct survey_results;
 void hostapd_event_get_survey(struct hostapd_iface *iface,
 			      struct survey_results *survey_results);

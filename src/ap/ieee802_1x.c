@@ -34,6 +34,7 @@
 /* FIX: Not really a good thing to require ieee802_11.h here.. (FILS) */
 #include "ieee802_11.h"
 #include "ieee802_1x.h"
+#include "wpa_auth_kay.h"
 
 
 #ifdef CONFIG_HS20
@@ -63,6 +64,10 @@ static void ieee802_1x_send(struct hostapd_data *hapd, struct sta_info *sta,
 
 	xhdr = (struct ieee802_1x_hdr *) buf;
 	xhdr->version = hapd->conf->eapol_version;
+#ifdef CONFIG_MACSEC
+	if (xhdr->version > 2 && hapd->conf->macsec_policy == 0)
+		xhdr->version = 2;
+#endif /* CONFIG_MACSEC */
 	xhdr->type = type;
 	xhdr->length = host_to_be16(datalen);
 
@@ -157,6 +162,21 @@ static void ieee802_1x_tx_key_one(struct hostapd_data *hapd,
 	key->type = EAPOL_KEY_TYPE_RC4;
 	WPA_PUT_BE16(key->key_length, key_len);
 	wpa_get_ntp_timestamp(key->replay_counter);
+	if (os_memcmp(key->replay_counter,
+		      hapd->last_1x_eapol_key_replay_counter,
+		      IEEE8021X_REPLAY_COUNTER_LEN) <= 0) {
+		/* NTP timestamp did not increment from last EAPOL-Key frame;
+		 * use previously used value + 1 instead. */
+		inc_byte_array(hapd->last_1x_eapol_key_replay_counter,
+			       IEEE8021X_REPLAY_COUNTER_LEN);
+		os_memcpy(key->replay_counter,
+			  hapd->last_1x_eapol_key_replay_counter,
+			  IEEE8021X_REPLAY_COUNTER_LEN);
+	} else {
+		os_memcpy(hapd->last_1x_eapol_key_replay_counter,
+			  key->replay_counter,
+			  IEEE8021X_REPLAY_COUNTER_LEN);
+	}
 
 	if (random_get_bytes(key->key_iv, sizeof(key->key_iv))) {
 		wpa_printf(MSG_ERROR, "Could not get random numbers");
@@ -197,6 +217,10 @@ static void ieee802_1x_tx_key_one(struct hostapd_data *hapd,
 	/* This header is needed here for HMAC-MD5, but it will be regenerated
 	 * in ieee802_1x_send() */
 	hdr->version = hapd->conf->eapol_version;
+#ifdef CONFIG_MACSEC
+	if (hdr->version > 2)
+		hdr->version = 2;
+#endif /* CONFIG_MACSEC */
 	hdr->type = IEEE802_1X_TYPE_EAPOL_KEY;
 	hdr->length = host_to_be16(len);
 	hmac_md5(sm->eap_if->eapKeyData + 32, 32, buf, sizeof(*hdr) + len,
@@ -1104,6 +1128,13 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
 		/* TODO: implement support for this; show data */
 		break;
 
+#ifdef CONFIG_MACSEC
+	case IEEE802_1X_TYPE_EAPOL_MKA:
+		wpa_printf(MSG_EXCESSIVE,
+			   "EAPOL type %d will be handled by MKA", hdr->type);
+		break;
+#endif /* CONFIG_MACSEC */
+
 	default:
 		wpa_printf(MSG_DEBUG, "   unknown IEEE 802.1X packet type");
 		sta->eapol_sm->dot1xAuthInvalidEapolFramesRx++;
@@ -1236,6 +1267,7 @@ void ieee802_1x_new_station(struct hostapd_data *hapd, struct sta_info *sta)
 		sta->eapol_sm->portValid = TRUE;
 		if (sta->eapol_sm->eap)
 			eap_sm_notify_cached(sta->eapol_sm->eap);
+		wpa_auth_set_ptk_rekey_timer(sta->wpa_sm);
 		return;
 	}
 #endif /* CONFIG_FILS */
@@ -1384,6 +1416,8 @@ static void ieee802_1x_get_keys(struct hostapd_data *hapd,
 				size_t shared_secret_len)
 {
 	struct radius_ms_mppe_keys *keys;
+	u8 *buf;
+	size_t len;
 	struct eapol_state_machine *sm = sta->eapol_sm;
 	if (sm == NULL)
 		return;
@@ -1392,7 +1426,7 @@ static void ieee802_1x_get_keys(struct hostapd_data *hapd,
 				      shared_secret_len);
 
 	if (keys && keys->send && keys->recv) {
-		size_t len = keys->send_len + keys->recv_len;
+		len = keys->send_len + keys->recv_len;
 		wpa_hexdump_key(MSG_DEBUG, "MS-MPPE-Send-Key",
 				keys->send, keys->send_len);
 		wpa_hexdump_key(MSG_DEBUG, "MS-MPPE-Recv-Key",
@@ -1419,6 +1453,20 @@ static void ieee802_1x_get_keys(struct hostapd_data *hapd,
 		os_free(keys->send);
 		os_free(keys->recv);
 		os_free(keys);
+	}
+
+	if (radius_msg_get_attr_ptr(msg, RADIUS_ATTR_EAP_KEY_NAME, &buf, &len,
+				    NULL) == 0) {
+		os_free(sm->eap_if->eapSessionId);
+		sm->eap_if->eapSessionId = os_memdup(buf, len);
+		if (sm->eap_if->eapSessionId) {
+			sm->eap_if->eapSessionIdLen = len;
+			wpa_hexdump(MSG_DEBUG, "EAP-Key Name",
+				    sm->eap_if->eapSessionId,
+				    sm->eap_if->eapSessionIdLen);
+		}
+	} else {
+		sm->eap_if->eapSessionIdLen = 0;
 	}
 }
 
@@ -2323,6 +2371,8 @@ int ieee802_1x_init(struct hostapd_data *hapd)
 	conf.eap_fast_prov = hapd->conf->eap_fast_prov;
 	conf.pac_key_lifetime = hapd->conf->pac_key_lifetime;
 	conf.pac_key_refresh_time = hapd->conf->pac_key_refresh_time;
+	conf.eap_teap_auth = hapd->conf->eap_teap_auth;
+	conf.eap_teap_pac_no_inner = hapd->conf->eap_teap_pac_no_inner;
 	conf.eap_sim_aka_result_ind = hapd->conf->eap_sim_aka_result_ind;
 	conf.tnc = hapd->conf->tnc;
 	conf.wps = hapd->wps;
@@ -2540,6 +2590,20 @@ const u8 * ieee802_1x_get_key(struct eapol_state_machine *sm, size_t *len)
 	*len = sm->eap_if->eapKeyDataLen;
 	return sm->eap_if->eapKeyData;
 }
+
+
+#ifdef CONFIG_MACSEC
+const u8 * ieee802_1x_get_session_id(struct eapol_state_machine *sm,
+				     size_t *len)
+{
+	*len = 0;
+	if (!sm || !sm->eap_if)
+		return NULL;
+
+	*len = sm->eap_if->eapSessionIdLen;
+	return sm->eap_if->eapSessionId;
+}
+#endif /* CONFIG_MACSEC */
 
 
 void ieee802_1x_notify_port_enabled(struct eapol_state_machine *sm,
@@ -2831,6 +2895,10 @@ static void ieee802_1x_finished(struct hostapd_data *hapd,
 				       hapd, sta);
 	}
 #endif /* CONFIG_HS20 */
+
+#ifdef CONFIG_MACSEC
+	ieee802_1x_notify_create_actor_hapd(hapd, sta);
+#endif /* CONFIG_MACSEC */
 
 	key = ieee802_1x_get_key(sta->eapol_sm, &len);
 	if (sta->session_timeout_set) {

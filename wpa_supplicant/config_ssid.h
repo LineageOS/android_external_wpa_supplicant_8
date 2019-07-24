@@ -13,7 +13,6 @@
 #include "utils/list.h"
 #include "eap_peer/eap_config.h"
 
-
 #define DEFAULT_EAP_WORKAROUND ((unsigned int) -1)
 #define DEFAULT_EAPOL_FLAGS (EAPOL_FLAG_REQUIRE_KEY_UNICAST | \
 			     EAPOL_FLAG_REQUIRE_KEY_BROADCAST)
@@ -46,6 +45,39 @@ struct psk_list_entry {
 	u8 addr[ETH_ALEN];
 	u8 psk[32];
 	u8 p2p;
+};
+
+/**
+ * mode - IEEE 802.11 operation mode (Infrastucture/IBSS)
+ *
+ * 0 = infrastructure (Managed) mode, i.e., associate with an AP.
+ *
+ * 1 = IBSS (ad-hoc, peer-to-peer)
+ *
+ * 2 = AP (access point)
+ *
+ * 3 = P2P Group Owner (can be set in the configuration file)
+ *
+ * 4 = P2P Group Formation (used internally; not in configuration
+ * files)
+ *
+ * 5 = Mesh
+ *
+ * Note: IBSS can only be used with key_mgmt NONE (plaintext and static
+ * WEP) and WPA-PSK (with proto=RSN). In addition, key_mgmt=WPA-NONE
+ * (fixed group key TKIP/CCMP) is available for backwards compatibility,
+ * but its use is deprecated. WPA-None requires following network block
+ * options: proto=WPA, key_mgmt=WPA-NONE, pairwise=NONE, group=TKIP (or
+ * CCMP, but not both), and psk must also be set (either directly or
+ * using ASCII passphrase).
+ */
+enum wpas_mode {
+	WPAS_MODE_INFRA = 0,
+	WPAS_MODE_IBSS = 1,
+	WPAS_MODE_AP = 2,
+	WPAS_MODE_P2P_GO = 3,
+	WPAS_MODE_P2P_GROUP_FORMATION = 4,
+	WPAS_MODE_MESH = 5,
 };
 
 /**
@@ -394,14 +426,7 @@ struct wpa_ssid {
 	 * CCMP, but not both), and psk must also be set (either directly or
 	 * using ASCII passphrase).
 	 */
-	enum wpas_mode {
-		WPAS_MODE_INFRA = 0,
-		WPAS_MODE_IBSS = 1,
-		WPAS_MODE_AP = 2,
-		WPAS_MODE_P2P_GO = 3,
-		WPAS_MODE_P2P_GROUP_FORMATION = 4,
-		WPAS_MODE_MESH = 5,
-	} mode;
+	enum wpas_mode mode;
 
 	/**
 	 * pbss - Whether to use PBSS. Relevant to DMG networks only.
@@ -1005,6 +1030,16 @@ struct wpa_ssid {
 	 * 1 = Multi-AP backhaul station
 	 */
 	int multi_ap_backhaul_sta;
+
+	/**
+	 * ft_eap_pmksa_caching - Whether FT-EAP PMKSA caching is allowed
+	 * 0 = do not try to use PMKSA caching with FT-EAP
+	 * 1 = try to use PMKSA caching with FT-EAP
+	 *
+	 * This controls whether to try to use PMKSA caching with FT-EAP for the
+	 * FT initial mobility domain association.
+	 */
+	int ft_eap_pmksa_caching;
 };
 
 #endif /* CONFIG_SSID_H */
