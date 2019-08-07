@@ -34,7 +34,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_2 {
+namespace V1_3 {
 namespace implementation {
 using namespace android::hardware::wifi::supplicant::V1_0;
 using namespace android::hardware::wifi::supplicant::V1_1;
@@ -318,7 +318,7 @@ private:
 };
 
 }  // namespace implementation
-}  // namespace V1_2
+}  // namespace V1_3
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

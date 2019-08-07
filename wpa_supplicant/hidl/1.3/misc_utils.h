@@ -25,7 +25,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_2 {
+namespace V1_3 {
 namespace implementation {
 namespace misc_utils {
 using wpabuf_unique_ptr = std::unique_ptr<wpabuf, void (*)(wpabuf *)>;
@@ -65,7 +65,7 @@ inline std::string convertWpsPinToString(int pin)
 
 }  // namespace misc_utils
 }  // namespace implementation
-}  // namespace V1_2
+}  // namespace V1_3
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

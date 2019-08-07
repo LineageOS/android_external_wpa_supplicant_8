@@ -383,7 +383,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_2 {
+namespace V1_3 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 
@@ -1822,7 +1822,7 @@ wpa_supplicant* P2pIface::retrieveGroupIfacePtr(const std::string& group_ifname)
 }
 
 }  // namespace implementation
-}  // namespace V1_2
+}  // namespace V1_3
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

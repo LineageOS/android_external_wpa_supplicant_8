@@ -30,7 +30,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_2 {
+namespace V1_3 {
 namespace implementation {
 namespace iface_config_utils {
 SupplicantStatus setWpsDeviceName(
@@ -51,7 +51,7 @@ SupplicantStatus setExternalSim(
     struct wpa_supplicant* wpa_s, bool useExternalSim);
 }  // namespace iface_config_utils
 }  // namespace implementation
-}  // namespace V1_2
+}  // namespace V1_3
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

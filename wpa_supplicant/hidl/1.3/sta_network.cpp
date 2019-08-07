@@ -89,7 +89,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_2 {
+namespace V1_3 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 
@@ -791,6 +791,20 @@ Return<void> StaNetwork::setSaePasswordId(
 	    &StaNetwork::setSaePasswordIdInternal, _hidl_cb, sae_password_id);
 }
 
+Return<void> StaNetwork::setOcsp(
+    OcspType ocspType, setOcsp_cb _hidl_cb) {
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::setOcspInternal, _hidl_cb, ocspType);
+}
+
+Return<void> StaNetwork::getOcsp(
+    getOcsp_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::getOcspInternal, _hidl_cb);
+}
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getIdInternal()
 {
 	return {{SupplicantStatusCode::SUCCESS, ""}, network_id_};
@@ -1946,6 +1960,24 @@ std::pair<SupplicantStatus, uint32_t> StaNetwork::getGroupMgmtCipherInternal()
 		wpa_ssid->group_mgmt_cipher & kAllowedGroupMgmtCipherMask};
 }
 
+SupplicantStatus StaNetwork::setOcspInternal(OcspType ocspType) {
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	if (ocspType < OcspType::NONE || ocspType > OcspType::REQUIRE_ALL_CERTS_STATUS) {
+		return{ SupplicantStatusCode::FAILURE_ARGS_INVALID, "" };
+	}
+	wpa_ssid->eap.ocsp = (int) ocspType;
+	wpa_printf(
+	    MSG_MSGDUMP, "ocsp: %d", wpa_ssid->eap.ocsp);
+	resetInternalStateAfterParamsUpdate();
+	return {SupplicantStatusCode::SUCCESS, ""};
+}
+
+std::pair<SupplicantStatus, OcspType> StaNetwork::getOcspInternal()
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	return {{SupplicantStatusCode::SUCCESS, ""},
+		(OcspType) wpa_ssid->eap.ocsp};
+}
 /**
  * Retrieve the underlying |wpa_ssid| struct pointer for
  * this network.
@@ -2162,7 +2194,7 @@ void StaNetwork::resetFastTransitionKeyMgmt(uint32_t &key_mgmt_mask)
 	}
 }
 }  // namespace implementation
-}  // namespace V1_2
+}  // namespace V1_3
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

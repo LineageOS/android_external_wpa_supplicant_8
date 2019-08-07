@@ -28,7 +28,7 @@ namespace {
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
 using android::hardware::wifi::supplicant::V1_2::ISupplicantStaIface;
-using android::hardware::wifi::supplicant::V1_2::implementation::HidlManager;
+using android::hardware::wifi::supplicant::V1_3::implementation::HidlManager;
 
 constexpr uint32_t kMaxAnqpElems = 100;
 constexpr char kGetMacAddress[] = "MACADDR";
@@ -158,7 +158,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_2 {
+namespace V1_3 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 
@@ -1310,7 +1310,7 @@ wpa_supplicant *StaIface::retrieveIfacePtr()
 	return wpa_supplicant_get_iface(wpa_global_, ifname_.c_str());
 }
 }  // namespace implementation
-}  // namespace V1_2
+}  // namespace V1_3
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware
