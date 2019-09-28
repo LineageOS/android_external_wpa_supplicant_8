@@ -15,7 +15,7 @@
 
 #include <android-base/macros.h>
 
-#include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIface.h>
+#include <android/hardware/wifi/supplicant/1.3/ISupplicantStaIface.h>
 #include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.2/ISupplicantStaNetwork.h>
 
@@ -35,14 +35,16 @@ namespace wifi {
 namespace supplicant {
 namespace V1_3 {
 namespace implementation {
-using namespace android::hardware::wifi::supplicant::V1_2;
+using namespace android::hardware::wifi::supplicant::V1_3;
+using android::hardware::wifi::supplicant::V1_2::DppAkm;
+using android::hardware::wifi::supplicant::V1_2::DppNetRole;
 
 /**
  * Implementation of StaIface hidl object. Each unique hidl
  * object is used for control operations on a specific interface
  * controlled by wpa_supplicant.
  */
-class StaIface : public V1_2::ISupplicantStaIface
+class StaIface : public V1_3::ISupplicantStaIface
 {
 public:
 	StaIface(struct wpa_global* wpa_global, const char ifname[]);
@@ -79,6 +81,9 @@ public:
 	    registerCallback_cb _hidl_cb) override;
 	Return<void> registerCallback_1_2(
 	    const sp<V1_2::ISupplicantStaIfaceCallback>& callback,
+	    registerCallback_cb _hidl_cb) override;
+	Return<void> registerCallback_1_3(
+	    const sp<V1_3::ISupplicantStaIfaceCallback>& callback,
 	    registerCallback_cb _hidl_cb) override;
 	Return<void> reassociate(reassociate_cb _hidl_cb) override;
 	Return<void> reconnect(reconnect_cb _hidl_cb) override;

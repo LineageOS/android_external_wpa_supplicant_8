@@ -1163,3 +1163,12 @@ void wpas_notify_dpp_failure(struct wpa_supplicant *wpa_s)
 	wpas_hidl_notify_dpp_fail(wpa_s);
 #endif /* CONFIG_DPP */
 }
+
+void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
+				 struct rsn_pmksa_cache_entry *entry)
+{
+	if (!wpa_s)
+		return;
+
+	wpas_hidl_notify_pmk_cache_added(wpa_s, entry);
+}

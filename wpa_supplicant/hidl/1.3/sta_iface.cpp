@@ -22,12 +22,14 @@ extern "C"
 #include "wps_supplicant.h"
 #include "dpp_supplicant.h"
 #include "dpp.h"
+#include "rsn_supp/wpa.h"
+#include "rsn_supp/pmksa_cache.h"
 }
 
 namespace {
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
-using android::hardware::wifi::supplicant::V1_2::ISupplicantStaIface;
+using android::hardware::wifi::supplicant::V1_3::ISupplicantStaIface;
 using android::hardware::wifi::supplicant::V1_3::implementation::HidlManager;
 
 constexpr uint32_t kMaxAnqpElems = 100;
@@ -247,6 +249,16 @@ Return<void> StaIface::registerCallback_1_2(
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 	    &StaIface::registerCallbackInternal, _hidl_cb, callback_1_1);
+}
+
+Return<void> StaIface::registerCallback_1_3(
+    const sp<V1_3::ISupplicantStaIfaceCallback> &callback,
+    registerCallback_cb _hidl_cb)
+{
+	sp<V1_3::ISupplicantStaIfaceCallback> callback_1_3 = callback;
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &StaIface::registerCallbackInternal, _hidl_cb, callback_1_3);
 }
 
 Return<void> StaIface::reassociate(reassociate_cb _hidl_cb)

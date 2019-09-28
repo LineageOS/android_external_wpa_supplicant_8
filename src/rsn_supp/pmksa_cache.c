@@ -14,6 +14,8 @@
 #include "wpa.h"
 #include "wpa_i.h"
 #include "pmksa_cache.h"
+#include "wpa_supplicant_i.h"
+#include "notify.h"
 
 #if defined(IEEE8021X_EAPOL) && !defined(CONFIG_NO_WPA)
 
@@ -265,6 +267,7 @@ pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
 	wpa_printf(MSG_DEBUG, "RSN: Added PMKSA cache entry for " MACSTR
 		   " network_ctx=%p akmp=0x%x", MAC2STR(entry->aa),
 		   entry->network_ctx, entry->akmp);
+	wpas_notify_pmk_cache_added((struct wpa_supplicant *)pmksa->sm->ctx->ctx, entry);
 	wpa_sm_add_pmkid(pmksa->sm, entry->network_ctx, entry->aa, entry->pmkid,
 			 entry->fils_cache_id_set ? entry->fils_cache_id : NULL,
 			 entry->pmk, entry->pmk_len);

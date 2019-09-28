@@ -8,6 +8,7 @@
  */
 
 #include <algorithm>
+#include <iostream>
 #include <regex>
 
 #include "hidl_manager.h"
@@ -289,13 +290,13 @@ void callWithEachIfaceCallback(
 	}
 }
 
-template <class CallbackTypeV1_0, class CallbackTypeV1_1>
-void callWithEachIfaceCallback_1_1(
+template <class CallbackTypeBase, class CallbackTypeDerived>
+void callWithEachIfaceCallbackDerived(
     const std::string &ifname,
     const std::function<
-	android::hardware::Return<void>(android::sp<CallbackTypeV1_1>)> &method,
+	android::hardware::Return<void>(android::sp<CallbackTypeDerived>)> &method,
     const std::map<
-	const std::string, std::vector<android::sp<CallbackTypeV1_0>>>
+	const std::string, std::vector<android::sp<CallbackTypeBase>>>
 	&callbacks_map)
 {
 	if (ifname.empty())
@@ -306,41 +307,12 @@ void callWithEachIfaceCallback_1_1(
 		return;
 	const auto &iface_callback_list = iface_callback_map_iter->second;
 	for (const auto &callback : iface_callback_list) {
-		android::sp<CallbackTypeV1_1> callback_1_1 =
-		    CallbackTypeV1_1::castFrom(callback);
-		if (callback_1_1 == nullptr)
+		android::sp<CallbackTypeDerived> callback_derived =
+		    CallbackTypeDerived::castFrom(callback);
+		if (callback_derived == nullptr)
 			continue;
 
-		if (!method(callback_1_1).isOk()) {
-			wpa_printf(
-			    MSG_ERROR, "Failed to invoke HIDL iface callback");
-		}
-	}
-}
-
-template <class CallbackTypeV1_0, class CallbackTypeV1_2>
-void callWithEachIfaceCallback_1_2(
-    const std::string &ifname,
-    const std::function<
-	android::hardware::Return<void>(android::sp<CallbackTypeV1_2>)> &method,
-    const std::map<
-	const std::string, std::vector<android::sp<CallbackTypeV1_0>>>
-	&callbacks_map)
-{
-	if (ifname.empty())
-		return;
-
-	auto iface_callback_map_iter = callbacks_map.find(ifname);
-	if (iface_callback_map_iter == callbacks_map.end())
-		return;
-	const auto &iface_callback_list = iface_callback_map_iter->second;
-	for (const auto &callback : iface_callback_list) {
-		android::sp<CallbackTypeV1_2> callback_1_2 =
-		    CallbackTypeV1_2::castFrom(callback);
-		if (callback_1_2 == nullptr)
-			continue;
-
-		if (!method(callback_1_2).isOk()) {
+		if (!method(callback_derived).isOk()) {
 			wpa_printf(
 			    MSG_ERROR, "Failed to invoke HIDL iface callback");
 		}
@@ -1570,6 +1542,32 @@ void HidlManager::notifyDppProgress(struct wpa_supplicant *wpa_s, DppProgressCod
 }
 
 /**
+ * Notify listener about a PMK cache added event
+ *
+ * @param ifname Interface name
+ * @param entry PMK cache entry
+ */
+void HidlManager::notifyPmkCacheAdded(
+    struct wpa_supplicant *wpa_s, struct rsn_pmksa_cache_entry *pmksa_entry)
+{
+	std::string hidl_ifname = wpa_s->ifname;
+
+	// Serialize PmkCacheEntry into blob.
+	std::stringstream ss(
+	    std::stringstream::in | std::stringstream::out | std::stringstream::binary);
+	misc_utils::serializePmkCacheEntry(ss, pmksa_entry);
+	std::vector<uint8_t> serializedEntry(
+		std::istreambuf_iterator<char>(ss), {});
+
+	const std::function<
+	    Return<void>(android::sp<V1_3::ISupplicantStaIfaceCallback>)>
+	    func = std::bind(
+		&V1_3::ISupplicantStaIfaceCallback::onPmkCacheAdded,
+		std::placeholders::_1, pmksa_entry->expiration, serializedEntry);
+	callWithEachStaIfaceCallbackDerived(hidl_ifname, func);
+}
+
+/**
  * Retrieve the |ISupplicantP2pIface| hidl object reference using the provided
  * ifname.
  *
@@ -1911,7 +1909,7 @@ void HidlManager::callWithEachStaIfaceCallback_1_1(
     const std::function<
 	Return<void>(android::sp<V1_1::ISupplicantStaIfaceCallback>)> &method)
 {
-	callWithEachIfaceCallback_1_1(ifname, method, sta_iface_callbacks_map_);
+	callWithEachIfaceCallbackDerived(ifname, method, sta_iface_callbacks_map_);
 }
 
 /**
@@ -1928,7 +1926,25 @@ void HidlManager::callWithEachStaIfaceCallback_1_2(
     const std::function<
 	Return<void>(android::sp<V1_2::ISupplicantStaIfaceCallback>)> &method)
 {
-	callWithEachIfaceCallback_1_2(ifname, method, sta_iface_callbacks_map_);
+	callWithEachIfaceCallbackDerived(ifname, method, sta_iface_callbacks_map_);
+}
+
+/**
+ * Helper function to invoke the provided callback method on all the
+ * registered derived interface callback hidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required hidl method from
+ * derived |V1_x::ISupplicantIfaceCallback|.
+ */
+template <class CallbackTypeDerived>
+void HidlManager::callWithEachStaIfaceCallbackDerived(
+    const std::string &ifname,
+    const std::function<
+	Return<void>(android::sp<CallbackTypeDerived>)> &method)
+{
+	callWithEachIfaceCallbackDerived(ifname, method, sta_iface_callbacks_map_);
 }
 
 /**

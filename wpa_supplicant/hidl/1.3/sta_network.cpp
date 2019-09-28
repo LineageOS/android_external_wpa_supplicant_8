@@ -805,6 +805,15 @@ Return<void> StaNetwork::getOcsp(
 	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 	    &StaNetwork::getOcspInternal, _hidl_cb);
 }
+
+Return<void> StaNetwork::setPmkCache(const hidl_vec<uint8_t> &serializedEntry,
+    setPmkCache_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::setPmkCacheInternal, _hidl_cb, serializedEntry);
+}
+
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getIdInternal()
 {
 	return {{SupplicantStatusCode::SUCCESS, ""}, network_id_};
@@ -1977,6 +1986,26 @@ std::pair<SupplicantStatus, OcspType> StaNetwork::getOcspInternal()
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	return {{SupplicantStatusCode::SUCCESS, ""},
 		(OcspType) wpa_ssid->eap.ocsp};
+}
+
+SupplicantStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& serializedEntry) {
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	struct rsn_pmksa_cache_entry *new_entry = NULL;
+
+	new_entry = (struct rsn_pmksa_cache_entry *) os_zalloc(sizeof(*new_entry));
+	if (!new_entry) {
+		return {SupplicantStatusCode::FAILURE_UNKNOWN, "Allocating memory failed"};
+	}
+
+	std::stringstream ss(
+	    std::stringstream::in | std::stringstream::out | std::stringstream::binary);
+	ss.write((char *) serializedEntry.data(), std::streamsize(serializedEntry.size()));
+	misc_utils::deserializePmkCacheEntry(ss, new_entry);
+	new_entry->network_ctx = wpa_ssid;
+	wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, new_entry);
+
+	return {SupplicantStatusCode::SUCCESS, ""};
 }
 /**
  * Retrieve the underlying |wpa_ssid| struct pointer for

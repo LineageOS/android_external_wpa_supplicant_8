@@ -11,6 +11,7 @@
 
 #include "p2p/p2p.h"
 #include "bss.h"
+#include "rsn_supp/pmksa_cache.h"
 
 struct wps_credential;
 struct wps_event_m2d;
@@ -183,5 +184,7 @@ void wpas_notify_dpp_configuration_failure(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_timeout(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_auth_failure(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_failure(struct wpa_supplicant *wpa_s);
+void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
+				 struct rsn_pmksa_cache_entry *entry);
 
 #endif /* NOTIFY_H */

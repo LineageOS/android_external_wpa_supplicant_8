@@ -16,11 +16,12 @@
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pNetworkCallback.h>
-#include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIfaceCallback.h>
+#include <android/hardware/wifi/supplicant/1.3/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetworkCallback.h>
 
 #include "p2p_iface.h"
 #include "p2p_network.h"
+#include "rsn_supp/pmksa_cache.h"
 #include "sta_iface.h"
 #include "sta_network.h"
 #include "supplicant.h"
@@ -134,6 +135,8 @@ public:
 	void notifyDppConfigSent(struct wpa_supplicant *wpa_s);
 	void notifyDppFailure(struct wpa_supplicant *wpa_s, DppFailureCode code);
 	void notifyDppProgress(struct wpa_supplicant *wpa_s, DppProgressCode code);
+	void notifyPmkCacheAdded(struct wpa_supplicant *wpa_s,
+			struct rsn_pmksa_cache_entry *pmksa_entry);
 
 	// Methods called from hidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
@@ -207,6 +210,11 @@ private:
 	    const std::string &ifname,
 	    const std::function<android::hardware::Return<void>(
 	    android::sp<V1_2::ISupplicantStaIfaceCallback>)> &method);
+	template <class CallbackTypeDerived>
+	void callWithEachStaIfaceCallbackDerived(
+	    const std::string &ifname,
+	    const std::function<
+		Return<void>(android::sp<CallbackTypeDerived>)> &method);
 	void callWithEachP2pNetworkCallback(
 	    const std::string &ifname, int network_id,
 	    const std::function<android::hardware::Return<void>(

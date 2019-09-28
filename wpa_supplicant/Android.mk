@@ -1758,6 +1758,7 @@ LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.2
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.3
 LOCAL_SHARED_LIBRARIES += libhidlbase libhidltransport libhwbinder libutils libbase
 LOCAL_STATIC_LIBRARIES += libwpa_hidl
+LOCAL_VINTF_FRAGMENTS := hidl/1.3/manifest.xml
 endif
 include $(BUILD_EXECUTABLE)
 

@@ -776,3 +776,21 @@ static void wpas_hidl_notify_dpp_progress(struct wpa_supplicant *wpa_s, DppProgr
 
 	hidl_manager->notifyDppProgress(wpa_s, code);
 }
+
+void wpas_hidl_notify_pmk_cache_added(
+    struct wpa_supplicant *wpa_s,
+    struct rsn_pmksa_cache_entry *pmksa_entry)
+{
+	if (!wpa_s || !pmksa_entry)
+		return;
+
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager)
+		return;
+
+	wpa_printf(
+	    MSG_DEBUG,
+	    "Notifying PMK cache added event");
+
+	hidl_manager->notifyPmkCacheAdded(wpa_s, pmksa_entry);
+}
