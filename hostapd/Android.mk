@@ -1212,8 +1212,6 @@ LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.hostapd@1.1 \
     libbase \
     libhidlbase \
-    libhidltransport \
-    libhwbinder \
     libutils \
     liblog
 LOCAL_EXPORT_C_INCLUDE_DIRS := \

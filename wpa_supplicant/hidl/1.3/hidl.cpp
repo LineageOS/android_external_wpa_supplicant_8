@@ -24,8 +24,9 @@ extern "C"
 using android::hardware::configureRpcThreadpool;
 using android::hardware::handleTransportPoll;
 using android::hardware::setupTransportPolling;
+using android::hardware::wifi::supplicant::V1_2::DppFailureCode;
+using android::hardware::wifi::supplicant::V1_2::DppProgressCode;
 using android::hardware::wifi::supplicant::V1_3::implementation::HidlManager;
-using namespace android::hardware::wifi::supplicant::V1_2;
 
 static void wpas_hidl_notify_dpp_failure(struct wpa_supplicant *wpa_s, DppFailureCode code);
 static void wpas_hidl_notify_dpp_progress(struct wpa_supplicant *wpa_s, DppProgressCode code);

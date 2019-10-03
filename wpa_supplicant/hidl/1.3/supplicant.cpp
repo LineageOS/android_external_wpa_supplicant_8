@@ -16,7 +16,6 @@
 #include <sys/stat.h>
 
 namespace {
-using namespace android::hardware::wifi::supplicant::V1_2;
 
 // Pre-populated interface params for interfaces controlled by wpa_supplicant.
 // Note: This may differ for other OEM's. So, modify this accordingly.
@@ -160,6 +159,7 @@ namespace supplicant {
 namespace V1_3 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
+using V1_0::SupplicantStatusCode;
 
 Supplicant::Supplicant(struct wpa_global* global) : wpa_global_(global) {}
 bool Supplicant::isValid()
@@ -353,7 +353,7 @@ Supplicant::getInterfaceInternal(const IfaceInfo& iface_info)
 		wpa_s->conf->persistent_reconnect = true;
 		return {{SupplicantStatusCode::SUCCESS, ""}, iface};
 	} else {
-		android::sp<ISupplicantStaIface> iface;
+		android::sp<V1_1::ISupplicantStaIface> iface;
 		if (!hidl_manager ||
 		    hidl_manager->getStaIfaceHidlObjectByIfname(
 			wpa_s->ifname, &iface)) {

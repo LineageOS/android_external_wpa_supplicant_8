@@ -29,7 +29,7 @@ extern "C"
 namespace {
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
-using android::hardware::wifi::supplicant::V1_3::ISupplicantStaIface;
+using android::hardware::wifi::supplicant::V1_0::ISupplicantStaIface;
 using android::hardware::wifi::supplicant::V1_3::implementation::HidlManager;
 
 constexpr uint32_t kMaxAnqpElems = 100;
@@ -163,9 +163,6 @@ namespace supplicant {
 namespace V1_3 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
-
-using namespace android::hardware::wifi::supplicant::V1_0;
-using namespace android::hardware::wifi::supplicant::V1_1;
 using V1_0::ISupplicantStaIfaceCallback;
 
 StaIface::StaIface(struct wpa_global *wpa_global, const char ifname[])

@@ -35,7 +35,7 @@ namespace wifi {
 namespace supplicant {
 namespace V1_3 {
 namespace implementation {
-using namespace android::hardware::wifi::supplicant::V1_3;
+using V1_0::ISupplicantNetwork;
 using android::hardware::wifi::supplicant::V1_2::DppAkm;
 using android::hardware::wifi::supplicant::V1_2::DppNetRole;
 

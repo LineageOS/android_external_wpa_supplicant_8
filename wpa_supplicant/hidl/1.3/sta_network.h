@@ -36,9 +36,9 @@ namespace wifi {
 namespace supplicant {
 namespace V1_3 {
 namespace implementation {
-using namespace android::hardware::wifi::supplicant::V1_0;
-using namespace android::hardware::wifi::supplicant::V1_1;
-using namespace android::hardware::wifi::supplicant::V1_2;
+using V1_0::ISupplicantStaNetworkCallback;
+using V1_2::DppFailureCode;
+using V1_2::DppProgressCode;
 
 /**
  * Implementation of StaNetwork hidl object. Each unique hidl

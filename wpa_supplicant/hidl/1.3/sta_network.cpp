@@ -19,8 +19,9 @@ extern "C"
 
 namespace {
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
-using android::hardware::wifi::supplicant::V1_2::ISupplicantStaNetwork;
-using namespace android::hardware::wifi::supplicant::V1_2;
+using android::hardware::wifi::supplicant::V1_0::ISupplicantStaNetwork;
+using ISupplicantStaNetworkV1_2 = android::hardware::wifi::supplicant::V1_2::ISupplicantStaNetwork;
+using ISupplicantStaNetworkV1_3 = android::hardware::wifi::supplicant::V1_3::ISupplicantStaNetwork;
 
 constexpr uint8_t kZeroBssid[6] = {0, 0, 0, 0, 0, 0};
 
@@ -32,11 +33,11 @@ constexpr uint32_t kAllowedKeyMgmtMask =
      static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::FT_EAP) |
      static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::FT_PSK) |
      static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::OSEN) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::SAE) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::SUITE_B_192) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::OWE) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK_SHA256) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP_SHA256));
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_2::KeyMgmtMask::SAE) |
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_2::KeyMgmtMask::SUITE_B_192) |
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_2::KeyMgmtMask::OWE) |
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_2::KeyMgmtMask::WPA_PSK_SHA256) |
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_2::KeyMgmtMask::WPA_EAP_SHA256));
 constexpr uint32_t kAllowedProtoMask =
     (static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::WPA) |
      static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::RSN) |
@@ -52,20 +53,20 @@ constexpr uint32_t kAllowedGroupCipherMask =
      static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::CCMP) |
      static_cast<uint32_t>(
 	 ISupplicantStaNetwork::GroupCipherMask::GTK_NOT_USED) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::GCMP_256));
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_2::GroupCipherMask::GCMP_256));
 constexpr uint32_t kAllowedPairwisewCipherMask =
     (static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::NONE) |
      static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::TKIP) |
      static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::CCMP) |
      static_cast<uint32_t>(
-	 ISupplicantStaNetwork::PairwiseCipherMask::GCMP_256));
+	 ISupplicantStaNetworkV1_2::PairwiseCipherMask::GCMP_256));
 constexpr uint32_t kAllowedGroupMgmtCipherMask =
 	(static_cast<uint32_t>(
-			ISupplicantStaNetwork::GroupMgmtCipherMask::BIP_GMAC_128) |
+			ISupplicantStaNetworkV1_2::GroupMgmtCipherMask::BIP_GMAC_128) |
 	 static_cast<uint32_t>(
-			 ISupplicantStaNetwork::GroupMgmtCipherMask::BIP_GMAC_256) |
+			 ISupplicantStaNetworkV1_2::GroupMgmtCipherMask::BIP_GMAC_256) |
 	 static_cast<uint32_t>(
-			 ISupplicantStaNetwork::GroupMgmtCipherMask::BIP_CMAC_256));
+			 ISupplicantStaNetworkV1_2::GroupMgmtCipherMask::BIP_CMAC_256));
 
 constexpr uint32_t kEapMethodMax =
     static_cast<uint32_t>(ISupplicantStaNetwork::EapMethod::WFA_UNAUTH_TLS) + 1;
@@ -92,6 +93,7 @@ namespace supplicant {
 namespace V1_3 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
+using V1_0::SupplicantStatusCode;
 
 StaNetwork::StaNetwork(
     struct wpa_global *wpa_global, const char ifname[], int network_id)

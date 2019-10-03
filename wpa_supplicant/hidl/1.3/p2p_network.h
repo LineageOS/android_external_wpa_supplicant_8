@@ -28,8 +28,8 @@ namespace wifi {
 namespace supplicant {
 namespace V1_3 {
 namespace implementation {
-using namespace android::hardware::wifi::supplicant::V1_0;
-using namespace android::hardware::wifi::supplicant::V1_1;
+using V1_0::ISupplicantP2pNetwork;
+using V1_0::ISupplicantP2pNetworkCallback;
 
 /**
  * Implementation of P2pNetwork hidl object. Each unique hidl

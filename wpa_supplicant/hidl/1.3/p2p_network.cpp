@@ -23,6 +23,7 @@ namespace supplicant {
 namespace V1_3 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
+using V1_0::SupplicantStatusCode;
 
 P2pNetwork::P2pNetwork(
     struct wpa_global *wpa_global, const char ifname[], int network_id)

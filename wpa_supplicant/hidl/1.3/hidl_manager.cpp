@@ -21,7 +21,6 @@ extern "C" {
 
 namespace {
 using android::hardware::hidl_array;
-using namespace android::hardware::wifi::supplicant::V1_2;
 
 constexpr uint8_t kWfdDeviceInfoLen = 6;
 // GSM-AUTH:<RAND1>:<RAND2>[:<RAND3>]
@@ -404,7 +403,6 @@ namespace supplicant {
 namespace V1_3 {
 namespace implementation {
 
-using namespace android::hardware::wifi::supplicant::V1_2;
 using V1_0::ISupplicantStaIfaceCallback;
 
 HidlManager *HidlManager::instance_ = NULL;
@@ -1600,7 +1598,7 @@ int HidlManager::getP2pIfaceHidlObjectByIfname(
  * @return 0 on success, 1 on failure.
  */
 int HidlManager::getStaIfaceHidlObjectByIfname(
-    const std::string &ifname, android::sp<ISupplicantStaIface> *iface_object)
+    const std::string &ifname, android::sp<V1_1::ISupplicantStaIface> *iface_object)
 {
 	if (ifname.empty() || !iface_object)
 		return 1;

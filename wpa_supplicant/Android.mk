@@ -1824,7 +1824,6 @@ LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.supplicant@1.3 \
     libbase \
     libhidlbase \
-    libhidltransport \
     libutils \
     liblog \
     libssl

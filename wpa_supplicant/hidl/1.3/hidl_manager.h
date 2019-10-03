@@ -16,7 +16,7 @@
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pNetworkCallback.h>
-#include <android/hardware/wifi/supplicant/1.3/ISupplicantStaIfaceCallback.h>
+#include <android/hardware/wifi/supplicant/1.0/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetworkCallback.h>
 
 #include "p2p_iface.h"
@@ -40,12 +40,12 @@ namespace wifi {
 namespace supplicant {
 namespace V1_3 {
 namespace implementation {
-using namespace android::hardware::wifi::supplicant::V1_2;
+using V1_0::ISupplicant;
 using V1_0::ISupplicantP2pIface;
+using V1_0::ISupplicantStaIface;
 using V1_0::ISupplicantStaIfaceCallback;
-using V1_1::ISupplicant;
-using V1_1::ISupplicantStaIface;
-using V1_2::ISupplicantStaNetwork;
+using V1_0::P2pGroupCapabilityMask;
+using V1_0::WpsConfigMethods;
 
 /**
  * HidlManager is responsible for managing the lifetime of all

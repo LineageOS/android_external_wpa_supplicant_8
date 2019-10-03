@@ -31,7 +31,8 @@ namespace wifi {
 namespace supplicant {
 namespace V1_3 {
 namespace implementation {
-using namespace android::hardware::wifi::supplicant::V1_0;
+using V1_0::ISupplicantCallback;
+using V1_0::ISupplicantIface;
 
 /**
  * Implementation of the supplicant hidl object. This hidl

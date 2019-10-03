@@ -17,6 +17,7 @@ namespace supplicant {
 namespace V1_3 {
 namespace implementation {
 namespace hidl_return_util {
+using V1_0::SupplicantStatusCode;
 
 /**
  * These utility functions are used to invoke a method on the provided
