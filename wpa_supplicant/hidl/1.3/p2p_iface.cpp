@@ -225,6 +225,12 @@ int joinScanReq(
 	size_t ielen;
 	unsigned int bands;
 
+	if (!wpa_s->global->p2p) {
+		wpa_printf(MSG_ERROR,
+		    "P2P: P2P interface is gone, cancel join scan");
+		return -ENXIO;
+	}
+
 	os_memset(&params, 0, sizeof(params));
 	if (ssid.size() > 0) {
 		params.ssids[0].ssid = ssid.data();

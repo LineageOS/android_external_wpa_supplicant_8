@@ -1501,6 +1501,7 @@ endif
 ifdef CONFIG_CTRL_IFACE_HIDL
 WPA_SUPPLICANT_USE_HIDL=y
 L_CFLAGS += -DCONFIG_HIDL -DCONFIG_CTRL_IFACE_HIDL
+HIDL_INTERFACE_VERSION := 1.3
 endif
 
 ifdef CONFIG_READLINE
@@ -1758,7 +1759,10 @@ LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.2
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.3
 LOCAL_SHARED_LIBRARIES += libhidlbase libhidltransport libhwbinder libutils libbase
 LOCAL_STATIC_LIBRARIES += libwpa_hidl
-LOCAL_VINTF_FRAGMENTS := hidl/1.3/manifest.xml
+LOCAL_VINTF_FRAGMENTS := hidl/$(HIDL_INTERFACE_VERSION)/manifest.xml
+ifeq ($(WIFI_HIDL_UNIFIED_SUPPLICANT_SERVICE_RC_ENTRY), true)
+LOCAL_INIT_RC=hidl/$(HIDL_INTERFACE_VERSION)/android.hardware.wifi.supplicant-service.rc
+endif
 endif
 include $(BUILD_EXECUTABLE)
 
@@ -1807,7 +1811,6 @@ LOCAL_VENDOR_MODULE := true
 LOCAL_CPPFLAGS := $(L_CPPFLAGS)
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_C_INCLUDES := $(INCLUDES)
-HIDL_INTERFACE_VERSION = 1.3
 LOCAL_SRC_FILES := \
     hidl/$(HIDL_INTERFACE_VERSION)/hidl.cpp \
     hidl/$(HIDL_INTERFACE_VERSION)/hidl_manager.cpp \
