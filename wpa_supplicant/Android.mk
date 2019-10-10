@@ -1757,7 +1757,7 @@ LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.0
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.1
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.2
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.3
-LOCAL_SHARED_LIBRARIES += libhidlbase libhidltransport libhwbinder libutils libbase
+LOCAL_SHARED_LIBRARIES += libhidlbase libutils libbase
 LOCAL_STATIC_LIBRARIES += libwpa_hidl
 LOCAL_VINTF_FRAGMENTS := hidl/$(HIDL_INTERFACE_VERSION)/manifest.xml
 ifeq ($(WIFI_HIDL_UNIFIED_SUPPLICANT_SERVICE_RC_ENTRY), true)
