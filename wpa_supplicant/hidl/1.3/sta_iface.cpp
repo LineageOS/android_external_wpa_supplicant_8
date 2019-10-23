@@ -29,7 +29,9 @@ extern "C"
 namespace {
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
-using android::hardware::wifi::supplicant::V1_0::ISupplicantStaIface;
+using android::hardware::wifi::supplicant::V1_3::ISupplicantStaIface;
+using android::hardware::wifi::supplicant::V1_3::ConnectionCapabilities;
+using android::hardware::wifi::supplicant::V1_3::WifiTechnology;
 using android::hardware::wifi::supplicant::V1_3::implementation::HidlManager;
 
 constexpr uint32_t kMaxAnqpElems = 100;
@@ -610,6 +612,14 @@ StaIface::addNetworkInternal()
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, network};
 	}
 	return {{SupplicantStatusCode::SUCCESS, ""}, network};
+}
+
+Return<void> StaIface::getConnectionCapabilities(
+    getConnectionCapabilities_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
+	    &StaIface::getConnectionCapabilitiesInternal, _hidl_cb);
 }
 
 SupplicantStatus StaIface::removeNetworkInternal(SupplicantNetworkId id)
@@ -1306,6 +1316,28 @@ SupplicantStatus StaIface::stopDppInitiatorInternal()
 #else
 	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 #endif
+}
+
+std::pair<SupplicantStatus, ConnectionCapabilities>
+StaIface::getConnectionCapabilitiesInternal()
+{
+    struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+    struct ConnectionCapabilities capa;
+
+    if (wpa_s->connection_set) {
+        if (wpa_s->connection_he) {
+            capa.technology = WifiTechnology::HE;
+        } else if (wpa_s->connection_vht) {
+            capa.technology = WifiTechnology::VHT;
+        } else if (wpa_s->connection_ht) {
+           capa.technology = WifiTechnology::HT;
+        } else {
+           capa.technology = WifiTechnology::LEGACY;
+        }
+    } else {
+        capa.technology = WifiTechnology::UNKNOWN;
+    }
+    return {{SupplicantStatusCode::SUCCESS, ""}, capa};
 }
 
 /**

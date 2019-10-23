@@ -182,6 +182,8 @@ public:
 			uint32_t own_bootstrap_id,
 			startDppConfiguratorInitiator_cb _hidl_cb) override;
 	Return<void> stopDppInitiator(stopDppInitiator_cb _hidl_cb) override;
+	Return<void> getConnectionCapabilities(
+	    getConnectionCapabilities_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -265,7 +267,7 @@ private:
 	SupplicantStatus startDppEnrolleeInitiatorInternal(uint32_t peer_bootstrap_id,
 			uint32_t own_bootstrap_id);
 	SupplicantStatus stopDppInitiatorInternal();
-
+	std::pair<SupplicantStatus, ConnectionCapabilities> getConnectionCapabilitiesInternal();
 
 	struct wpa_supplicant* retrieveIfacePtr();
 
