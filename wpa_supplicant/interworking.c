@@ -1395,7 +1395,11 @@ static struct wpa_cred * interworking_credentials_available_roaming_consortium(
 		     !roaming_consortium_match(ie, anqp,
 					       cred->roaming_consortium,
 					       cred->roaming_consortium_len)) &&
-		    !cred_roaming_consortiums_match(ie, anqp, cred))
+		    !cred_roaming_consortiums_match(ie, anqp, cred) &&
+		    (cred->required_roaming_consortium_len == 0 ||
+		     !roaming_consortium_match(
+			     ie, anqp, cred->required_roaming_consortium,
+			     cred->required_roaming_consortium_len)))
 			continue;
 
 		if (cred_no_required_oi_match(cred, bss))
@@ -1550,7 +1554,7 @@ static int interworking_set_eap_params(struct wpa_ssid *ssid,
 				  cred->domain_suffix_match) < 0)
 		return -1;
 
-	ssid->eap.ocsp = cred->ocsp;
+	ssid->eap.cert.ocsp = cred->ocsp;
 
 	return 0;
 }
@@ -2258,7 +2262,7 @@ int interworking_home_sp_cred(struct wpa_supplicant *wpa_s,
 			realm++;
 		wpa_msg(wpa_s, MSG_DEBUG,
 			"Interworking: Search for match with SIM/USIM domain %s",
-			realm);
+			realm ? realm : "[NULL]");
 		if (realm &&
 		    domain_name_list_contains(domain_names, realm, 1))
 			return 1;

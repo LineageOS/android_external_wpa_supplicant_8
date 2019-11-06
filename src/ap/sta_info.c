@@ -46,9 +46,7 @@ static void ap_handle_session_timer(void *eloop_ctx, void *timeout_ctx);
 static void ap_handle_session_warning_timer(void *eloop_ctx, void *timeout_ctx);
 static void ap_sta_deauth_cb_timeout(void *eloop_ctx, void *timeout_ctx);
 static void ap_sta_disassoc_cb_timeout(void *eloop_ctx, void *timeout_ctx);
-#ifdef CONFIG_IEEE80211W
 static void ap_sa_query_timer(void *eloop_ctx, void *timeout_ctx);
-#endif /* CONFIG_IEEE80211W */
 static int ap_sta_remove(struct hostapd_data *hapd, struct sta_info *sta);
 static void ap_sta_delayed_1x_auth_fail_cb(void *eloop_ctx, void *timeout_ctx);
 
@@ -301,10 +299,8 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 
 	os_free(sta->challenge);
 
-#ifdef CONFIG_IEEE80211W
 	os_free(sta->sa_query_trans_id);
 	eloop_cancel_timeout(ap_sa_query_timer, hapd, sta);
-#endif /* CONFIG_IEEE80211W */
 
 #ifdef CONFIG_P2P
 	p2p_group_notif_disassoc(hapd->p2p_group, sta->addr);
@@ -1095,8 +1091,6 @@ done:
 }
 
 
-#ifdef CONFIG_IEEE80211W
-
 int ap_check_sa_query_timeout(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	u32 tu;
@@ -1185,8 +1179,6 @@ void ap_sta_stop_sa_query(struct hostapd_data *hapd, struct sta_info *sta)
 	sta->sa_query_trans_id = NULL;
 	sta->sa_query_count = 0;
 }
-
-#endif /* CONFIG_IEEE80211W */
 
 
 const char * ap_sta_wpa_get_keyid(struct hostapd_data *hapd,
@@ -1414,7 +1406,7 @@ int ap_sta_flags_txt(u32 flags, char *buf, size_t buflen)
 	int res;
 
 	buf[0] = '\0';
-	res = os_snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+	res = os_snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 			  (flags & WLAN_STA_AUTH ? "[AUTH]" : ""),
 			  (flags & WLAN_STA_ASSOC ? "[ASSOC]" : ""),
 			  (flags & WLAN_STA_AUTHORIZED ? "[AUTHORIZED]" : ""),
@@ -1433,6 +1425,7 @@ int ap_sta_flags_txt(u32 flags, char *buf, size_t buflen)
 			  (flags & WLAN_STA_GAS ? "[GAS]" : ""),
 			  (flags & WLAN_STA_HT ? "[HT]" : ""),
 			  (flags & WLAN_STA_VHT ? "[VHT]" : ""),
+			  (flags & WLAN_STA_HE ? "[HE]" : ""),
 			  (flags & WLAN_STA_VENDOR_VHT ? "[VENDOR_VHT]" : ""),
 			  (flags & WLAN_STA_WNM_SLEEP_MODE ?
 			   "[WNM_SLEEP_MODE]" : ""));

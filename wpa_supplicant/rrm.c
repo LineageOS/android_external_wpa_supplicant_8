@@ -101,9 +101,15 @@ void wpas_rrm_process_neighbor_rep(struct wpa_supplicant *wpa_s,
 
 #if defined(__CYGWIN__) || defined(CONFIG_NATIVE_WINDOWS)
 /* Workaround different, undefined for Windows, error codes used here */
+#ifndef ENOTCONN
 #define ENOTCONN -1
+#endif
+#ifndef EOPNOTSUPP
 #define EOPNOTSUPP -1
+#endif
+#ifndef ECANCELED
 #define ECANCELED -1
+#endif
 #endif
 
 /* Measurement Request element + Location Subject + Maximum Age subelement */
@@ -522,7 +528,8 @@ static int * wpas_add_channels(const struct oper_class_map *op,
 	next_freq = freqs;
 	for  (i = 0; i < num_chans; i++) {
 		u8 chan = channels ? channels[i] : op->min_chan + i * op->inc;
-		enum chan_allowed res = verify_channel(mode, chan, op->bw);
+		enum chan_allowed res = verify_channel(mode, op->op_class, chan,
+						       op->bw);
 
 		if (res == NOT_ALLOWED || (res == NO_IR && active))
 			continue;

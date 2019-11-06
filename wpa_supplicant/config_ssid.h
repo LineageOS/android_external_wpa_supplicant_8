@@ -47,30 +47,6 @@ struct psk_list_entry {
 	u8 p2p;
 };
 
-/**
- * mode - IEEE 802.11 operation mode (Infrastucture/IBSS)
- *
- * 0 = infrastructure (Managed) mode, i.e., associate with an AP.
- *
- * 1 = IBSS (ad-hoc, peer-to-peer)
- *
- * 2 = AP (access point)
- *
- * 3 = P2P Group Owner (can be set in the configuration file)
- *
- * 4 = P2P Group Formation (used internally; not in configuration
- * files)
- *
- * 5 = Mesh
- *
- * Note: IBSS can only be used with key_mgmt NONE (plaintext and static
- * WEP) and WPA-PSK (with proto=RSN). In addition, key_mgmt=WPA-NONE
- * (fixed group key TKIP/CCMP) is available for backwards compatibility,
- * but its use is deprecated. WPA-None requires following network block
- * options: proto=WPA, key_mgmt=WPA-NONE, pairwise=NONE, group=TKIP (or
- * CCMP, but not both), and psk must also be set (either directly or
- * using ASCII passphrase).
- */
 enum wpas_mode {
 	WPAS_MODE_INFRA = 0,
 	WPAS_MODE_IBSS = 1,
@@ -235,6 +211,8 @@ struct wpa_ssid {
 	 * not included, the default SAE password is used instead.
 	 */
 	char *sae_password_id;
+
+	struct sae_pt *pt;
 
 	/**
 	 * ext_psk - PSK/passphrase name in external storage
@@ -469,7 +447,6 @@ struct wpa_ssid {
 	 */
 	char *id_str;
 
-#ifdef CONFIG_IEEE80211W
 	/**
 	 * ieee80211w - Whether management frame protection is enabled
 	 *
@@ -483,7 +460,6 @@ struct wpa_ssid {
 	 * followed).
 	 */
 	enum mfp_options ieee80211w;
-#endif /* CONFIG_IEEE80211W */
 
 #ifdef CONFIG_OCV
 	/**
@@ -507,6 +483,23 @@ struct wpa_ssid {
 	 * will be used instead of this configured value.
 	 */
 	int frequency;
+
+	/**
+	 * enable_edmg - Enable EDMG feature in STA/AP mode
+	 *
+	 * This flag is used for enabling the EDMG capability in STA/AP mode.
+	 */
+	int enable_edmg;
+
+	/**
+	 * edmg_channel - EDMG channel number
+	 *
+	 * This value is used to configure the EDMG channel bonding feature.
+	 * In AP mode it defines the EDMG channel to start the AP on.
+	 * in STA mode it defines the EDMG channel to use for connection
+	 * (if supported by AP).
+	 */
+	u8 edmg_channel;
 
 	/**
 	 * fixed_freq - Use fixed frequency for IBSS

@@ -2204,7 +2204,9 @@ static int openssl_cert_tod(X509 *cert)
 			continue;
 		wpa_printf(MSG_DEBUG, "OpenSSL: Certificate Policy %s", buf);
 		if (os_strcmp(buf, "1.3.6.1.4.1.40808.1.3.1") == 0)
-			tod = 1;
+			tod = 1; /* TOD-STRICT */
+		else if (os_strcmp(buf, "1.3.6.1.4.1.40808.1.3.2") == 0 && !tod)
+			tod = 2; /* TOD-TOFU */
 	}
 
 	return tod;
@@ -2312,6 +2314,38 @@ static void openssl_tls_cert_event(struct tls_connection *conn,
 }
 
 
+static void debug_print_cert(X509 *cert, const char *title)
+{
+#ifndef CONFIG_NO_STDOUT_DEBUG
+	BIO *out;
+	size_t rlen;
+	char *txt;
+	int res;
+
+	if (wpa_debug_level > MSG_DEBUG)
+		return;
+
+	out = BIO_new(BIO_s_mem());
+	if (!out)
+		return;
+
+	X509_print(out, cert);
+	rlen = BIO_ctrl_pending(out);
+	txt = os_malloc(rlen + 1);
+	if (txt) {
+		res = BIO_read(out, txt, rlen);
+		if (res > 0) {
+			txt[res] = '\0';
+			wpa_printf(MSG_DEBUG, "OpenSSL: %s\n%s", title, txt);
+		}
+		os_free(txt);
+	}
+
+	BIO_free(out);
+#endif /* CONFIG_NO_STDOUT_DEBUG */
+}
+
+
 static int tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
 {
 	char buf[256];
@@ -2332,6 +2366,8 @@ static int tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
 	depth = X509_STORE_CTX_get_error_depth(x509_ctx);
 	ssl = X509_STORE_CTX_get_ex_data(x509_ctx,
 					 SSL_get_ex_data_X509_STORE_CTX_idx());
+	os_snprintf(buf, sizeof(buf), "Peer certificate - depth %d", depth);
+	debug_print_cert(err_cert, buf);
 	X509_NAME_oneline(X509_get_subject_name(err_cert), buf, sizeof(buf));
 
 	conn = SSL_get_app_data(ssl);
@@ -4669,41 +4705,6 @@ static void ocsp_debug_print_resp(OCSP_RESPONSE *rsp)
 		wpa_printf(MSG_DEBUG, "OpenSSL: OCSP Response\n%s", txt);
 	}
 	os_free(txt);
-	BIO_free(out);
-#endif /* CONFIG_NO_STDOUT_DEBUG */
-}
-
-
-static void debug_print_cert(X509 *cert, const char *title)
-{
-#ifndef CONFIG_NO_STDOUT_DEBUG
-	BIO *out;
-	size_t rlen;
-	char *txt;
-	int res;
-
-	if (wpa_debug_level > MSG_DEBUG)
-		return;
-
-	out = BIO_new(BIO_s_mem());
-	if (!out)
-		return;
-
-	X509_print(out, cert);
-	rlen = BIO_ctrl_pending(out);
-	txt = os_malloc(rlen + 1);
-	if (!txt) {
-		BIO_free(out);
-		return;
-	}
-
-	res = BIO_read(out, txt, rlen);
-	if (res > 0) {
-		txt[res] = '\0';
-		wpa_printf(MSG_DEBUG, "OpenSSL: %s\n%s", title, txt);
-	}
-	os_free(txt);
-
 	BIO_free(out);
 #endif /* CONFIG_NO_STDOUT_DEBUG */
 }

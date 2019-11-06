@@ -1,6 +1,6 @@
 /*
  * WPA Supplicant / Configuration backend: text file
- * Copyright (c) 2003-2012, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2003-2019, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -745,9 +745,9 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 
 #define STR(t) write_str(f, #t, ssid)
 #define INT(t) write_int(f, #t, ssid->t, 0)
-#define INTe(t) write_int(f, #t, ssid->eap.t, 0)
+#define INTe(t, m) write_int(f, #t, ssid->eap.m, 0)
 #define INT_DEF(t, def) write_int(f, #t, ssid->t, def)
-#define INT_DEFe(t, def) write_int(f, #t, ssid->eap.t, def)
+#define INT_DEFe(t, m, def) write_int(f, #t, ssid->eap.m, def)
 
 	STR(ssid);
 	INT(scan_ssid);
@@ -774,7 +774,9 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(identity);
 	STR(anonymous_identity);
 	STR(imsi_identity);
+	STR(machine_identity);
 	STR(password);
+	STR(machine_password);
 	STR(ca_cert);
 	STR(ca_path);
 	STR(client_cert);
@@ -797,8 +799,20 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(altsubject_match2);
 	STR(domain_suffix_match2);
 	STR(domain_match2);
+	STR(machine_ca_cert);
+	STR(machine_ca_path);
+	STR(machine_client_cert);
+	STR(machine_private_key);
+	STR(machine_private_key_passwd);
+	STR(machine_dh_file);
+	STR(machine_subject_match);
+	STR(machine_check_cert_subject);
+	STR(machine_altsubject_match);
+	STR(machine_domain_suffix_match);
+	STR(machine_domain_match);
 	STR(phase1);
 	STR(phase2);
+	STR(machine_phase2);
 	STR(pcsc);
 	STR(pin);
 	STR(engine_id);
@@ -810,11 +824,12 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(engine2_id);
 	STR(cert2_id);
 	STR(ca_cert2_id);
-	INTe(engine);
-	INTe(engine2);
+	INTe(engine, cert.engine);
+	INTe(engine2, phase2_cert.engine);
+	INTe(machine_engine, machine_cert.engine);
 	INT_DEF(eapol_flags, DEFAULT_EAPOL_FLAGS);
 	STR(openssl_ciphers);
-	INTe(erp);
+	INTe(erp, erp);
 #endif /* IEEE8021X_EAPOL */
 	for (i = 0; i < 4; i++)
 		write_wep_key(f, i, ssid);
@@ -823,13 +838,17 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 #ifdef IEEE8021X_EAPOL
 	INT_DEF(eap_workaround, DEFAULT_EAP_WORKAROUND);
 	STR(pac_file);
-	INT_DEFe(fragment_size, DEFAULT_FRAGMENT_SIZE);
-	INTe(ocsp);
-	INT_DEFe(sim_num, DEFAULT_USER_SELECTED_SIM);
+	INT_DEFe(fragment_size, fragment_size, DEFAULT_FRAGMENT_SIZE);
+	INTe(ocsp, cert.ocsp);
+	INTe(ocsp2, phase2_cert.ocsp);
+	INTe(machine_ocsp, machine_cert.ocsp);
+	INT_DEFe(sim_num, sim_num, DEFAULT_USER_SELECTED_SIM);
 #endif /* IEEE8021X_EAPOL */
 	INT(mode);
 	INT(no_auto_peer);
 	INT(frequency);
+	INT(enable_edmg);
+	INT(edmg_channel);
 	INT(fixed_freq);
 #ifdef CONFIG_ACS
 	INT(acs);
@@ -846,10 +865,8 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(pbss);
 	INT(wps_disabled);
 	INT(fils_dh_group);
-#ifdef CONFIG_IEEE80211W
 	write_int(f, "ieee80211w", ssid->ieee80211w,
 		  MGMT_FRAME_PROTECTION_DEFAULT);
-#endif /* CONFIG_IEEE80211W */
 	STR(id_str);
 #ifdef CONFIG_P2P
 	write_go_p2p_dev_addr(f, ssid);
@@ -1389,6 +1406,13 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		}
 		fprintf(f, "\n");
 	}
+
+	if (config->sae_pwe)
+		fprintf(f, "sae_pwe=%d\n", config->sae_pwe);
+
+	if (config->sae_pmkid_in_assoc)
+		fprintf(f, "sae_pmkid_in_assoc=%d\n",
+			config->sae_pmkid_in_assoc);
 
 	if (config->ap_vendor_elements) {
 		int i, len = wpabuf_len(config->ap_vendor_elements);

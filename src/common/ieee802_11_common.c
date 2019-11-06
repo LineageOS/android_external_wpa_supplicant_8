@@ -365,6 +365,10 @@ ParseRes ieee802_11_parse_elems(const u8 *start, size_t len,
 			elems->rsn_ie = pos;
 			elems->rsn_ie_len = elen;
 			break;
+		case WLAN_EID_RSNX:
+			elems->rsnxe = pos;
+			elems->rsnxe_len = elen;
+			break;
 		case WLAN_EID_PWR_CAPABILITY:
 			if (elen < 2)
 				break;
@@ -873,8 +877,8 @@ enum hostapd_hw_mode ieee80211_freq_to_channel_ext(unsigned int freq,
 		return HOSTAPD_MODE_IEEE80211A;
 	}
 
-	/* 56.16 GHz, channel 1..4 */
-	if (freq >= 56160 + 2160 * 1 && freq <= 56160 + 2160 * 4) {
+	/* 56.16 GHz, channel 1..6 */
+	if (freq >= 56160 + 2160 * 1 && freq <= 56160 + 2160 * 6) {
 		if (sec_channel || vht)
 			return NUM_HOSTAPD_MODES;
 
@@ -882,6 +886,19 @@ enum hostapd_hw_mode ieee80211_freq_to_channel_ext(unsigned int freq,
 		*op_class = 180;
 
 		return HOSTAPD_MODE_IEEE80211AD;
+	}
+
+	if (freq > 5940 && freq <= 7105) {
+		int bw;
+		u8 idx = (freq - 5940) / 5;
+
+		bw = center_idx_to_bw_6ghz(idx);
+		if (bw < 0)
+			return NUM_HOSTAPD_MODES;
+
+		*channel = idx;
+		*op_class = 131 + bw;
+		return HOSTAPD_MODE_IEEE80211A;
 	}
 
 	return NUM_HOSTAPD_MODES;
@@ -993,8 +1010,8 @@ static int ieee80211_chan_to_freq_us(u8 op_class, u8 chan)
 		if (chan < 149 || chan > 165)
 			return -1;
 		return 5000 + 5 * chan;
-	case 34: /* 60 GHz band, channels 1..3 */
-		if (chan < 1 || chan > 3)
+	case 34: /* 60 GHz band, channels 1..6 */
+		if (chan < 1 || chan > 6)
 			return -1;
 		return 56160 + 2160 * chan;
 	}
@@ -1031,8 +1048,8 @@ static int ieee80211_chan_to_freq_eu(u8 op_class, u8 chan)
 		if (chan < 149 || chan > 169)
 			return -1;
 		return 5000 + 5 * chan;
-	case 18: /* 60 GHz band, channels 1..4 */
-		if (chan < 1 || chan > 4)
+	case 18: /* 60 GHz band, channels 1..6 */
+		if (chan < 1 || chan > 6)
 			return -1;
 		return 56160 + 2160 * chan;
 	}
@@ -1075,8 +1092,8 @@ static int ieee80211_chan_to_freq_jp(u8 op_class, u8 chan)
 		if (chan < 100 || chan > 140)
 			return -1;
 		return 5000 + 5 * chan;
-	case 59: /* 60 GHz band, channels 1..4 */
-		if (chan < 1 || chan > 3)
+	case 59: /* 60 GHz band, channels 1..6 */
+		if (chan < 1 || chan > 6)
 			return -1;
 		return 56160 + 2160 * chan;
 	}
@@ -1163,8 +1180,16 @@ static int ieee80211_chan_to_freq_global(u8 op_class, u8 chan)
 		if (chan < 36 || chan > 128)
 			return -1;
 		return 5000 + 5 * chan;
-	case 180: /* 60 GHz band, channels 1..4 */
-		if (chan < 1 || chan > 4)
+	case 131: /* UHB channels, 20 MHz: 1, 5, 9.. */
+	case 132: /* UHB channels, 40 MHz: 3, 11, 19.. */
+	case 133: /* UHB channels, 80 MHz: 7, 23, 39.. */
+	case 134: /* UHB channels, 160 MHz: 15, 47, 79.. */
+	case 135: /* UHB channels, 80+80 MHz: 7, 23, 39.. */
+		if (chan < 1 || chan > 233)
+			return -1;
+		return 5940 + chan * 5;
+	case 180: /* 60 GHz band, channels 1..6 */
+		if (chan < 1 || chan > 6)
 			return -1;
 		return 56160 + 2160 * chan;
 	}
@@ -1494,6 +1519,7 @@ const char * status2str(u16 status)
 	S2S(FILS_AUTHENTICATION_FAILURE)
 	S2S(UNKNOWN_AUTHENTICATION_SERVER)
 	S2S(UNKNOWN_PASSWORD_IDENTIFIER)
+	S2S(SAE_HASH_TO_ELEMENT)
 	}
 	return "UNKNOWN";
 #undef S2S
@@ -1592,6 +1618,7 @@ const struct oper_class_map global_op_class[] = {
 	{ HOSTAPD_MODE_IEEE80211A, 128, 36, 161, 4, BW80, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 129, 50, 114, 16, BW160, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 130, 36, 161, 4, BW80P80, P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211A, 131, 1, 233, 4, BW20, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211AD, 180, 1, 4, 1, BW2160, P2P_SUPP },
 	{ -1, 0, 0, 0, 0, BW20, NO_P2P_SUPP }
 };
@@ -1906,6 +1933,43 @@ int oper_class_bw_to_int(const struct oper_class_map *map)
 }
 
 
+int center_idx_to_bw_6ghz(u8 idx)
+{
+	/* channels: 1, 5, 9, 13... */
+	if ((idx & 0x3) == 0x1)
+		return 0; /* 20 MHz */
+	/* channels 3, 11, 19... */
+	if ((idx & 0x7) == 0x3)
+		return 1; /* 40 MHz */
+	/* channels 7, 23, 39.. */
+	if ((idx & 0xf) == 0x7)
+		return 2; /* 80 MHz */
+	/* channels 15, 47, 79...*/
+	if ((idx & 0x1f) == 0xf)
+		return 3; /* 160 MHz */
+
+	return -1;
+}
+
+
+int is_6ghz_freq(int freq)
+{
+	if (freq < 5940 || freq > 7105)
+		return 0;
+
+	if (center_idx_to_bw_6ghz((freq - 5940) / 5) < 0)
+		return 0;
+
+	return 1;
+}
+
+
+int is_6ghz_op_class(u8 op_class)
+{
+	return op_class >= 131 && op_class <= 135;
+}
+
+
 int ieee802_11_parse_candidate_list(const char *pos, u8 *nei_rep,
 				    size_t nei_rep_len)
 {
@@ -2013,4 +2077,76 @@ int ieee802_11_ext_capab(const u8 *ie, unsigned int capab)
 	if (!ie || ie[1] <= capab / 8)
 		return 0;
 	return !!(ie[2 + capab / 8] & BIT(capab % 8));
+}
+
+
+void hostapd_encode_edmg_chan(int edmg_enable, u8 edmg_channel,
+			      int primary_channel,
+			      struct ieee80211_edmg_config *edmg)
+{
+	if (!edmg_enable) {
+		edmg->channels = 0;
+		edmg->bw_config = 0;
+		return;
+	}
+
+	/* Only EDMG CB1 and EDMG CB2 contiguous channels supported for now */
+	switch (edmg_channel) {
+	case EDMG_CHANNEL_9:
+		edmg->channels = EDMG_CHANNEL_9_SUBCHANNELS;
+		edmg->bw_config = EDMG_BW_CONFIG_5;
+		return;
+	case EDMG_CHANNEL_10:
+		edmg->channels = EDMG_CHANNEL_10_SUBCHANNELS;
+		edmg->bw_config = EDMG_BW_CONFIG_5;
+		return;
+	case EDMG_CHANNEL_11:
+		edmg->channels = EDMG_CHANNEL_11_SUBCHANNELS;
+		edmg->bw_config = EDMG_BW_CONFIG_5;
+		return;
+	case EDMG_CHANNEL_12:
+		edmg->channels = EDMG_CHANNEL_12_SUBCHANNELS;
+		edmg->bw_config = EDMG_BW_CONFIG_5;
+		return;
+	case EDMG_CHANNEL_13:
+		edmg->channels = EDMG_CHANNEL_13_SUBCHANNELS;
+		edmg->bw_config = EDMG_BW_CONFIG_5;
+		return;
+	default:
+		if (primary_channel > 0 && primary_channel < 7) {
+			edmg->channels = BIT(primary_channel - 1);
+			edmg->bw_config = EDMG_BW_CONFIG_4;
+		} else {
+			edmg->channels = 0;
+			edmg->bw_config = 0;
+		}
+		break;
+	}
+}
+
+
+/* Check if the requested EDMG configuration is a subset of the allowed
+ * EDMG configuration. */
+int ieee802_edmg_is_allowed(struct ieee80211_edmg_config allowed,
+			    struct ieee80211_edmg_config requested)
+{
+	/*
+	 * The validation check if the requested EDMG configuration
+	 * is a subset of the allowed EDMG configuration:
+	 * 1. Check that the requested channels are part (set) of the allowed
+	 * channels.
+	 * 2. P802.11ay defines the values of bw_config between 4 and 15.
+	 * (bw config % 4) will give us 4 groups inside bw_config definition,
+	 * inside each group we can check the subset just by comparing the
+	 * bw_config value.
+	 * Between this 4 groups, there is no subset relation - as a result of
+	 * the P802.11ay definition.
+	 * bw_config defined by IEEE P802.11ay/D4.0, 9.4.2.251, Table 13.
+	 */
+	if (((requested.channels & allowed.channels) != requested.channels) ||
+	    ((requested.bw_config % 4) > (allowed.bw_config % 4)) ||
+	    requested.bw_config > allowed.bw_config)
+		return 0;
+
+	return 1;
 }

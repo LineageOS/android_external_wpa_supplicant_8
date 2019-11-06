@@ -111,6 +111,7 @@ static int supp_get_beacon_ie(void *ctx)
 
 	wpa_printf(MSG_DEBUG, "SUPP: %s", __func__);
 	/* TODO: get correct RSN IE */
+	wpa_sm_set_ap_rsnxe(peer->supp, NULL, 0);
 	return wpa_sm_set_ap_rsn_ie(peer->supp,
 				    (u8 *) "\x30\x14\x01\x00"
 				    "\x00\x0f\xac\x04"
@@ -464,7 +465,7 @@ static int ibss_rsn_auth_init(struct ibss_rsn *ibss_rsn,
 				"\x00\x0f\xac\x04"
 				"\x01\x00\x00\x0f\xac\x04"
 				"\x01\x00\x00\x0f\xac\x02"
-				"\x00\x00", 22, NULL, 0, NULL, 0) !=
+				"\x00\x00", 22, NULL, 0, NULL, 0, NULL, 0) !=
 	    WPA_IE_OK) {
 		wpa_printf(MSG_DEBUG, "AUTH: wpa_validate_wpa_ie() failed");
 		return -1;

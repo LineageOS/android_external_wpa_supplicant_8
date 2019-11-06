@@ -1,6 +1,6 @@
 /*
  * EAP peer state machines (RFC 4137)
- * Copyright (c) 2004-2014, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2004-2019, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -32,12 +32,13 @@
 #define STATE_MACHINE_DATA struct eap_sm
 #define STATE_MACHINE_DEBUG_PREFIX "EAP"
 
-#define EAP_MAX_AUTH_ROUNDS 50
+#define EAP_MAX_AUTH_ROUNDS 100
+#define EAP_MAX_AUTH_ROUNDS_SHORT 50
 #define EAP_CLIENT_TIMEOUT_DEFAULT 60
 
 
 static Boolean eap_sm_allowMethod(struct eap_sm *sm, int vendor,
-				  EapType method);
+				  enum eap_type method);
 static struct wpabuf * eap_sm_buildNak(struct eap_sm *sm, int id);
 static void eap_sm_processIdentity(struct eap_sm *sm,
 				   const struct wpabuf *req);
@@ -260,10 +261,12 @@ SM_STATE(EAP, INITIALIZE)
 	 */
 	sm->ignore = 0;
 	sm->num_rounds = 0;
+	sm->num_rounds_short = 0;
 	sm->prev_failure = 0;
 	sm->expected_failure = 0;
 	sm->reauthInit = FALSE;
 	sm->erp_seq = (u32) -1;
+	sm->use_machine_cred = 0;
 }
 
 
@@ -276,6 +279,7 @@ SM_STATE(EAP, DISABLED)
 {
 	SM_ENTRY(EAP, DISABLED);
 	sm->num_rounds = 0;
+	sm->num_rounds_short = 0;
 	/*
 	 * RFC 4137 does not describe clearing of idleWhile here, but doing so
 	 * allows the timer tick to be stopped more quickly when EAP is not in
@@ -309,6 +313,10 @@ SM_STATE(EAP, RECEIVED)
 	/* parse rxReq, rxSuccess, rxFailure, reqId, reqMethod */
 	eap_sm_parseEapReq(sm, eapReqData);
 	sm->num_rounds++;
+	if (!eapReqData || wpabuf_len(eapReqData) < 20)
+		sm->num_rounds_short++;
+	else
+		sm->num_rounds_short = 0;
 }
 
 
@@ -319,7 +327,7 @@ SM_STATE(EAP, RECEIVED)
 SM_STATE(EAP, GET_METHOD)
 {
 	int reinit;
-	EapType method;
+	enum eap_type method;
 	const struct eap_method *eap_method;
 
 	SM_ENTRY(EAP, GET_METHOD);
@@ -815,7 +823,8 @@ struct wpabuf * eap_peer_build_erp_reauth_start(struct eap_sm *sm, u8 eap_id)
 	wpa_printf(MSG_DEBUG, "EAP: Valid ERP key found %s (SEQ=%u)",
 		   erp->keyname_nai, erp->next_seq);
 
-	msg = eap_msg_alloc(EAP_VENDOR_IETF, (EapType) EAP_ERP_TYPE_REAUTH,
+	msg = eap_msg_alloc(EAP_VENDOR_IETF,
+			    (enum eap_type) EAP_ERP_TYPE_REAUTH,
 			    1 + 2 + 2 + os_strlen(erp->keyname_nai) + 1 + 16,
 			    EAP_CODE_INITIATE, eap_id);
 	if (msg == NULL)
@@ -949,6 +958,8 @@ SM_STATE(EAP, SEND_RESPONSE)
 	SM_ENTRY(EAP, SEND_RESPONSE);
 	wpabuf_free(sm->lastRespData);
 	if (sm->eapRespData) {
+		if (wpabuf_len(sm->eapRespData) >= 20)
+			sm->num_rounds_short = 0;
 		if (sm->workaround)
 			os_memcpy(sm->last_sha1, sm->req_sha1, 20);
 		sm->lastId = sm->reqId;
@@ -1341,6 +1352,14 @@ SM_STEP(EAP)
 			sm->num_rounds++;
 			SM_ENTER_GLOBAL(EAP, FAILURE);
 		}
+	} else if (sm->num_rounds_short > EAP_MAX_AUTH_ROUNDS_SHORT) {
+		if (sm->num_rounds_short == EAP_MAX_AUTH_ROUNDS_SHORT + 1) {
+			wpa_msg(sm->msg_ctx, MSG_INFO,
+				"EAP: more than %d authentication rounds (short) - abort",
+				EAP_MAX_AUTH_ROUNDS_SHORT);
+			sm->num_rounds_short++;
+			SM_ENTER_GLOBAL(EAP, FAILURE);
+		}
 	} else {
 		/* Local transitions */
 		eap_peer_sm_step_local(sm);
@@ -1349,7 +1368,7 @@ SM_STEP(EAP)
 
 
 static Boolean eap_sm_allowMethod(struct eap_sm *sm, int vendor,
-				  EapType method)
+				  enum eap_type method)
 {
 	if (!eap_allowed_method(sm, vendor, method)) {
 		wpa_printf(MSG_DEBUG, "EAP: configuration does not allow: "
@@ -1595,13 +1614,13 @@ static int eap_sm_imsi_identity(struct eap_sm *sm,
 static int eap_sm_set_scard_pin(struct eap_sm *sm,
 				struct eap_peer_config *conf)
 {
-	if (scard_set_pin(sm->scard_ctx, conf->pin)) {
+	if (scard_set_pin(sm->scard_ctx, conf->cert.pin)) {
 		/*
 		 * Make sure the same PIN is not tried again in order to avoid
 		 * blocking SIM.
 		 */
-		os_free(conf->pin);
-		conf->pin = NULL;
+		os_free(conf->cert.pin);
+		conf->cert.pin = NULL;
 
 		wpa_printf(MSG_WARNING, "PIN validation failed");
 		eap_sm_request_pin(sm);
@@ -1656,6 +1675,11 @@ struct wpabuf * eap_sm_buildIdentity(struct eap_sm *sm, int id, int encrypted)
 		identity = config->anonymous_identity;
 		identity_len = config->anonymous_identity_len;
 		wpa_hexdump_ascii(MSG_DEBUG, "EAP: using anonymous identity",
+				  identity, identity_len);
+	} else if (sm->use_machine_cred) {
+		identity = config->machine_identity;
+		identity_len = config->machine_identity_len;
+		wpa_hexdump_ascii(MSG_DEBUG, "EAP: using machine identity",
 				  identity, identity_len);
 	} else {
 		identity = config->identity;
@@ -2600,6 +2624,8 @@ void eap_sm_notify_ctrl_attached(struct eap_sm *sm)
 
 static int eap_allowed_phase2_type(int vendor, int type)
 {
+	if (vendor == EAP_VENDOR_HOSTAP)
+		return 1;
 	if (vendor != EAP_VENDOR_IETF)
 		return 0;
 	return type != EAP_TYPE_PEAP && type != EAP_TYPE_TTLS &&
@@ -2662,7 +2688,7 @@ struct eap_method_type * eap_get_phase2_types(struct eap_peer_config *config,
 		if (eap_allowed_phase2_type(vendor, method)) {
 			if (vendor == EAP_VENDOR_IETF &&
 			    method == EAP_TYPE_TLS && config &&
-			    config->private_key2 == NULL)
+			    !config->phase2_cert.private_key)
 				continue;
 			buf[*count].vendor = vendor;
 			buf[*count].method = method;
@@ -2721,8 +2747,15 @@ struct eap_peer_config * eap_get_config(struct eap_sm *sm)
 const u8 * eap_get_config_identity(struct eap_sm *sm, size_t *len)
 {
 	struct eap_peer_config *config = eap_get_config(sm);
-	if (config == NULL)
+
+	if (!config)
 		return NULL;
+
+	if (sm->use_machine_cred) {
+		*len = config->machine_identity_len;
+		return config->machine_identity;
+	}
+
 	*len = config->identity_len;
 	return config->identity;
 }
@@ -2732,14 +2765,24 @@ static int eap_get_ext_password(struct eap_sm *sm,
 				struct eap_peer_config *config)
 {
 	char *name;
+	const u8 *password;
+	size_t password_len;
 
-	if (config->password == NULL)
+	if (sm->use_machine_cred) {
+		password = config->machine_password;
+		password_len = config->machine_password_len;
+	} else {
+		password = config->password;
+		password_len = config->password_len;
+	}
+
+	if (!password)
 		return -1;
 
-	name = os_zalloc(config->password_len + 1);
-	if (name == NULL)
+	name = os_zalloc(password_len + 1);
+	if (!name)
 		return -1;
-	os_memcpy(name, config->password, config->password_len);
+	os_memcpy(name, password, password_len);
 
 	ext_password_free(sm->ext_pw_buf);
 	sm->ext_pw_buf = ext_password_get(sm->ext_pw, name);
@@ -2758,14 +2801,23 @@ static int eap_get_ext_password(struct eap_sm *sm,
 const u8 * eap_get_config_password(struct eap_sm *sm, size_t *len)
 {
 	struct eap_peer_config *config = eap_get_config(sm);
-	if (config == NULL)
+
+	if (!config)
 		return NULL;
 
-	if (config->flags & EAP_CONFIG_FLAGS_EXT_PASSWORD) {
+	if ((sm->use_machine_cred &&
+	     (config->flags & EAP_CONFIG_FLAGS_EXT_MACHINE_PASSWORD)) ||
+	    (!sm->use_machine_cred &&
+	     (config->flags & EAP_CONFIG_FLAGS_EXT_PASSWORD))) {
 		if (eap_get_ext_password(sm, config) < 0)
 			return NULL;
 		*len = wpabuf_len(sm->ext_pw_buf);
 		return wpabuf_head(sm->ext_pw_buf);
+	}
+
+	if (sm->use_machine_cred) {
+		*len = config->machine_password_len;
+		return config->machine_password;
 	}
 
 	*len = config->password_len;
@@ -2785,16 +2837,28 @@ const u8 * eap_get_config_password(struct eap_sm *sm, size_t *len)
 const u8 * eap_get_config_password2(struct eap_sm *sm, size_t *len, int *hash)
 {
 	struct eap_peer_config *config = eap_get_config(sm);
-	if (config == NULL)
+
+	if (!config)
 		return NULL;
 
-	if (config->flags & EAP_CONFIG_FLAGS_EXT_PASSWORD) {
+	if ((sm->use_machine_cred &&
+	     (config->flags & EAP_CONFIG_FLAGS_EXT_MACHINE_PASSWORD)) ||
+	    (!sm->use_machine_cred &&
+	     (config->flags & EAP_CONFIG_FLAGS_EXT_PASSWORD))) {
 		if (eap_get_ext_password(sm, config) < 0)
 			return NULL;
 		if (hash)
 			*hash = 0;
 		*len = wpabuf_len(sm->ext_pw_buf);
 		return wpabuf_head(sm->ext_pw_buf);
+	}
+
+	if (sm->use_machine_cred) {
+		*len = config->machine_password_len;
+		if (hash)
+			*hash = !!(config->flags &
+				   EAP_CONFIG_FLAGS_MACHINE_PASSWORD_NTHASH);
+		return config->machine_password;
 	}
 
 	*len = config->password_len;

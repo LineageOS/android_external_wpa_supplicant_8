@@ -35,6 +35,7 @@ enum dpp_public_action_frame_type {
 	DPP_PA_PKEX_COMMIT_REVEAL_REQ = 9,
 	DPP_PA_PKEX_COMMIT_REVEAL_RESP = 10,
 	DPP_PA_CONFIGURATION_RESULT = 11,
+	DPP_PA_CONNECTION_STATUS_RESULT = 12,
 };
 
 enum dpp_attribute_id {
@@ -64,6 +65,8 @@ enum dpp_attribute_id {
 	DPP_ATTR_CHANNEL = 0x1018,
 	DPP_ATTR_PROTOCOL_VERSION = 0x1019,
 	DPP_ATTR_ENVELOPED_DATA = 0x101A,
+	DPP_ATTR_SEND_CONN_STATUS = 0x101B,
+	DPP_ATTR_CONN_STATUS = 0x101C,
 };
 
 enum dpp_status_error {
@@ -77,6 +80,7 @@ enum dpp_status_error {
 	DPP_STATUS_INVALID_CONNECTOR = 7,
 	DPP_STATUS_NO_MATCH = 8,
 	DPP_STATUS_CONFIG_REJECTED = 9,
+	DPP_STATUS_NO_AP = 10,
 };
 
 #define DPP_CAPAB_ENROLLEE BIT(0)
@@ -157,10 +161,16 @@ enum dpp_akm {
 	DPP_AKM_PSK_SAE_DPP,
 };
 
+enum dpp_netrole {
+	DPP_NETROLE_STA,
+	DPP_NETROLE_AP,
+};
+
 struct dpp_configuration {
 	u8 ssid[32];
 	size_t ssid_len;
 	enum dpp_akm akm;
+	enum dpp_netrole netrole;
 
 	/* For DPP configuration (connector) */
 	os_time_t netaccesskey_expiry;
@@ -173,6 +183,8 @@ struct dpp_configuration {
 	u8 psk[32];
 	int psk_set;
 };
+
+#define DPP_MAX_CONF_OBJ 10
 
 struct dpp_authentication {
 	void *msg_ctx;
@@ -222,22 +234,31 @@ struct dpp_authentication {
 	int remove_on_tx_status;
 	int connect_on_tx_status;
 	int waiting_conf_result;
+	int waiting_conn_status_result;
 	int auth_success;
 	struct wpabuf *conf_req;
 	const struct wpabuf *conf_resp; /* owned by GAS server */
 	struct dpp_configuration *conf_ap;
+	struct dpp_configuration *conf2_ap;
 	struct dpp_configuration *conf_sta;
+	struct dpp_configuration *conf2_sta;
 	struct dpp_configurator *conf;
-	char *connector; /* received signedConnector */
-	u8 ssid[SSID_MAX_LEN];
-	u8 ssid_len;
-	char passphrase[64];
-	u8 psk[PMK_LEN];
-	int psk_set;
-	enum dpp_akm akm;
+	struct dpp_config_obj {
+		char *connector; /* received signedConnector */
+		u8 ssid[SSID_MAX_LEN];
+		u8 ssid_len;
+		char passphrase[64];
+		u8 psk[PMK_LEN];
+		int psk_set;
+		enum dpp_akm akm;
+		struct wpabuf *c_sign_key;
+	} conf_obj[DPP_MAX_CONF_OBJ];
+	unsigned int num_conf_obj;
 	struct wpabuf *net_access_key;
 	os_time_t net_access_key_expiry;
-	struct wpabuf *c_sign_key;
+	int send_conn_status;
+	int conn_status_requested;
+	int akm_use_selector;
 #ifdef CONFIG_TESTING_OPTIONS
 	char *config_obj_override;
 	char *discovery_override;
@@ -413,6 +434,9 @@ dpp_auth_resp_rx(struct dpp_authentication *auth, const u8 *hdr,
 		 const u8 *attr_start, size_t attr_len);
 struct wpabuf * dpp_build_conf_req(struct dpp_authentication *auth,
 				   const char *json);
+struct wpabuf * dpp_build_conf_req_helper(struct dpp_authentication *auth,
+					  const char *name, int netrole_ap,
+					  const char *mud_url, int *opclasses);
 int dpp_auth_conf_rx(struct dpp_authentication *auth, const u8 *hdr,
 		     const u8 *attr_start, size_t attr_len);
 int dpp_notify_new_qr_code(struct dpp_authentication *auth,
@@ -439,12 +463,23 @@ enum dpp_status_error dpp_conf_result_rx(struct dpp_authentication *auth,
 					 const u8 *attr_start, size_t attr_len);
 struct wpabuf * dpp_build_conf_result(struct dpp_authentication *auth,
 				      enum dpp_status_error status);
+enum dpp_status_error dpp_conn_status_result_rx(struct dpp_authentication *auth,
+						const u8 *hdr,
+						const u8 *attr_start,
+						size_t attr_len,
+						u8 *ssid, size_t *ssid_len,
+						char **channel_list);
+struct wpabuf * dpp_build_conn_status_result(struct dpp_authentication *auth,
+					     enum dpp_status_error result,
+					     const u8 *ssid, size_t ssid_len,
+					     const char *channel_list);
 struct wpabuf * dpp_alloc_msg(enum dpp_public_action_frame_type type,
 			      size_t len);
 const u8 * dpp_get_attr(const u8 *buf, size_t len, u16 req_id, u16 *ret_len);
 int dpp_check_attrs(const u8 *buf, size_t len);
 int dpp_key_expired(const char *timestamp, os_time_t *expiry);
 const char * dpp_akm_str(enum dpp_akm akm);
+const char * dpp_akm_selector_str(enum dpp_akm akm);
 int dpp_configurator_get_key(const struct dpp_configurator *conf, char *buf,
 			     size_t buflen);
 void dpp_configurator_free(struct dpp_configurator *conf);

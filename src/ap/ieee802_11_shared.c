@@ -19,8 +19,6 @@
 #include "ieee802_11.h"
 
 
-#ifdef CONFIG_IEEE80211W
-
 u8 * hostapd_eid_assoc_comeback_time(struct hostapd_data *hapd,
 				     struct sta_info *sta, u8 *eid)
 {
@@ -304,8 +302,6 @@ void ieee802_11_sa_query_action(struct hostapd_data *hapd,
 	ap_sta_stop_sa_query(hapd, sta);
 }
 
-#endif /* CONFIG_IEEE80211W */
-
 
 static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx)
 {
@@ -404,14 +400,22 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid)
 	u8 *pos = eid;
 	u8 len = 0, i;
 
-	if (hapd->conf->tdls & (TDLS_PROHIBIT | TDLS_PROHIBIT_CHAN_SWITCH))
+	if (hapd->conf->qos_map_set_len ||
+	    (hapd->conf->tdls & (TDLS_PROHIBIT | TDLS_PROHIBIT_CHAN_SWITCH)))
 		len = 5;
-	if (len < 4 && hapd->conf->interworking)
+	if (len < 4 &&
+	    (hapd->conf->time_advertisement == 2 || hapd->conf->interworking))
 		len = 4;
-	if (len < 3 && hapd->conf->wnm_sleep_mode)
+	if (len < 3 &&
+	    (hapd->conf->wnm_sleep_mode || hapd->conf->bss_transition))
 		len = 3;
-	if (len < 1 && hapd->iconf->obss_interval)
+	if (len < 1 &&
+	    (hapd->iconf->obss_interval ||
+	     (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_AP_CSA)))
 		len = 1;
+	if (len < 2 &&
+	    (hapd->conf->proxy_arp || hapd->conf->coloc_intf_reporting))
+		len = 2;
 	if (len < 7 && hapd->conf->ssid.utf8_ssid)
 		len = 7;
 	if (len < 9 &&
@@ -1000,3 +1004,22 @@ int get_tx_parameters(struct sta_info *sta, int ap_max_chanwidth,
 	return 0;
 }
 #endif /* CONFIG_OCV */
+
+
+u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len)
+{
+	u8 *pos = eid;
+
+	if (!(hapd->conf->wpa & WPA_PROTO_RSN) ||
+	    (hapd->conf->sae_pwe != 1 && hapd->conf->sae_pwe != 2) ||
+	    len < 3)
+		return pos;
+
+	*pos++ = WLAN_EID_RSNX;
+	*pos++ = 1;
+	/* bits 0-3 = 0 since only one octet of Extended RSN Capabilities is
+	 * used for now */
+	*pos++ = BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+
+	return pos;
+}

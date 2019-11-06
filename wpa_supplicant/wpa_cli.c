@@ -1427,22 +1427,18 @@ static const char *network_fields[] = {
 #ifdef IEEE8021X_EAPOL
 	"eap_workaround", "pac_file", "fragment_size", "ocsp",
 #endif /* IEEE8021X_EAPOL */
-#ifdef CONFIG_MESH
-	"mode", "no_auto_peer", "mesh_rssi_threshold",
-#else /* CONFIG_MESH */
 	"mode",
-#endif /* CONFIG_MESH */
 	"proactive_key_caching", "disabled", "id_str",
-#ifdef CONFIG_IEEE80211W
 	"ieee80211w",
-#endif /* CONFIG_IEEE80211W */
 	"mixed_cell", "frequency", "fixed_freq",
 #ifdef CONFIG_MESH
+	"no_auto_peer", "mesh_rssi_threshold",
 	"mesh_basic_rates", "dot11MeshMaxRetries",
 	"dot11MeshRetryTimeout", "dot11MeshConfirmTimeout",
 	"dot11MeshHoldingTimeout",
 #endif /* CONFIG_MESH */
 	"wpa_ptk_rekey", "bgscan", "ignore_broadcast_ssid",
+	"enable_edmg", "edmg_channel",
 #ifdef CONFIG_P2P
 	"go_p2p_dev_addr", "p2p_client_list", "psk_list",
 #endif /* CONFIG_P2P */
@@ -4021,6 +4017,22 @@ static void wpa_cli_action_process(const char *msg)
 		wpa_cli_exec(action_file, ifname, pos);
 	} else if (str_starts(pos, HS20_T_C_ACCEPTANCE)) {
 		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, DPP_EVENT_CONF_RECEIVED)) {
+		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, DPP_EVENT_CONFOBJ_AKM)) {
+		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, DPP_EVENT_CONFOBJ_SSID)) {
+		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, DPP_EVENT_CONNECTOR)) {
+		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, DPP_EVENT_CONFOBJ_PASS)) {
+		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, DPP_EVENT_CONFOBJ_PSK)) {
+		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, DPP_EVENT_C_SIGN_KEY)) {
+		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, DPP_EVENT_NET_ACCESS_KEY)) {
+		wpa_cli_exec(action_file, ifname, pos);
 	} else if (str_starts(pos, WPA_EVENT_TERMINATING)) {
 		printf("wpa_supplicant is terminating - stop monitoring\n");
 		wpa_cli_quit = 1;
@@ -4592,8 +4604,11 @@ static char * wpa_cli_get_default_ifname(void)
 		if (dent->d_type != DT_SOCK && dent->d_type != DT_UNKNOWN)
 			continue;
 #endif /* _DIRENT_HAVE_D_TYPE */
+		/* Skip current/previous directory and special P2P Device
+		 * interfaces. */
 		if (os_strcmp(dent->d_name, ".") == 0 ||
-		    os_strcmp(dent->d_name, "..") == 0)
+		    os_strcmp(dent->d_name, "..") == 0 ||
+		    os_strncmp(dent->d_name, "p2p-dev-", 8) == 0)
 			continue;
 		printf("Selected interface '%s'\n", dent->d_name);
 		ifname = os_strdup(dent->d_name);

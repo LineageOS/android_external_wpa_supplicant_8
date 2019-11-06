@@ -216,18 +216,12 @@ endif
 
 L_CFLAGS += -DCONFIG_CTRL_IFACE -DCONFIG_CTRL_IFACE_UNIX
 
-ifdef CONFIG_IAPP
-L_CFLAGS += -DCONFIG_IAPP
-OBJS += src/ap/iapp.c
-endif
-
 ifdef CONFIG_RSN_PREAUTH
 L_CFLAGS += -DCONFIG_RSN_PREAUTH
 CONFIG_L2_PACKET=y
 endif
 
 ifdef CONFIG_HS20
-NEED_AES_OMAC1=y
 CONFIG_PROXYARP=y
 endif
 
@@ -237,8 +231,6 @@ endif
 
 ifdef CONFIG_SUITEB
 L_CFLAGS += -DCONFIG_SUITEB
-NEED_SHA256=y
-NEED_AES_OMAC1=y
 endif
 
 ifdef CONFIG_SUITEB192
@@ -249,24 +241,14 @@ endif
 ifdef CONFIG_OCV
 L_CFLAGS += -DCONFIG_OCV
 OBJS += src/common/ocv.c
-CONFIG_IEEE80211W=y
-endif
-
-ifdef CONFIG_IEEE80211W
-L_CFLAGS += -DCONFIG_IEEE80211W
-NEED_SHA256=y
-NEED_AES_OMAC1=y
 endif
 
 ifdef CONFIG_IEEE80211R
 L_CFLAGS += -DCONFIG_IEEE80211R -DCONFIG_IEEE80211R_AP
 OBJS += src/ap/wpa_auth_ft.c
-NEED_SHA256=y
-NEED_AES_OMAC1=y
 NEED_AES_UNWRAP=y
 NEED_AES_SIV=y
 NEED_ETH_P_OUI=y
-NEED_SHA256=y
 NEED_HMAC_SHA256_KDF=y
 endif
 
@@ -289,7 +271,6 @@ NEED_ECC=y
 NEED_HMAC_SHA256_KDF=y
 NEED_HMAC_SHA384_KDF=y
 NEED_HMAC_SHA512_KDF=y
-NEED_SHA256=y
 NEED_SHA384=y
 NEED_SHA512=y
 endif
@@ -424,7 +405,6 @@ ifdef CONFIG_EAP_AKA
 L_CFLAGS += -DEAP_SERVER_AKA
 OBJS += src/eap_server/eap_server_aka.c
 CONFIG_EAP_SIM_COMMON=y
-NEED_SHA256=y
 NEED_AES_CBC=y
 endif
 
@@ -449,7 +429,6 @@ endif
 ifdef CONFIG_EAP_PSK
 L_CFLAGS += -DEAP_SERVER_PSK
 OBJS += src/eap_server/eap_server_psk.c src/eap_common/eap_psk_common.c
-NEED_AES_OMAC1=y
 NEED_AES_ENCBLOCK=y
 NEED_AES_EAX=y
 endif
@@ -465,14 +444,11 @@ OBJS += src/eap_server/eap_server_gpsk.c src/eap_common/eap_gpsk_common.c
 ifdef CONFIG_EAP_GPSK_SHA256
 L_CFLAGS += -DEAP_GPSK_SHA256
 endif
-NEED_SHA256=y
-NEED_AES_OMAC1=y
 endif
 
 ifdef CONFIG_EAP_PWD
 L_CFLAGS += -DEAP_SERVER_PWD
 OBJS += src/eap_server/eap_server_pwd.c src/eap_common/eap_pwd_common.c
-NEED_SHA256=y
 NEED_ECC=y
 NEED_DRAGONFLY=y
 endif
@@ -505,6 +481,8 @@ OBJS += src/eap_common/eap_teap_common.c
 TLS_FUNCS=y
 NEED_T_PRF=y
 NEED_SHA384=y
+NEED_TLS_PRF_SHA256=y
+NEED_TLS_PRF_SHA384=y
 NEED_AES_UNWRAP=y
 endif
 
@@ -522,7 +500,6 @@ OBJS += src/wps/wps_dev_attr.c
 OBJS += src/wps/wps_enrollee.c
 OBJS += src/wps/wps_registrar.c
 NEED_DH_GROUPS=y
-NEED_SHA256=y
 NEED_BASE64=y
 NEED_AES_CBC=y
 NEED_MODEXP=y
@@ -571,9 +548,9 @@ NEED_AES_SIV=y
 NEED_HMAC_SHA256_KDF=y
 NEED_HMAC_SHA384_KDF=y
 NEED_HMAC_SHA512_KDF=y
-NEED_SHA256=y
 NEED_SHA384=y
 NEED_SHA512=y
+NEED_ECC=y
 NEED_JSON=y
 NEED_GAS=y
 NEED_BASE64=y
@@ -650,7 +627,6 @@ endif
 
 ifdef CONFIG_TLSV12
 L_CFLAGS += -DCONFIG_TLSV12
-NEED_SHA256=y
 endif
 
 ifeq ($(CONFIG_TLS), openssl)
@@ -664,7 +640,6 @@ HOBJS += src/crypto/crypto_openssl.c
 ifdef NEED_FIPS186_2_PRF
 OBJS += src/crypto/fips_prf_openssl.c
 endif
-NEED_SHA256=y
 NEED_TLS_PRF_SHA256=y
 LIBS += -lcrypto
 LIBS_h += -lcrypto
@@ -722,7 +697,6 @@ OBJS += src/tls/x509v3.c
 OBJS += src/tls/pkcs1.c
 OBJS += src/tls/pkcs5.c
 OBJS += src/tls/pkcs8.c
-NEED_SHA256=y
 NEED_BASE64=y
 NEED_TLS_PRF=y
 ifdef CONFIG_TLSV12
@@ -817,12 +791,10 @@ endif
 ifdef NEED_AES_EAX
 AESOBJS += src/crypto/aes-eax.c
 NEED_AES_CTR=y
-NEED_AES_OMAC1=y
 endif
 ifdef NEED_AES_SIV
 AESOBJS += src/crypto/aes-siv.c
 NEED_AES_CTR=y
-NEED_AES_OMAC1=y
 endif
 ifdef NEED_AES_CTR
 AESOBJS += src/crypto/aes-ctr.c
@@ -830,9 +802,7 @@ endif
 ifdef NEED_AES_ENCBLOCK
 AESOBJS += src/crypto/aes-encblock.c
 endif
-ifdef NEED_AES_OMAC1
 AESOBJS += src/crypto/aes-omac1.c
-endif
 ifdef NEED_AES_UNWRAP
 ifneq ($(CONFIG_TLS), openssl)
 NEED_AES_DEC=y
@@ -920,7 +890,6 @@ endif
 endif
 endif
 
-ifdef NEED_SHA256
 L_CFLAGS += -DCONFIG_SHA256
 ifneq ($(CONFIG_TLS), openssl)
 ifneq ($(CONFIG_TLS), gnutls)
@@ -934,6 +903,9 @@ endif
 ifdef NEED_TLS_PRF_SHA256
 OBJS += src/crypto/sha256-tlsprf.c
 endif
+ifdef NEED_TLS_PRF_SHA384
+OBJS += src/crypto/sha384-tlsprf.c
+endif
 ifdef NEED_HMAC_SHA256_KDF
 OBJS += src/crypto/sha256-kdf.c
 endif
@@ -942,7 +914,6 @@ OBJS += src/crypto/sha384-kdf.c
 endif
 ifdef NEED_HMAC_SHA512_KDF
 OBJS += src/crypto/sha512-kdf.c
-endif
 endif
 ifdef NEED_SHA384
 L_CFLAGS += -DCONFIG_SHA384

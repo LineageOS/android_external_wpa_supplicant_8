@@ -16,6 +16,7 @@
 #include "common/ieee802_11_common.h"
 #include "common/wpa_ctrl.h"
 #include "common/dpp.h"
+#include "common/sae.h"
 #include "crypto/random.h"
 #include "p2p/p2p.h"
 #include "wps/wps.h"
@@ -111,10 +112,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 	struct ieee802_11_elems elems;
 	const u8 *ie;
 	size_t ielen;
-#if defined(CONFIG_IEEE80211R_AP) || defined(CONFIG_IEEE80211W) || defined(CONFIG_FILS) || defined(CONFIG_OWE)
 	u8 buf[sizeof(struct ieee80211_mgmt) + 1024];
 	u8 *p = buf;
-#endif /* CONFIG_IEEE80211R_AP || CONFIG_IEEE80211W || CONFIG_FILS || CONFIG_OWE */
 	u16 reason = WLAN_REASON_UNSPECIFIED;
 	u16 status = WLAN_STATUS_SUCCESS;
 	const u8 *p2p_dev_addr = NULL;
@@ -131,6 +130,19 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			   "hostapd_notif_assoc: Skip event with no address");
 		return -1;
 	}
+
+	if (is_multicast_ether_addr(addr) ||
+	    is_zero_ether_addr(addr) ||
+	    os_memcmp(addr, hapd->own_addr, ETH_ALEN) == 0) {
+		/* Do not process any frames with unexpected/invalid SA so that
+		 * we do not add any state for unexpected STA addresses or end
+		 * up sending out frames to unexpected destination. */
+		wpa_printf(MSG_DEBUG, "%s: Invalid SA=" MACSTR
+			   " in received indication - ignore this indication silently",
+			   __func__, MAC2STR(addr));
+		return 0;
+	}
+
 	random_add_randomness(addr, ETH_ALEN);
 
 	hostapd_logger(hapd, addr, HOSTAPD_MODULE_IEEE80211,
@@ -308,6 +320,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
 					  hapd->iface->freq,
 					  ie, ielen,
+					  elems.rsnxe ? elems.rsnxe - 2 : NULL,
+					  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
 					  elems.mdie, elems.mdie_len,
 					  elems.owe_dh, elems.owe_dh_len);
 		if (res != WPA_IE_OK) {
@@ -324,23 +338,19 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			} else if (res == WPA_INVALID_AKMP) {
 				reason = WLAN_REASON_AKMP_NOT_VALID;
 				status = WLAN_STATUS_AKMP_NOT_VALID;
-			}
-#ifdef CONFIG_IEEE80211W
-			else if (res == WPA_MGMT_FRAME_PROTECTION_VIOLATION) {
+			} else if (res == WPA_MGMT_FRAME_PROTECTION_VIOLATION) {
 				reason = WLAN_REASON_INVALID_IE;
 				status = WLAN_STATUS_INVALID_IE;
 			} else if (res == WPA_INVALID_MGMT_GROUP_CIPHER) {
 				reason = WLAN_REASON_CIPHER_SUITE_REJECTED;
 				status = WLAN_STATUS_CIPHER_REJECTED_PER_POLICY;
-			}
-#endif /* CONFIG_IEEE80211W */
-			else {
+			} else {
 				reason = WLAN_REASON_INVALID_IE;
 				status = WLAN_STATUS_INVALID_IE;
 			}
 			goto fail;
 		}
-#ifdef CONFIG_IEEE80211W
+
 		if ((sta->flags & (WLAN_STA_ASSOC | WLAN_STA_MFP)) ==
 		    (WLAN_STA_ASSOC | WLAN_STA_MFP) &&
 		    !sta->sa_query_timed_out &&
@@ -373,7 +383,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			sta->flags |= WLAN_STA_MFP;
 		else
 			sta->flags &= ~WLAN_STA_MFP;
-#endif /* CONFIG_IEEE80211W */
 
 #ifdef CONFIG_IEEE80211R_AP
 		if (sta->auth_alg == WLAN_AUTH_FT) {
@@ -390,6 +399,20 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			}
 		}
 #endif /* CONFIG_IEEE80211R_AP */
+#ifdef CONFIG_SAE
+		if (hapd->conf->sae_pwe == 2 &&
+		    sta->auth_alg == WLAN_AUTH_SAE &&
+		    sta->sae && sta->sae->tmp && !sta->sae->tmp->h2e &&
+		    elems.rsnxe && elems.rsnxe_len >= 1 &&
+		    (elems.rsnxe[0] & BIT(WLAN_RSNX_CAPAB_SAE_H2E))) {
+			wpa_printf(MSG_INFO, "SAE: " MACSTR
+				   " indicates support for SAE H2E, but did not use it",
+				   MAC2STR(sta->addr));
+			status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			reason = WLAN_REASON_UNSPECIFIED;
+			goto fail;
+		}
+#endif /* CONFIG_SAE */
 	} else if (hapd->conf->wps_state) {
 #ifdef CONFIG_WPS
 		struct wpabuf *wps;
@@ -1164,12 +1187,10 @@ static void hostapd_action_rx(struct hostapd_data *hapd,
 		return;
 	}
 #endif /* CONFIG_IEEE80211R_AP */
-#ifdef CONFIG_IEEE80211W
 	if (mgmt->u.action.category == WLAN_ACTION_SA_QUERY) {
 		ieee802_11_sa_query_action(hapd, mgmt, drv_mgmt->frame_len);
 		return;
 	}
-#endif /* CONFIG_IEEE80211W */
 #ifdef CONFIG_WNM_AP
 	if (mgmt->u.action.category == WLAN_ACTION_WNM) {
 		ieee802_11_rx_wnm_action_ap(hapd, mgmt, drv_mgmt->frame_len);

@@ -984,8 +984,7 @@ dbus_bool_t wpas_dbus_getter_global_capabilities(
 	const struct wpa_dbus_property_desc *property_desc,
 	DBusMessageIter *iter, DBusError *error, void *user_data)
 {
-	const char *capabilities[10] = { NULL, NULL, NULL, NULL, NULL, NULL,
-					NULL, NULL, NULL, NULL };
+	const char *capabilities[11];
 	size_t num_items = 0;
 #ifdef CONFIG_FILS
 	struct wpa_global *global = user_data;
@@ -1012,9 +1011,7 @@ dbus_bool_t wpas_dbus_getter_global_capabilities(
 #ifdef CONFIG_INTERWORKING
 	capabilities[num_items++] = "interworking";
 #endif /* CONFIG_INTERWORKING */
-#ifdef CONFIG_IEEE80211W
 	capabilities[num_items++] = "pmf";
-#endif /* CONFIG_IEEE80211W */
 #ifdef CONFIG_MESH
 	capabilities[num_items++] = "mesh";
 #endif /* CONFIG_MESH */
@@ -1030,6 +1027,9 @@ dbus_bool_t wpas_dbus_getter_global_capabilities(
 #ifdef CONFIG_SHA384
 	capabilities[num_items++] = "sha384";
 #endif /* CONFIG_SHA384 */
+#ifdef CONFIG_OWE
+	capabilities[num_items++] = "owe";
+#endif /* CONFIG_OWE */
 
 	return wpas_dbus_simple_array_property_getter(iter,
 						      DBUS_TYPE_STRING,
@@ -2753,11 +2753,9 @@ dbus_bool_t wpas_dbus_getter_capabilities(
 				goto nomem;
 
 /* TODO: Ensure that driver actually supports sha256 encryption. */
-#ifdef CONFIG_IEEE80211W
 			if (!wpa_dbus_dict_string_array_add_element(
 				    &iter_array, "wpa-eap-sha256"))
 				goto nomem;
-#endif /* CONFIG_IEEE80211W */
 		}
 
 		if (capa.key_mgmt & (WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK |
@@ -2771,11 +2769,9 @@ dbus_bool_t wpas_dbus_getter_capabilities(
 				goto nomem;
 
 /* TODO: Ensure that driver actually supports sha256 encryption. */
-#ifdef CONFIG_IEEE80211W
 			if (!wpa_dbus_dict_string_array_add_element(
 				    &iter_array, "wpa-psk-sha256"))
 				goto nomem;
-#endif /* CONFIG_IEEE80211W */
 		}
 
 		if ((capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_WPA_NONE) &&
@@ -3990,6 +3986,173 @@ out:
 
 
 /**
+ * wpas_dbus_setter_mac_address_randomization_mask - Set masks used for
+ * MAC address randomization
+ * @iter: Pointer to incoming dbus message iter
+ * @error: Location to store error on failure
+ * @user_data: Function specific data
+ * Returns: TRUE on success, FALSE on failure
+ *
+ * Setter for "MACAddressRandomizationMask" property.
+ */
+dbus_bool_t wpas_dbus_setter_mac_address_randomization_mask(
+	const struct wpa_dbus_property_desc *property_desc,
+	DBusMessageIter *iter, DBusError *error, void *user_data)
+{
+	struct wpa_supplicant *wpa_s = user_data;
+	DBusMessageIter variant_iter, dict_iter, entry_iter, array_iter;
+	const char *key;
+	unsigned int rand_type = 0;
+	const u8 *mask;
+	int mask_len;
+	unsigned int rand_types_to_disable = MAC_ADDR_RAND_ALL;
+
+	dbus_message_iter_recurse(iter, &variant_iter);
+	if (dbus_message_iter_get_arg_type(&variant_iter) != DBUS_TYPE_ARRAY) {
+		dbus_set_error_const(error, DBUS_ERROR_INVALID_ARGS,
+				     "invalid message format");
+		return FALSE;
+	}
+	dbus_message_iter_recurse(&variant_iter, &dict_iter);
+	while (dbus_message_iter_get_arg_type(&dict_iter) ==
+	       DBUS_TYPE_DICT_ENTRY) {
+		dbus_message_iter_recurse(&dict_iter, &entry_iter);
+		if (dbus_message_iter_get_arg_type(&entry_iter) !=
+		    DBUS_TYPE_STRING) {
+			dbus_set_error(error, DBUS_ERROR_FAILED,
+				       "%s: key not a string", __func__);
+			return FALSE;
+		}
+		dbus_message_iter_get_basic(&entry_iter, &key);
+		dbus_message_iter_next(&entry_iter);
+		if (dbus_message_iter_get_arg_type(&entry_iter) !=
+		    DBUS_TYPE_ARRAY ||
+		    dbus_message_iter_get_element_type(&entry_iter) !=
+		    DBUS_TYPE_BYTE) {
+			dbus_set_error(error, DBUS_ERROR_FAILED,
+				       "%s: mask was not a byte array",
+				       __func__);
+			return FALSE;
+		}
+		dbus_message_iter_recurse(&entry_iter, &array_iter);
+		dbus_message_iter_get_fixed_array(&array_iter, &mask,
+						  &mask_len);
+
+		if (os_strcmp(key, "scan") == 0) {
+			rand_type = MAC_ADDR_RAND_SCAN;
+		} else if (os_strcmp(key, "sched_scan") == 0) {
+			rand_type = MAC_ADDR_RAND_SCHED_SCAN;
+		} else if (os_strcmp(key, "pno") == 0) {
+			rand_type = MAC_ADDR_RAND_PNO;
+		} else {
+			dbus_set_error(error, DBUS_ERROR_FAILED,
+				       "%s: bad scan type \"%s\"",
+				       __func__, key);
+			return FALSE;
+		}
+
+		if (mask_len != ETH_ALEN) {
+			dbus_set_error(error, DBUS_ERROR_FAILED,
+				       "%s: malformed MAC mask given",
+				       __func__);
+			return FALSE;
+		}
+
+		if (wpas_enable_mac_addr_randomization(
+			    wpa_s, rand_type, wpa_s->perm_addr, mask)) {
+			dbus_set_error(error, DBUS_ERROR_FAILED,
+				       "%s: failed to set up MAC address randomization for %s",
+				       __func__, key);
+			return FALSE;
+		}
+
+		wpa_printf(MSG_DEBUG,
+			   "%s: Enabled MAC address randomization for %s with mask: "
+			   MACSTR, wpa_s->ifname, key, MAC2STR(mask));
+		rand_types_to_disable &= ~rand_type;
+		dbus_message_iter_next(&dict_iter);
+	}
+
+	if (rand_types_to_disable &&
+	    wpas_disable_mac_addr_randomization(wpa_s, rand_types_to_disable)) {
+		dbus_set_error(error, DBUS_ERROR_FAILED,
+			       "%s: failed to disable MAC address randomization",
+			       __func__);
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+
+dbus_bool_t wpas_dbus_getter_mac_address_randomization_mask(
+	const struct wpa_dbus_property_desc *property_desc,
+	DBusMessageIter *iter, DBusError *error, void *user_data)
+{
+	struct wpa_supplicant *wpa_s = user_data;
+	DBusMessageIter variant_iter, dict_iter, entry_iter, array_iter;
+	unsigned int i;
+	u8 mask_buf[ETH_ALEN];
+	/* Read docs on dbus_message_iter_append_fixed_array() for why this
+	 * is necessary... */
+	u8 *mask = mask_buf;
+	static const struct {
+		const char *key;
+		unsigned int type;
+	} types[] = {
+		{ "scan", MAC_ADDR_RAND_SCAN },
+		{ "sched_scan", MAC_ADDR_RAND_SCHED_SCAN },
+		{ "pno", MAC_ADDR_RAND_PNO }
+	};
+
+	if (!dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT,
+					      "a{say}", &variant_iter) ||
+	    !dbus_message_iter_open_container(&variant_iter, DBUS_TYPE_ARRAY,
+					      "{say}", &dict_iter)) {
+		dbus_set_error_const(error, DBUS_ERROR_NO_MEMORY, "no memory");
+		return FALSE;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(types); i++) {
+		if (wpas_mac_addr_rand_scan_get_mask(wpa_s, types[i].type,
+						     mask))
+			continue;
+
+		if (!dbus_message_iter_open_container(&dict_iter,
+						      DBUS_TYPE_DICT_ENTRY,
+						      NULL, &entry_iter) ||
+		    !dbus_message_iter_append_basic(&entry_iter,
+						    DBUS_TYPE_STRING,
+						    &types[i].key) ||
+		    !dbus_message_iter_open_container(&entry_iter,
+						      DBUS_TYPE_ARRAY,
+						      DBUS_TYPE_BYTE_AS_STRING,
+						      &array_iter) ||
+		    !dbus_message_iter_append_fixed_array(&array_iter,
+							  DBUS_TYPE_BYTE,
+							  &mask,
+							  ETH_ALEN) ||
+		    !dbus_message_iter_close_container(&entry_iter,
+						       &array_iter) ||
+		    !dbus_message_iter_close_container(&dict_iter,
+						       &entry_iter)) {
+			dbus_set_error_const(error, DBUS_ERROR_NO_MEMORY,
+					     "no memory");
+			return FALSE;
+		}
+	}
+
+	if (!dbus_message_iter_close_container(&variant_iter, &dict_iter) ||
+	    !dbus_message_iter_close_container(iter, &variant_iter)) {
+		dbus_set_error_const(error, DBUS_ERROR_NO_MEMORY, "no memory");
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+
+/**
  * wpas_dbus_getter_sta_address - Return the address of a connected station
  * @iter: Pointer to incoming dbus message iter
  * @error: Location to store error on failure
@@ -4497,7 +4660,7 @@ static dbus_bool_t wpas_dbus_get_bss_security_prop(
 	DBusMessageIter iter_dict, variant_iter;
 	const char *group;
 	const char *pairwise[5]; /* max 5 pairwise ciphers is supported */
-	const char *key_mgmt[15]; /* max 15 key managements may be supported */
+	const char *key_mgmt[16]; /* max 16 key managements may be supported */
 	int n;
 
 	if (!dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT,
@@ -4550,6 +4713,10 @@ static dbus_bool_t wpas_dbus_get_bss_security_prop(
 	if (ie_data->key_mgmt & WPA_KEY_MGMT_FT_SAE)
 		key_mgmt[n++] = "ft-sae";
 #endif /* CONFIG_SAE */
+#ifdef CONFIG_OWE
+	if (ie_data->key_mgmt & WPA_KEY_MGMT_OWE)
+		key_mgmt[n++] = "owe";
+#endif /* CONFIG_OWE */
 	if (ie_data->key_mgmt & WPA_KEY_MGMT_NONE)
 		key_mgmt[n++] = "wpa-none";
 
@@ -4608,11 +4775,9 @@ static dbus_bool_t wpas_dbus_get_bss_security_prop(
 	/* Management group (RSN only) */
 	if (ie_data->proto == WPA_PROTO_RSN) {
 		switch (ie_data->mgmt_group_cipher) {
-#ifdef CONFIG_IEEE80211W
 		case WPA_CIPHER_AES_128_CMAC:
 			group = "aes128cmac";
 			break;
-#endif /* CONFIG_IEEE80211W */
 		default:
 			group = "";
 			break;

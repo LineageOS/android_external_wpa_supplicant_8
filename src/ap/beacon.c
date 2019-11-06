@@ -456,7 +456,8 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 	pos = hostapd_eid_ext_supp_rates(hapd, pos);
 
 	/* RSN, MDIE */
-	if (hapd->conf->wpa != WPA_PROTO_WPA)
+	if (!(hapd->conf->wpa == WPA_PROTO_WPA ||
+	      (hapd->conf->osen && !hapd->conf->wpa)))
 		pos = hostapd_eid_wpa(hapd, pos, epos - pos);
 
 	pos = hostapd_eid_bss_load(hapd, pos, epos - pos);
@@ -498,7 +499,8 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 #endif /* CONFIG_FST */
 
 #ifdef CONFIG_IEEE80211AC
-	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac) {
+	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac &&
+	    !is_6ghz_op_class(hapd->iconf->op_class)) {
 		pos = hostapd_eid_vht_capabilities(hapd, pos, 0);
 		pos = hostapd_eid_vht_operation(hapd, pos);
 		pos = hostapd_eid_txpower_envelope(hapd, pos);
@@ -523,7 +525,8 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 #endif /* CONFIG_IEEE80211AC */
 
 	/* WPA */
-	if (hapd->conf->wpa == WPA_PROTO_WPA)
+	if (hapd->conf->wpa == WPA_PROTO_WPA ||
+	    (hapd->conf->osen && !hapd->conf->wpa))
 		pos = hostapd_eid_wpa(hapd, pos, epos - pos);
 
 	/* Wi-Fi Alliance WMM */
@@ -553,7 +556,6 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 
 #ifdef CONFIG_HS20
 	pos = hostapd_eid_hs20_indication(hapd, pos);
-	pos = hostapd_eid_osen(hapd, pos);
 #endif /* CONFIG_HS20 */
 
 	pos = hostapd_eid_mbo(hapd, pos, (u8 *) resp + buflen - pos);
@@ -1164,7 +1166,8 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	tailpos = hostapd_eid_ext_supp_rates(hapd, tailpos);
 
 	/* RSN, MDIE */
-	if (hapd->conf->wpa != WPA_PROTO_WPA)
+	if (!(hapd->conf->wpa == WPA_PROTO_WPA ||
+	      (hapd->conf->osen && !hapd->conf->wpa)))
 		tailpos = hostapd_eid_wpa(hapd, tailpos,
 					  tail + BEACON_TAIL_BUF_SIZE -
 					  tailpos);
@@ -1240,7 +1243,8 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 #endif /* CONFIG_IEEE80211AC */
 
 	/* WPA */
-	if (hapd->conf->wpa == WPA_PROTO_WPA)
+	if (hapd->conf->wpa == WPA_PROTO_WPA ||
+	    (hapd->conf->osen && !hapd->conf->wpa))
 		tailpos = hostapd_eid_wpa(hapd, tailpos,
 					  tail + BEACON_TAIL_BUF_SIZE -
 					  tailpos);
@@ -1271,7 +1275,6 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 
 #ifdef CONFIG_HS20
 	tailpos = hostapd_eid_hs20_indication(hapd, tailpos);
-	tailpos = hostapd_eid_osen(hapd, tailpos);
 #endif /* CONFIG_HS20 */
 
 	tailpos = hostapd_eid_mbo(hapd, tailpos, tail + tail_len - tailpos);
@@ -1421,11 +1424,19 @@ int ieee802_11_set_beacon(struct hostapd_data *hapd)
 	params.proberesp_ies = proberesp;
 	params.assocresp_ies = assocresp;
 	params.reenable = hapd->reenable_beacon;
+#ifdef CONFIG_IEEE80211AX
+	params.he_spr = !!hapd->iface->conf->spr.sr_control;
+	params.he_spr_srg_obss_pd_min_offset =
+		hapd->iface->conf->spr.srg_obss_pd_min_offset;
+	params.he_spr_srg_obss_pd_max_offset =
+		hapd->iface->conf->spr.srg_obss_pd_max_offset;
+#endif /* CONFIG_IEEE80211AX */
 	hapd->reenable_beacon = 0;
 
 	if (cmode &&
 	    hostapd_set_freq_params(&freq, iconf->hw_mode, iface->freq,
-				    iconf->channel, iconf->ieee80211n,
+				    iconf->channel, iconf->enable_edmg,
+				    iconf->edmg_channel, iconf->ieee80211n,
 				    iconf->ieee80211ac, iconf->ieee80211ax,
 				    iconf->secondary_channel,
 				    hostapd_get_oper_chwidth(iconf),

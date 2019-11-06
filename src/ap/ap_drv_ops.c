@@ -107,6 +107,10 @@ int hostapd_build_ap_extra_ies(struct hostapd_data *hapd,
 		goto fail;
 #endif /* CONFIG_FILS */
 
+	pos = hostapd_eid_rsnxe(hapd, buf, sizeof(buf));
+	if (add_buf_data(&assocresp, buf, pos - buf) < 0)
+		goto fail;
+
 	if (add_buf(&beacon, hapd->wps_beacon_ie) < 0 ||
 	    add_buf(&proberesp, hapd->wps_probe_resp_ie) < 0)
 		goto fail;
@@ -305,9 +309,7 @@ int hostapd_set_drv_ieee8021x(struct hostapd_data *hapd, const char *ifname,
 			params.wpa_pairwise = hapd->conf->wpa_pairwise;
 		params.wpa_key_mgmt = hapd->conf->wpa_key_mgmt;
 		params.rsn_preauth = hapd->conf->rsn_preauth;
-#ifdef CONFIG_IEEE80211W
 		params.ieee80211w = hapd->conf->ieee80211w;
-#endif /* CONFIG_IEEE80211W */
 	}
 	return hostapd_set_ieee8021x(hapd, &params);
 }
@@ -348,7 +350,7 @@ int hostapd_add_sta_node(struct hostapd_data *hapd, const u8 *addr,
 			 u16 auth_alg)
 {
 	if (hapd->driver == NULL || hapd->driver->add_sta_node == NULL)
-		return 0;
+		return -EOPNOTSUPP;
 	return hapd->driver->add_sta_node(hapd->drv_priv, addr, auth_alg);
 }
 
@@ -540,7 +542,8 @@ int hostapd_flush(struct hostapd_data *hapd)
 
 
 int hostapd_set_freq(struct hostapd_data *hapd, enum hostapd_hw_mode mode,
-		     int freq, int channel, int ht_enabled, int vht_enabled,
+		     int freq, int channel, int edmg, u8 edmg_channel,
+		     int ht_enabled, int vht_enabled,
 		     int he_enabled,
 		     int sec_channel_offset, int oper_chwidth,
 		     int center_segment0, int center_segment1)
@@ -548,7 +551,8 @@ int hostapd_set_freq(struct hostapd_data *hapd, enum hostapd_hw_mode mode,
 	struct hostapd_freq_params data;
 	struct hostapd_hw_modes *cmode = hapd->iface->current_mode;
 
-	if (hostapd_set_freq_params(&data, mode, freq, channel, ht_enabled,
+	if (hostapd_set_freq_params(&data, mode, freq, channel, edmg,
+				    edmg_channel, ht_enabled,
 				    vht_enabled, he_enabled, sec_channel_offset,
 				    oper_chwidth,
 				    center_segment0, center_segment1,
@@ -810,7 +814,8 @@ int hostapd_start_dfs_cac(struct hostapd_iface *iface,
 		return -1;
 	}
 
-	if (hostapd_set_freq_params(&data, mode, freq, channel, ht_enabled,
+	if (hostapd_set_freq_params(&data, mode, freq, channel, 0, 0,
+				    ht_enabled,
 				    vht_enabled, he_enabled, sec_channel_offset,
 				    oper_chwidth, center_segment0,
 				    center_segment1,

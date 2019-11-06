@@ -614,6 +614,9 @@ struct wpa_supplicant {
 	int eapol_received; /* number of EAPOL packets received after the
 			     * previous association event */
 
+	u8 rsnxe[20];
+	size_t rsnxe_len;
+
 	struct scard_data *scard;
 	char imsi[20];
 	int mnc_len;
@@ -700,6 +703,10 @@ struct wpa_supplicant {
 
 	struct wpa_ssid_value *ssids_from_scan_req;
 	unsigned int num_ssids_from_scan_req;
+	int *last_scan_freqs;
+	unsigned int num_last_scan_freqs;
+	unsigned int suitable_network;
+	unsigned int no_suitable_network;
 
 	u64 drv_flags;
 	unsigned int drv_enc;
@@ -752,6 +759,7 @@ struct wpa_supplicant {
 	unsigned int connection_ht:1;
 	unsigned int connection_vht:1;
 	unsigned int connection_he:1;
+	unsigned int disable_mbo_oce:1;
 
 	struct os_reltime last_mac_addr_change;
 	int last_mac_addr_style;
@@ -805,6 +813,7 @@ struct wpa_supplicant {
 		u8 ext_auth_bssid[ETH_ALEN];
 		u8 ext_auth_ssid[SSID_MAX_LEN];
 		size_t ext_auth_ssid_len;
+		int *sae_rejected_groups;
 #endif /* CONFIG_SAE */
 	} sme;
 #endif /* CONFIG_SME */
@@ -1239,6 +1248,8 @@ struct wpa_supplicant {
 	unsigned int dpp_resp_wait_time;
 	unsigned int dpp_resp_max_tries;
 	unsigned int dpp_resp_retry_time;
+	u8 dpp_last_ssid[SSID_MAX_LEN];
+	size_t dpp_last_ssid_len;
 #ifdef CONFIG_DPP2
 	struct dpp_pfs *dpp_pfs;
 #endif /* CONFIG_DPP2 */
@@ -1256,6 +1267,7 @@ struct wpa_supplicant {
 	unsigned int ieee80211ac:1;
 	unsigned int enabled_4addr_mode:1;
 	unsigned int multi_bss_support:1;
+	unsigned int drv_authorized_port:1;
 };
 
 
@@ -1391,6 +1403,8 @@ int wpas_mbo_ie(struct wpa_supplicant *wpa_s, u8 *buf, size_t len,
 		int add_oce_capa);
 const u8 * mbo_attr_from_mbo_ie(const u8 *mbo_ie, enum mbo_attr_id attr);
 const u8 * wpas_mbo_get_bss_attr(struct wpa_bss *bss, enum mbo_attr_id attr);
+void wpas_mbo_check_pmf(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+			struct wpa_ssid *ssid);
 const u8 * mbo_get_attr_from_ies(const u8 *ies, size_t ies_len,
 				 enum mbo_attr_id attr);
 int wpas_mbo_update_non_pref_chan(struct wpa_supplicant *wpa_s,
@@ -1414,11 +1428,12 @@ enum chan_allowed {
 	NOT_ALLOWED, NO_IR, ALLOWED
 };
 
-enum chan_allowed verify_channel(struct hostapd_hw_modes *mode, u8 channel,
-				 u8 bw);
+enum chan_allowed verify_channel(struct hostapd_hw_modes *mode, u8 op_class,
+				 u8 channel, u8 bw);
 size_t wpas_supp_op_class_ie(struct wpa_supplicant *wpa_s,
 			     struct wpa_ssid *ssid,
 			     int freq, u8 *pos, size_t len);
+int * wpas_supp_op_classes(struct wpa_supplicant *wpa_s);
 
 int wpas_enable_mac_addr_randomization(struct wpa_supplicant *wpa_s,
 				       unsigned int type, const u8 *addr,

@@ -16,6 +16,7 @@
 #include "common/ieee802_1x_defs.h"
 #include "common/eapol_common.h"
 #include "common/dhcp.h"
+#include "common/sae.h"
 #include "eap_common/eap_wsc_common.h"
 #include "eap_server/eap.h"
 #include "wpa_auth.h"
@@ -78,6 +79,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 
 	bss->radius_server_auth_port = 1812;
 	bss->eap_sim_db_timeout = 1;
+	bss->eap_sim_id = 3;
 	bss->ap_max_inactivity = AP_MAX_INACTIVITY;
 	bss->eapol_version = EAPOL_VERSION;
 
@@ -85,11 +87,9 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 
 	bss->pwd_group = 19; /* ECC: GF(p=256) */
 
-#ifdef CONFIG_IEEE80211W
 	bss->assoc_sa_query_max_timeout = 1000;
 	bss->assoc_sa_query_retry_timeout = 201;
 	bss->group_mgmt_cipher = WPA_CIPHER_AES_128_CMAC;
-#endif /* CONFIG_IEEE80211W */
 #ifdef EAP_SERVER_FAST
 	 /* both anonymous and authenticated provisioning */
 	bss->eap_fast_prov = 3;
@@ -133,6 +133,9 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 	 * This can be enabled by default once the implementation has been fully
 	 * completed and tested with other implementations. */
 	bss->tls_flags = TLS_CONN_DISABLE_TLSv1_3;
+
+	bss->max_auth_rounds = 100;
+	bss->max_auth_rounds_short = 50;
 
 	bss->send_probe_response = 1;
 
@@ -432,9 +435,49 @@ static int hostapd_derive_psk(struct hostapd_ssid *ssid)
 }
 
 
+int hostapd_setup_sae_pt(struct hostapd_bss_config *conf)
+{
+#ifdef CONFIG_SAE
+	struct hostapd_ssid *ssid = &conf->ssid;
+	struct sae_password_entry *pw;
+
+	if (conf->sae_pwe == 0)
+		return 0; /* PT not needed */
+
+	sae_deinit_pt(ssid->pt);
+	ssid->pt = NULL;
+	if (ssid->wpa_passphrase) {
+		ssid->pt = sae_derive_pt(conf->sae_groups, ssid->ssid,
+					 ssid->ssid_len,
+					 (const u8 *) ssid->wpa_passphrase,
+					 os_strlen(ssid->wpa_passphrase),
+					 NULL);
+		if (!ssid->pt)
+			return -1;
+	}
+
+	for (pw = conf->sae_passwords; pw; pw = pw->next) {
+		sae_deinit_pt(pw->pt);
+		pw->pt = sae_derive_pt(conf->sae_groups, ssid->ssid,
+				       ssid->ssid_len,
+				       (const u8 *) pw->password,
+				       os_strlen(pw->password),
+				       pw->identifier);
+		if (!pw->pt)
+			return -1;
+	}
+#endif /* CONFIG_SAE */
+
+	return 0;
+}
+
+
 int hostapd_setup_wpa_psk(struct hostapd_bss_config *conf)
 {
 	struct hostapd_ssid *ssid = &conf->ssid;
+
+	if (hostapd_setup_sae_pt(conf) < 0)
+		return -1;
 
 	if (ssid->wpa_passphrase != NULL) {
 		if (ssid->wpa_psk != NULL) {
@@ -476,7 +519,76 @@ hostapd_config_get_radius_attr(struct hostapd_radius_attr *attr, u8 type)
 }
 
 
-static void hostapd_config_free_radius_attr(struct hostapd_radius_attr *attr)
+struct hostapd_radius_attr * hostapd_parse_radius_attr(const char *value)
+{
+	const char *pos;
+	char syntax;
+	struct hostapd_radius_attr *attr;
+	size_t len;
+
+	attr = os_zalloc(sizeof(*attr));
+	if (!attr)
+		return NULL;
+
+	attr->type = atoi(value);
+
+	pos = os_strchr(value, ':');
+	if (!pos) {
+		attr->val = wpabuf_alloc(1);
+		if (!attr->val) {
+			os_free(attr);
+			return NULL;
+		}
+		wpabuf_put_u8(attr->val, 0);
+		return attr;
+	}
+
+	pos++;
+	if (pos[0] == '\0' || pos[1] != ':') {
+		os_free(attr);
+		return NULL;
+	}
+	syntax = *pos++;
+	pos++;
+
+	switch (syntax) {
+	case 's':
+		attr->val = wpabuf_alloc_copy(pos, os_strlen(pos));
+		break;
+	case 'x':
+		len = os_strlen(pos);
+		if (len & 1)
+			break;
+		len /= 2;
+		attr->val = wpabuf_alloc(len);
+		if (!attr->val)
+			break;
+		if (hexstr2bin(pos, wpabuf_put(attr->val, len), len) < 0) {
+			wpabuf_free(attr->val);
+			os_free(attr);
+			return NULL;
+		}
+		break;
+	case 'd':
+		attr->val = wpabuf_alloc(4);
+		if (attr->val)
+			wpabuf_put_be32(attr->val, atoi(pos));
+		break;
+	default:
+		os_free(attr);
+		return NULL;
+	}
+
+	if (!attr->val) {
+		os_free(attr);
+		return NULL;
+	}
+
+	return attr;
+}
+
+
+void hostapd_config_free_radius_attr(struct hostapd_radius_attr *attr)
 {
 	struct hostapd_radius_attr *prev;
 
@@ -572,6 +684,9 @@ static void hostapd_config_free_sae_passwords(struct hostapd_bss_config *conf)
 		pw = pw->next;
 		str_clear_free(tmp->password);
 		os_free(tmp->identifier);
+#ifdef CONFIG_SAE
+		sae_deinit_pt(tmp->pt);
+#endif /* CONFIG_SAE */
 		os_free(tmp);
 	}
 }
@@ -608,6 +723,9 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 #ifdef CONFIG_FULL_DYNAMIC_VLAN
 	os_free(conf->ssid.vlan_tagged_interface);
 #endif /* CONFIG_FULL_DYNAMIC_VLAN */
+#ifdef CONFIG_SAE
+	sae_deinit_pt(conf->ssid.pt);
+#endif /* CONFIG_SAE */
 
 	hostapd_config_free_eap_users(conf->eap_user);
 	os_free(conf->eap_user_sqlite);
@@ -625,6 +743,7 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 	}
 	hostapd_config_free_radius_attr(conf->radius_auth_req_attr);
 	hostapd_config_free_radius_attr(conf->radius_acct_req_attr);
+	os_free(conf->radius_req_attr_sqlite);
 	os_free(conf->rsn_preauth_interfaces);
 	os_free(conf->ctrl_interface);
 	os_free(conf->ca_cert);
@@ -769,6 +888,8 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 	hostapd_config_free_fils_realms(conf);
 
 #ifdef CONFIG_DPP
+	os_free(conf->dpp_name);
+	os_free(conf->dpp_mud_url);
 	os_free(conf->dpp_connector);
 	wpabuf_free(conf->dpp_netaccesskey);
 	wpabuf_free(conf->dpp_csign);

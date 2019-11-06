@@ -533,9 +533,7 @@ static int wpa_supplicant_wps_cred(void *ctx,
 		if (wpa_s->conf->wps_cred_add_sae &&
 		    cred->key_len != 2 * PMK_LEN) {
 			ssid->key_mgmt |= WPA_KEY_MGMT_SAE;
-#ifdef CONFIG_IEEE80211W
 			ssid->ieee80211w = MGMT_FRAME_PROTECTION_OPTIONAL;
-#endif /* CONFIG_IEEE80211W */
 		}
 		ssid->proto = WPA_PROTO_RSN;
 		break;
@@ -2691,7 +2689,7 @@ static int wpas_wps_nfc_rx_handover_sel(struct wpa_supplicant *wpa_s,
 			 (attr.rf_bands == NULL ||
 			  *attr.rf_bands & WPS_RF_50GHZ))
 			freq = 5000 + 5 * chan;
-		else if (chan >= 1 && chan <= 4 &&
+		else if (chan >= 1 && chan <= 6 &&
 			 (attr.rf_bands == NULL ||
 			  *attr.rf_bands & WPS_RF_60GHZ))
 			freq = 56160 + 2160 * chan;

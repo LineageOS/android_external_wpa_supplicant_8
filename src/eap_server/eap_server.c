@@ -23,8 +23,6 @@
 #define STATE_MACHINE_DATA struct eap_sm
 #define STATE_MACHINE_DEBUG_PREFIX "EAP"
 
-#define EAP_MAX_AUTH_ROUNDS 50
-
 /* EAP state machines are described in RFC 4137 */
 
 static int eap_sm_calculateTimeout(struct eap_sm *sm, int retransCount,
@@ -37,9 +35,10 @@ static struct wpabuf * eap_sm_buildFailure(struct eap_sm *sm, u8 id);
 static int eap_sm_nextId(struct eap_sm *sm, int id);
 static void eap_sm_Policy_update(struct eap_sm *sm, const u8 *nak_list,
 				 size_t len);
-static EapType eap_sm_Policy_getNextMethod(struct eap_sm *sm, int *vendor);
+static enum eap_type eap_sm_Policy_getNextMethod(struct eap_sm *sm,
+						 int *vendor);
 static int eap_sm_Policy_getDecision(struct eap_sm *sm);
-static Boolean eap_sm_Policy_doPickUp(struct eap_sm *sm, EapType method);
+static Boolean eap_sm_Policy_doPickUp(struct eap_sm *sm, enum eap_type method);
 
 
 static int eap_get_erp_send_reauth_start(struct eap_sm *sm)
@@ -94,7 +93,7 @@ static struct wpabuf * eap_sm_buildInitiateReauthStart(struct eap_sm *sm,
 	}
 
 	msg = eap_msg_alloc(EAP_VENDOR_IETF,
-			    (EapType) EAP_ERP_TYPE_REAUTH_START, plen,
+			    (enum eap_type) EAP_ERP_TYPE_REAUTH_START, plen,
 			    EAP_CODE_INITIATE, id);
 	if (msg == NULL)
 		return NULL;
@@ -215,6 +214,7 @@ SM_STATE(EAP, DISABLED)
 {
 	SM_ENTRY(EAP, DISABLED);
 	sm->num_rounds = 0;
+	sm->num_rounds_short = 0;
 }
 
 
@@ -222,7 +222,7 @@ SM_STATE(EAP, INITIALIZE)
 {
 	SM_ENTRY(EAP, INITIALIZE);
 
-	if (sm->eap_if.eapRestart && !sm->eap_server && sm->identity) {
+	if (sm->eap_if.eapRestart && !sm->cfg->eap_server && sm->identity) {
 		/*
 		 * Need to allow internal Identity method to be used instead
 		 * of passthrough at the beginning of reauthentication.
@@ -256,7 +256,7 @@ SM_STATE(EAP, INITIALIZE)
 	sm->m = NULL;
 	sm->user_eap_method_index = 0;
 
-	if (sm->backend_auth) {
+	if (sm->cfg->backend_auth) {
 		sm->currentMethod = EAP_TYPE_NONE;
 		/* parse rxResp, respId, respMethod */
 		eap_sm_parseEapResp(sm, sm->eap_if.eapRespData);
@@ -265,9 +265,10 @@ SM_STATE(EAP, INITIALIZE)
 		}
 	}
 	sm->num_rounds = 0;
+	sm->num_rounds_short = 0;
 	sm->method_pending = METHOD_PENDING_NONE;
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_STARTED
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_STARTED
 		MACSTR, MAC2STR(sm->peer_addr));
 }
 
@@ -299,7 +300,7 @@ SM_STATE(EAP, PICK_UP_METHOD)
 		}
 	}
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_PROPOSED_METHOD
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_PROPOSED_METHOD
 		"method=%u", sm->currentMethod);
 }
 
@@ -324,7 +325,7 @@ SM_STATE(EAP, RETRANSMIT)
 			sm->eap_if.eapReq = TRUE;
 	}
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_RETRANSMIT MACSTR,
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_RETRANSMIT MACSTR,
 		MAC2STR(sm->peer_addr));
 }
 
@@ -336,6 +337,10 @@ SM_STATE(EAP, RECEIVED)
 	/* parse rxResp, respId, respMethod */
 	eap_sm_parseEapResp(sm, sm->eap_if.eapRespData);
 	sm->num_rounds++;
+	if (!sm->eap_if.eapRespData || wpabuf_len(sm->eap_if.eapRespData) < 20)
+		sm->num_rounds_short++;
+	else
+		sm->num_rounds_short = 0;
 }
 
 
@@ -353,6 +358,8 @@ SM_STATE(EAP, SEND_REQUEST)
 
 	sm->retransCount = 0;
 	if (sm->eap_if.eapReqData) {
+		if (wpabuf_len(sm->eap_if.eapReqData) >= 20)
+			sm->num_rounds_short = 0;
 		if (eap_copy_buf(&sm->lastReqData, sm->eap_if.eapReqData) == 0)
 		{
 			sm->eap_if.eapResp = FALSE;
@@ -529,7 +536,7 @@ SM_STATE(EAP, METHOD_RESPONSE)
 				    sm->eap_if.eapSessionId,
 				    sm->eap_if.eapSessionIdLen);
 		}
-		if (sm->erp && sm->m->get_emsk && sm->eap_if.eapSessionId)
+		if (sm->cfg->erp && sm->m->get_emsk && sm->eap_if.eapSessionId)
 			eap_server_erp_init(sm);
 		sm->methodState = METHOD_END;
 	} else {
@@ -541,7 +548,7 @@ SM_STATE(EAP, METHOD_RESPONSE)
 SM_STATE(EAP, PROPOSE_METHOD)
 {
 	int vendor;
-	EapType type;
+	enum eap_type type;
 
 	SM_ENTRY(EAP, PROPOSE_METHOD);
 
@@ -579,7 +586,7 @@ try_another_method:
 	else
 		sm->methodState = METHOD_PROPOSED;
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_PROPOSED_METHOD
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_PROPOSED_METHOD
 		"vendor=%u method=%u", vendor, sm->currentMethod);
 	eap_log_msg(sm, "Propose EAP method vendor=%u method=%u",
 		    vendor, sm->currentMethod);
@@ -635,8 +642,8 @@ SM_STATE(EAP, TIMEOUT_FAILURE)
 
 	sm->eap_if.eapTimeout = TRUE;
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_TIMEOUT_FAILURE MACSTR,
-		MAC2STR(sm->peer_addr));
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO,
+		WPA_EVENT_EAP_TIMEOUT_FAILURE MACSTR, MAC2STR(sm->peer_addr));
 }
 
 
@@ -650,7 +657,7 @@ SM_STATE(EAP, FAILURE)
 	sm->lastReqData = NULL;
 	sm->eap_if.eapFail = TRUE;
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_FAILURE
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_FAILURE
 		MACSTR, MAC2STR(sm->peer_addr));
 }
 
@@ -667,7 +674,7 @@ SM_STATE(EAP, SUCCESS)
 		sm->eap_if.eapKeyAvailable = TRUE;
 	sm->eap_if.eapSuccess = TRUE;
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_SUCCESS
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_SUCCESS
 		MACSTR, MAC2STR(sm->peer_addr));
 }
 
@@ -720,7 +727,8 @@ static void erp_send_finish_reauth(struct eap_sm *sm,
 	plen = 1 + 2 + 2 + os_strlen(nai);
 	if (hash_len)
 		plen += 1 + hash_len;
-	msg = eap_msg_alloc(EAP_VENDOR_IETF, (EapType) EAP_ERP_TYPE_REAUTH,
+	msg = eap_msg_alloc(EAP_VENDOR_IETF,
+			    (enum eap_type) EAP_ERP_TYPE_REAUTH,
 			    plen, EAP_CODE_FINISH, id);
 	if (msg == NULL)
 		return;
@@ -753,7 +761,7 @@ static void erp_send_finish_reauth(struct eap_sm *sm,
 
 	if ((flags & 0x80) || !erp) {
 		sm->eap_if.eapFail = TRUE;
-		wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_FAILURE
+		wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_FAILURE
 			MACSTR, MAC2STR(sm->peer_addr));
 		return;
 	}
@@ -781,7 +789,7 @@ static void erp_send_finish_reauth(struct eap_sm *sm,
 			sm->eap_if.eapKeyData, sm->eap_if.eapKeyDataLen);
 	sm->eap_if.eapSuccess = TRUE;
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_SUCCESS
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_SUCCESS
 		MACSTR, MAC2STR(sm->peer_addr));
 }
 
@@ -805,7 +813,8 @@ SM_STATE(EAP, INITIATE_RECEIVED)
 
 	sm->rxInitiate = FALSE;
 
-	pos = eap_hdr_validate(EAP_VENDOR_IETF, (EapType) EAP_ERP_TYPE_REAUTH,
+	pos = eap_hdr_validate(EAP_VENDOR_IETF,
+			       (enum eap_type) EAP_ERP_TYPE_REAUTH,
 			       sm->eap_if.eapRespData, &len);
 	if (pos == NULL) {
 		wpa_printf(MSG_INFO, "EAP-Initiate: Invalid frame");
@@ -852,7 +861,7 @@ SM_STATE(EAP, INITIATE_RECEIVED)
 	os_memcpy(nai, parse.keyname, parse.keyname_len);
 	nai[parse.keyname_len] = '\0';
 
-	if (!sm->eap_server) {
+	if (!sm->cfg->eap_server) {
 		/*
 		 * In passthrough case, EAP-Initiate/Re-auth replaces
 		 * EAP Identity exchange. Use keyName-NAI as the user identity
@@ -1015,7 +1024,7 @@ SM_STATE(EAP, RETRANSMIT2)
 			sm->eap_if.eapReq = TRUE;
 	}
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_RETRANSMIT2 MACSTR,
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_RETRANSMIT2 MACSTR,
 		MAC2STR(sm->peer_addr));
 }
 
@@ -1108,8 +1117,8 @@ SM_STATE(EAP, TIMEOUT_FAILURE2)
 
 	sm->eap_if.eapTimeout = TRUE;
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_TIMEOUT_FAILURE2 MACSTR,
-		MAC2STR(sm->peer_addr));
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO,
+		WPA_EVENT_EAP_TIMEOUT_FAILURE2 MACSTR, MAC2STR(sm->peer_addr));
 }
 
 
@@ -1120,7 +1129,7 @@ SM_STATE(EAP, FAILURE2)
 	eap_copy_buf(&sm->eap_if.eapReqData, sm->eap_if.aaaEapReqData);
 	sm->eap_if.eapFail = TRUE;
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_FAILURE2 MACSTR,
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_FAILURE2 MACSTR,
 		MAC2STR(sm->peer_addr));
 }
 
@@ -1149,7 +1158,7 @@ SM_STATE(EAP, SUCCESS2)
 	 */
 	sm->start_reauth = TRUE;
 
-	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_SUCCESS2 MACSTR,
+	wpa_msg(sm->cfg->msg_ctx, MSG_INFO, WPA_EVENT_EAP_SUCCESS2 MACSTR,
 		MAC2STR(sm->peer_addr));
 }
 
@@ -1160,17 +1169,26 @@ SM_STEP(EAP)
 		SM_ENTER_GLOBAL(EAP, INITIALIZE);
 	else if (!sm->eap_if.portEnabled)
 		SM_ENTER_GLOBAL(EAP, DISABLED);
-	else if (sm->num_rounds > EAP_MAX_AUTH_ROUNDS) {
-		if (sm->num_rounds == EAP_MAX_AUTH_ROUNDS + 1) {
+	else if (sm->num_rounds > sm->cfg->max_auth_rounds) {
+		if (sm->num_rounds == sm->cfg->max_auth_rounds + 1) {
 			wpa_printf(MSG_DEBUG, "EAP: more than %d "
 				   "authentication rounds - abort",
-				   EAP_MAX_AUTH_ROUNDS);
+				   sm->cfg->max_auth_rounds);
 			sm->num_rounds++;
+			SM_ENTER_GLOBAL(EAP, FAILURE);
+		}
+	} else if (sm->num_rounds_short > sm->cfg->max_auth_rounds_short) {
+		if (sm->num_rounds_short ==
+		    sm->cfg->max_auth_rounds_short + 1) {
+			wpa_printf(MSG_DEBUG,
+				   "EAP: more than %d authentication rounds (short) - abort",
+				   sm->cfg->max_auth_rounds_short);
+			sm->num_rounds_short++;
 			SM_ENTER_GLOBAL(EAP, FAILURE);
 		}
 	} else switch (sm->EAP_state) {
 	case EAP_INITIALIZE:
-		if (sm->backend_auth) {
+		if (sm->cfg->backend_auth) {
 			if (!sm->rxResp)
 				SM_ENTER(EAP, SELECT_ACTION);
 			else if (sm->rxResp &&
@@ -1333,7 +1351,7 @@ SM_STEP(EAP)
 		else if (sm->decision == DECISION_INITIATE_REAUTH_START)
 			SM_ENTER(EAP, INITIATE_REAUTH_START);
 #ifdef CONFIG_ERP
-		else if (sm->eap_server && sm->erp && sm->rxInitiate)
+		else if (sm->cfg->eap_server && sm->cfg->erp && sm->rxInitiate)
 			SM_ENTER(EAP, INITIATE_RECEIVED);
 #endif /* CONFIG_ERP */
 		else
@@ -1343,7 +1361,7 @@ SM_STEP(EAP)
 		SM_ENTER(EAP, SEND_REQUEST);
 		break;
 	case EAP_INITIATE_RECEIVED:
-		if (!sm->eap_server)
+		if (!sm->cfg->eap_server)
 			SM_ENTER(EAP, SELECT_ACTION);
 		break;
 	case EAP_TIMEOUT_FAILURE:
@@ -1669,9 +1687,9 @@ static void eap_sm_Policy_update(struct eap_sm *sm, const u8 *nak_list,
 }
 
 
-static EapType eap_sm_Policy_getNextMethod(struct eap_sm *sm, int *vendor)
+static enum eap_type eap_sm_Policy_getNextMethod(struct eap_sm *sm, int *vendor)
 {
-	EapType next;
+	enum eap_type next;
 	int idx = sm->user_eap_method_index;
 
 	/* In theory, there should be no problems with starting
@@ -1703,7 +1721,7 @@ static EapType eap_sm_Policy_getNextMethod(struct eap_sm *sm, int *vendor)
 
 static int eap_sm_Policy_getDecision(struct eap_sm *sm)
 {
-	if (!sm->eap_server && sm->identity && !sm->start_reauth) {
+	if (!sm->cfg->eap_server && sm->identity && !sm->start_reauth) {
 		wpa_printf(MSG_DEBUG, "EAP: getDecision: -> PASSTHROUGH");
 		return DECISION_PASSTHROUGH;
 	}
@@ -1783,7 +1801,7 @@ static int eap_sm_Policy_getDecision(struct eap_sm *sm)
 }
 
 
-static Boolean eap_sm_Policy_doPickUp(struct eap_sm *sm, EapType method)
+static Boolean eap_sm_Policy_doPickUp(struct eap_sm *sm, enum eap_type method)
 {
 	return method == EAP_TYPE_IDENTITY ? TRUE : FALSE;
 }
@@ -1834,7 +1852,8 @@ void eap_user_free(struct eap_user *user)
  */
 struct eap_sm * eap_server_sm_init(void *eapol_ctx,
 				   const struct eapol_callbacks *eapol_cb,
-				   struct eap_config *conf)
+				   const struct eap_config *conf,
+				   const struct eap_session_data *sess)
 {
 	struct eap_sm *sm;
 
@@ -1844,53 +1863,15 @@ struct eap_sm * eap_server_sm_init(void *eapol_ctx,
 	sm->eapol_ctx = eapol_ctx;
 	sm->eapol_cb = eapol_cb;
 	sm->MaxRetrans = 5; /* RFC 3748: max 3-5 retransmissions suggested */
-	sm->ssl_ctx = conf->ssl_ctx;
-	sm->msg_ctx = conf->msg_ctx;
-	sm->eap_sim_db_priv = conf->eap_sim_db_priv;
-	sm->backend_auth = conf->backend_auth;
-	sm->eap_server = conf->eap_server;
-	if (conf->pac_opaque_encr_key) {
-		sm->pac_opaque_encr_key = os_malloc(16);
-		if (sm->pac_opaque_encr_key) {
-			os_memcpy(sm->pac_opaque_encr_key,
-				  conf->pac_opaque_encr_key, 16);
-		}
-	}
-	if (conf->eap_fast_a_id) {
-		sm->eap_fast_a_id = os_malloc(conf->eap_fast_a_id_len);
-		if (sm->eap_fast_a_id) {
-			os_memcpy(sm->eap_fast_a_id, conf->eap_fast_a_id,
-				  conf->eap_fast_a_id_len);
-			sm->eap_fast_a_id_len = conf->eap_fast_a_id_len;
-		}
-	}
-	if (conf->eap_fast_a_id_info)
-		sm->eap_fast_a_id_info = os_strdup(conf->eap_fast_a_id_info);
-	sm->eap_fast_prov = conf->eap_fast_prov;
-	sm->pac_key_lifetime = conf->pac_key_lifetime;
-	sm->pac_key_refresh_time = conf->pac_key_refresh_time;
-	sm->eap_teap_auth = conf->eap_teap_auth;
-	sm->eap_teap_pac_no_inner = conf->eap_teap_pac_no_inner;
-	sm->eap_sim_aka_result_ind = conf->eap_sim_aka_result_ind;
-	sm->tnc = conf->tnc;
-	sm->wps = conf->wps;
-	if (conf->assoc_wps_ie)
-		sm->assoc_wps_ie = wpabuf_dup(conf->assoc_wps_ie);
-	if (conf->assoc_p2p_ie)
-		sm->assoc_p2p_ie = wpabuf_dup(conf->assoc_p2p_ie);
-	if (conf->peer_addr)
-		os_memcpy(sm->peer_addr, conf->peer_addr, ETH_ALEN);
-	sm->fragment_size = conf->fragment_size;
-	sm->pwd_group = conf->pwd_group;
-	sm->pbc_in_m1 = conf->pbc_in_m1;
-	sm->server_id = conf->server_id;
-	sm->server_id_len = conf->server_id_len;
-	sm->erp = conf->erp;
-	sm->tls_session_lifetime = conf->tls_session_lifetime;
-	sm->tls_flags = conf->tls_flags;
-
+	sm->cfg = conf;
+	if (sess->assoc_wps_ie)
+		sm->assoc_wps_ie = wpabuf_dup(sess->assoc_wps_ie);
+	if (sess->assoc_p2p_ie)
+		sm->assoc_p2p_ie = wpabuf_dup(sess->assoc_p2p_ie);
+	if (sess->peer_addr)
+		os_memcpy(sm->peer_addr, sess->peer_addr, ETH_ALEN);
 #ifdef CONFIG_TESTING_OPTIONS
-	sm->tls_test_flags = conf->tls_test_flags;
+	sm->tls_test_flags = sess->tls_test_flags;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	wpa_printf(MSG_DEBUG, "EAP: Server state machine created");
@@ -1920,9 +1901,6 @@ void eap_server_sm_deinit(struct eap_sm *sm)
 	wpabuf_free(sm->eap_if.eapRespData);
 	os_free(sm->identity);
 	os_free(sm->serial_num);
-	os_free(sm->pac_opaque_encr_key);
-	os_free(sm->eap_fast_a_id);
-	os_free(sm->eap_fast_a_id_info);
 	wpabuf_free(sm->eap_if.aaaEapReqData);
 	wpabuf_free(sm->eap_if.aaaEapRespData);
 	bin_clear_free(sm->eap_if.aaaEapKeyData, sm->eap_if.aaaEapKeyDataLen);
@@ -2112,3 +2090,15 @@ void eap_server_mschap_rx_callback(struct eap_sm *sm, const char *source,
 		   source, user, hex_challenge, hex_response);
 }
 #endif /* CONFIG_TESTING_OPTIONS */
+
+
+void eap_server_config_free(struct eap_config *cfg)
+{
+	if (!cfg)
+		return;
+	os_free(cfg->pac_opaque_encr_key);
+	os_free(cfg->eap_fast_a_id);
+	os_free(cfg->eap_fast_a_id_info);
+	os_free(cfg->server_id);
+	os_free(cfg);
+}

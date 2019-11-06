@@ -72,7 +72,7 @@ struct eap_method {
 	/**
 	 * method - EAP type number (EAP_TYPE_*)
 	 */
-	EapType method;
+	enum eap_type method;
 
 	/**
 	 * name - Name of the method (e.g., "TLS")
@@ -312,7 +312,7 @@ struct eap_sm {
 		EAP_FAILURE
 	} EAP_state;
 	/* Long-term local variables */
-	EapType selectedMethod;
+	enum eap_type selectedMethod;
 	EapMethodState methodState;
 	int lastId;
 	struct wpabuf *lastRespData;
@@ -322,7 +322,7 @@ struct eap_sm {
 	Boolean rxSuccess;
 	Boolean rxFailure;
 	int reqId;
-	EapType reqMethod;
+	enum eap_type reqMethod;
 	int reqVendor;
 	u32 reqVendorMethod;
 	Boolean ignore;
@@ -366,6 +366,7 @@ struct eap_sm {
 	u8 *peer_challenge, *auth_challenge;
 
 	int num_rounds;
+	int num_rounds_short;
 	int force_disabled;
 
 	struct wps_context *wps;
@@ -381,6 +382,7 @@ struct eap_sm {
 	unsigned int expected_failure:1;
 	unsigned int ext_cert_check:1;
 	unsigned int waiting_ext_cert_check:1;
+	unsigned int use_machine_cred:1;
 
 	struct dl_list erp_keys; /* struct eap_erp_key */
 };

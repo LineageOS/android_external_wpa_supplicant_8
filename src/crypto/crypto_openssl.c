@@ -1283,6 +1283,24 @@ struct crypto_bignum * crypto_bignum_init_set(const u8 *buf, size_t len)
 }
 
 
+struct crypto_bignum * crypto_bignum_init_uint(unsigned int val)
+{
+	BIGNUM *bn;
+
+	if (TEST_FAIL())
+		return NULL;
+
+	bn = BN_new();
+	if (!bn)
+		return NULL;
+	if (BN_set_word(bn, val) != 1) {
+		BN_free(bn);
+		return NULL;
+	}
+	return (struct crypto_bignum *) bn;
+}
+
+
 void crypto_bignum_deinit(struct crypto_bignum *n, int clear)
 {
 	if (clear)
@@ -1295,13 +1313,7 @@ void crypto_bignum_deinit(struct crypto_bignum *n, int clear)
 int crypto_bignum_to_bin(const struct crypto_bignum *a,
 			 u8 *buf, size_t buflen, size_t padlen)
 {
-#ifdef OPENSSL_IS_BORINGSSL
-#else /* OPENSSL_IS_BORINGSSL */
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
-#else
 	int num_bytes, offset;
-#endif
-#endif /* OPENSSL_IS_BORINGSSL */
 
 	if (TEST_FAIL())
 		return -1;
@@ -1309,14 +1321,18 @@ int crypto_bignum_to_bin(const struct crypto_bignum *a,
 	if (padlen > buflen)
 		return -1;
 
+	if (padlen) {
 #ifdef OPENSSL_IS_BORINGSSL
-	if (BN_bn2bin_padded(buf, padlen, (const BIGNUM *) a) == 0)
-		return -1;
-	return padlen;
+		if (BN_bn2bin_padded(buf, padlen, (const BIGNUM *) a) == 0)
+			return -1;
+		return padlen;
 #else /* OPENSSL_IS_BORINGSSL */
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
-	return BN_bn2binpad((const BIGNUM *) a, buf, padlen);
-#else
+		return BN_bn2binpad((const BIGNUM *) a, buf, padlen);
+#endif
+#endif
+	}
+
 	num_bytes = BN_num_bytes((const BIGNUM *) a);
 	if ((size_t) num_bytes > buflen)
 		return -1;
@@ -1329,8 +1345,6 @@ int crypto_bignum_to_bin(const struct crypto_bignum *a,
 	BN_bn2bin((const BIGNUM *) a, buf + offset);
 
 	return num_bytes + offset;
-#endif
-#endif /* OPENSSL_IS_BORINGSSL */
 }
 
 
@@ -1453,6 +1467,28 @@ int crypto_bignum_div(const struct crypto_bignum *a,
 }
 
 
+int crypto_bignum_addmod(const struct crypto_bignum *a,
+			 const struct crypto_bignum *b,
+			 const struct crypto_bignum *c,
+			 struct crypto_bignum *d)
+{
+	int res;
+	BN_CTX *bnctx;
+
+	if (TEST_FAIL())
+		return -1;
+
+	bnctx = BN_CTX_new();
+	if (!bnctx)
+		return -1;
+	res = BN_mod_add((BIGNUM *) d, (const BIGNUM *) a, (const BIGNUM *) b,
+			 (const BIGNUM *) c, bnctx);
+	BN_CTX_free(bnctx);
+
+	return res ? 0 : -1;
+}
+
+
 int crypto_bignum_mulmod(const struct crypto_bignum *a,
 			 const struct crypto_bignum *b,
 			 const struct crypto_bignum *c,
@@ -1470,6 +1506,27 @@ int crypto_bignum_mulmod(const struct crypto_bignum *a,
 		return -1;
 	res = BN_mod_mul((BIGNUM *) d, (const BIGNUM *) a, (const BIGNUM *) b,
 			 (const BIGNUM *) c, bnctx);
+	BN_CTX_free(bnctx);
+
+	return res ? 0 : -1;
+}
+
+
+int crypto_bignum_sqrmod(const struct crypto_bignum *a,
+			 const struct crypto_bignum *b,
+			 struct crypto_bignum *c)
+{
+	int res;
+	BN_CTX *bnctx;
+
+	if (TEST_FAIL())
+		return -1;
+
+	bnctx = BN_CTX_new();
+	if (!bnctx)
+		return -1;
+	res = BN_mod_sqr((BIGNUM *) c, (const BIGNUM *) a, (const BIGNUM *) b,
+			 bnctx);
 	BN_CTX_free(bnctx);
 
 	return res ? 0 : -1;
@@ -1683,6 +1740,18 @@ const struct crypto_bignum * crypto_ec_get_prime(struct crypto_ec *e)
 const struct crypto_bignum * crypto_ec_get_order(struct crypto_ec *e)
 {
 	return (const struct crypto_bignum *) e->order;
+}
+
+
+const struct crypto_bignum * crypto_ec_get_a(struct crypto_ec *e)
+{
+	return (const struct crypto_bignum *) e->a;
+}
+
+
+const struct crypto_bignum * crypto_ec_get_b(struct crypto_ec *e)
+{
+	return (const struct crypto_bignum *) e->b;
 }
 
 
@@ -2063,13 +2132,17 @@ struct wpabuf * crypto_ecdh_set_peerkey(struct crypto_ecdh *ecdh, int inc_y,
 	secret = wpabuf_alloc(secret_len);
 	if (!secret)
 		goto fail;
-	if (EVP_PKEY_derive(ctx, wpabuf_put(secret, secret_len),
-			    &secret_len) != 1) {
+	if (EVP_PKEY_derive(ctx, wpabuf_put(secret, 0), &secret_len) != 1) {
 		wpa_printf(MSG_ERROR,
 			   "OpenSSL: EVP_PKEY_derive(2) failed: %s",
 			   ERR_error_string(ERR_get_error(), NULL));
 		goto fail;
 	}
+	if (secret->size != secret_len)
+		wpa_printf(MSG_DEBUG,
+			   "OpenSSL: EVP_PKEY_derive(2) changed secret_len %d -> %d",
+			   (int) secret->size, (int) secret_len);
+	wpabuf_put(secret, secret_len);
 
 done:
 	BN_free(x);

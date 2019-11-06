@@ -11,6 +11,7 @@
 
 #include "utils/common.h"
 #include "common/ieee802_11_defs.h"
+#include "common/ieee802_11_common.h"
 #include "hostapd.h"
 #include "ap_config.h"
 #include "beacon.h"
@@ -44,6 +45,41 @@ static u8 ieee80211_he_ppet_size(u8 ppe_thres_hdr, const u8 *phy_cap_info)
 }
 
 
+static u8 ieee80211_he_mcs_set_size(const u8 *phy_cap_info)
+{
+	u8 sz = 4;
+
+	if (phy_cap_info[HE_PHYCAP_CHANNEL_WIDTH_SET_IDX] &
+	    HE_PHYCAP_CHANNEL_WIDTH_SET_80PLUS80MHZ_IN_5G)
+		sz += 4;
+	if (phy_cap_info[HE_PHYCAP_CHANNEL_WIDTH_SET_IDX] &
+	    HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G)
+		sz += 4;
+
+	return sz;
+}
+
+
+static int ieee80211_invalid_he_cap_size(const u8 *buf, size_t len)
+{
+	struct ieee80211_he_capabilities *cap;
+	size_t cap_len;
+
+	cap = (struct ieee80211_he_capabilities *) buf;
+	cap_len = sizeof(*cap) - sizeof(cap->optional);
+	if (len < cap_len)
+		return 1;
+
+	cap_len += ieee80211_he_mcs_set_size(cap->he_phy_capab_info);
+	if (len < cap_len)
+		return 1;
+
+	cap_len += ieee80211_he_ppet_size(buf[cap_len], cap->he_phy_capab_info);
+
+	return len != cap_len;
+}
+
+
 u8 * hostapd_eid_he_capab(struct hostapd_data *hapd, u8 *eid,
 			  enum ieee80211_op_mode opmode)
 {
@@ -51,12 +87,12 @@ u8 * hostapd_eid_he_capab(struct hostapd_data *hapd, u8 *eid,
 	struct hostapd_hw_modes *mode = hapd->iface->current_mode;
 	u8 he_oper_chwidth = ~HE_PHYCAP_CHANNEL_WIDTH_MASK;
 	u8 *pos = eid;
-	u8 ie_size = 0, mcs_nss_size = 0, ppet_size = 0;
+	u8 ie_size = 0, mcs_nss_size = 4, ppet_size = 0;
 
 	if (!mode)
 		return eid;
 
-	ie_size = sizeof(struct ieee80211_he_capabilities);
+	ie_size = sizeof(*cap) - sizeof(cap->optional);
 	ppet_size = ieee80211_he_ppet_size(mode->he_capab[opmode].ppet[0],
 					   mode->he_capab[opmode].phy_cap);
 
@@ -74,7 +110,6 @@ u8 * hostapd_eid_he_capab(struct hostapd_data *hapd, u8 *eid,
 	case CHANWIDTH_USE_HT:
 		he_oper_chwidth |= HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_IN_2G |
 			HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G;
-		mcs_nss_size += 4;
 		break;
 	}
 
@@ -136,6 +171,9 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
 	if (!hapd->iface->current_mode)
 		return eid;
 
+	if (is_6ghz_op_class(hapd->iconf->op_class))
+		oper_size += 5;
+
 	*pos++ = WLAN_EID_EXTENSION;
 	*pos++ = 1 + oper_size;
 	*pos++ = WLAN_EID_EXT_HE_OPERATION;
@@ -164,9 +202,26 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
 
 	/* TODO: conditional MaxBSSID Indicator subfield */
 
-	oper->he_oper_params = host_to_le32(params);
+	pos += 6; /* skip the fixed part */
 
-	pos += oper_size;
+	if (is_6ghz_op_class(hapd->iconf->op_class)) {
+		u8 seg0 = hostapd_get_oper_centr_freq_seg0_idx(hapd->iconf);
+
+		if (!seg0)
+			seg0 = hapd->iconf->channel;
+
+		params |= HE_OPERATION_6GHZ_OPER_INFO;
+		*pos++ = hapd->iconf->channel; /* Primary Channel */
+		*pos++ = center_idx_to_bw_6ghz(seg0); /* Control: Channel Width
+						       */
+		/* Channel Center Freq Seg0/Seg0 */
+		*pos++ = seg0;
+		*pos++ = hostapd_get_oper_centr_freq_seg1_idx(hapd->iconf);
+		/* Minimum Rate */
+		*pos++ = 6; /* TODO: what should be set here? */
+	}
+
+	oper->he_oper_params = host_to_le32(params);
 
 	return pos;
 }
@@ -325,6 +380,7 @@ u16 copy_sta_he_capab(struct hostapd_data *hapd, struct sta_info *sta,
 {
 	if (!he_capab || !hapd->iconf->ieee80211ax ||
 	    !check_valid_he_mcs(hapd, he_capab, opmode) ||
+	    ieee80211_invalid_he_cap_size(he_capab, he_capab_len) ||
 	    he_capab_len > sizeof(struct ieee80211_he_capabilities)) {
 		sta->flags &= ~WLAN_STA_HE;
 		os_free(sta->he_capab);

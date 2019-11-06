@@ -709,6 +709,8 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 
 	ret = os_snprintf(buf + len, buflen - len,
 			  "channel=%u\n"
+			  "edmg_enable=%d\n"
+			  "edmg_channel=%d\n"
 			  "secondary_channel=%d\n"
 			  "ieee80211n=%d\n"
 			  "ieee80211ac=%d\n"
@@ -716,6 +718,8 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			  "beacon_int=%u\n"
 			  "dtim_period=%d\n",
 			  iface->conf->channel,
+			  iface->conf->enable_edmg,
+			  iface->conf->edmg_channel,
 			  iface->conf->ieee80211n && !hapd->conf->disable_11n ?
 			  iface->conf->secondary_channel : 0,
 			  iface->conf->ieee80211n && !hapd->conf->disable_11n,
@@ -727,6 +731,22 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 	if (os_snprintf_error(buflen - len, ret))
 		return len;
 	len += ret;
+
+#ifdef CONFIG_IEEE80211AX
+	if (iface->conf->ieee80211ax) {
+		ret = os_snprintf(buf + len, buflen - len,
+				  "he_oper_chwidth=%d\n"
+				  "he_oper_centr_freq_seg0_idx=%d\n"
+				  "he_oper_centr_freq_seg1_idx=%d\n",
+				  iface->conf->he_oper_chwidth,
+				  iface->conf->he_oper_centr_freq_seg0_idx,
+				  iface->conf->he_oper_centr_freq_seg1_idx);
+		if (os_snprintf_error(buflen - len, ret))
+			return len;
+		len += ret;
+	}
+#endif /* CONFIG_IEEE80211AX */
+
 	if (iface->conf->ieee80211ac && !hapd->conf->disable_11ac) {
 		ret = os_snprintf(buf + len, buflen - len,
 				  "vht_oper_chwidth=%d\n"

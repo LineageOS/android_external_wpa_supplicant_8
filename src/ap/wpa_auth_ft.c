@@ -2232,7 +2232,6 @@ static u8 * wpa_ft_gtk_subelem(struct wpa_state_machine *sm, size_t *len)
 }
 
 
-#ifdef CONFIG_IEEE80211W
 static u8 * wpa_ft_igtk_subelem(struct wpa_state_machine *sm, size_t *len)
 {
 	u8 *subelem, *pos;
@@ -2279,7 +2278,6 @@ static u8 * wpa_ft_igtk_subelem(struct wpa_state_machine *sm, size_t *len)
 	*len = subelem_len;
 	return subelem;
 }
-#endif /* CONFIG_IEEE80211W */
 
 
 static u8 * wpa_ft_process_rdie(struct wpa_state_machine *sm,
@@ -2420,6 +2418,8 @@ u8 * wpa_sm_write_assoc_resp_ies(struct wpa_state_machine *sm, u8 *pos,
 	u8 *end, *mdie, *ftie, *rsnie = NULL, *r0kh_id, *subelem = NULL;
 	u8 *fte_mic, *elem_count;
 	size_t mdie_len, ftie_len, rsnie_len = 0, r0kh_id_len, subelem_len = 0;
+	u8 rsnxe[10];
+	size_t rsnxe_len;
 	int res;
 	struct wpa_auth_config *conf;
 	struct wpa_ft_ies parse;
@@ -2487,7 +2487,6 @@ u8 * wpa_sm_write_assoc_resp_ies(struct wpa_state_machine *sm, u8 *pos,
 		r0kh_id_len = sm->r0kh_id_len;
 		anonce = sm->ANonce;
 		snonce = sm->SNonce;
-#ifdef CONFIG_IEEE80211W
 		if (sm->mgmt_frame_prot) {
 			u8 *igtk;
 			size_t igtk_len;
@@ -2510,7 +2509,6 @@ u8 * wpa_sm_write_assoc_resp_ies(struct wpa_state_machine *sm, u8 *pos,
 			subelem_len += igtk_len;
 			os_free(igtk);
 		}
-#endif /* CONFIG_IEEE80211W */
 #ifdef CONFIG_OCV
 		if (wpa_auth_uses_ocv(sm)) {
 			struct wpa_channel_info ci;
@@ -2584,6 +2582,13 @@ u8 * wpa_sm_write_assoc_resp_ies(struct wpa_state_machine *sm, u8 *pos,
 	if (ric_start == pos)
 		ric_start = NULL;
 
+	res = wpa_write_rsnxe(&sm->wpa_auth->conf, rsnxe, sizeof(rsnxe));
+	if (res < 0)
+		return NULL;
+	rsnxe_len = res;
+	if (auth_alg == WLAN_AUTH_FT && rsnxe_len)
+		*elem_count += 1;
+
 	if (wpa_key_mgmt_fils(sm->wpa_key_mgmt)) {
 		kck = sm->PTK.kck2;
 		kck_len = sm->PTK.kck2_len;
@@ -2596,6 +2601,7 @@ u8 * wpa_sm_write_assoc_resp_ies(struct wpa_state_machine *sm, u8 *pos,
 		       mdie, mdie_len, ftie, ftie_len,
 		       rsnie, rsnie_len,
 		       ric_start, ric_start ? pos - ric_start : 0,
+		       rsnxe_len ? rsnxe : NULL, rsnxe_len,
 		       fte_mic) < 0) {
 		wpa_printf(MSG_DEBUG, "FT: Failed to calculate MIC");
 		return NULL;
@@ -3253,6 +3259,8 @@ u16 wpa_ft_validate_reassoc(struct wpa_state_machine *sm, const u8 *ies,
 	count = 3;
 	if (parse.ric)
 		count += ieee802_11_ie_count(parse.ric, parse.ric_len);
+	if (parse.rsnxe)
+		count++;
 	if (fte_elem_count != count) {
 		wpa_printf(MSG_DEBUG, "FT: Unexpected IE count in MIC "
 			   "Control: received %u expected %u",
@@ -3272,6 +3280,8 @@ u16 wpa_ft_validate_reassoc(struct wpa_state_machine *sm, const u8 *ies,
 		       parse.ftie - 2, parse.ftie_len + 2,
 		       parse.rsn - 2, parse.rsn_len + 2,
 		       parse.ric, parse.ric_len,
+		       parse.rsnxe ? parse.rsnxe - 2 : NULL,
+		       parse.rsnxe ? parse.rsnxe_len + 2 : 0,
 		       mic) < 0) {
 		wpa_printf(MSG_DEBUG, "FT: Failed to calculate MIC");
 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
@@ -3290,6 +3300,9 @@ u16 wpa_ft_validate_reassoc(struct wpa_state_machine *sm, const u8 *ies,
 			    parse.ftie - 2, parse.ftie_len + 2);
 		wpa_hexdump(MSG_MSGDUMP, "FT: RSN",
 			    parse.rsn - 2, parse.rsn_len + 2);
+		wpa_hexdump(MSG_MSGDUMP, "FT: RSNXE",
+			    parse.rsnxe ? parse.rsnxe - 2 : NULL,
+			    parse.rsnxe ? parse.rsnxe_len + 2 : 0);
 		return WLAN_STATUS_INVALID_FTIE;
 	}
 

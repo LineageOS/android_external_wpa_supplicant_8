@@ -187,11 +187,9 @@ struct wpa_auth_config {
 	int disable_pmksa_caching;
 	int okc;
 	int tx_status;
-#ifdef CONFIG_IEEE80211W
 	enum mfp_options ieee80211w;
 	int group_mgmt_cipher;
 	int sae_require_mfp;
-#endif /* CONFIG_IEEE80211W */
 #ifdef CONFIG_OCV
 	int ocv; /* Operating Channel Validation */
 #endif /* CONFIG_OCV */
@@ -232,6 +230,7 @@ struct wpa_auth_config {
 	unsigned int fils_cache_id_set:1;
 	u8 fils_cache_id[FILS_CACHE_ID_LEN];
 #endif /* CONFIG_FILS */
+	int sae_pwe;
 };
 
 typedef enum {
@@ -320,6 +319,7 @@ enum {
 int wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 			struct wpa_state_machine *sm, int freq,
 			const u8 *wpa_ie, size_t wpa_ie_len,
+			const u8 *rsnxe, size_t rsnxe_len,
 			const u8 *mdie, size_t mdie_len,
 			const u8 *owe_dh, size_t owe_dh_len);
 int wpa_validate_osen(struct wpa_authenticator *wpa_auth,

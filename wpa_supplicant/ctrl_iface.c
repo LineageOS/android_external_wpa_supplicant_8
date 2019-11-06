@@ -11,7 +11,6 @@
 #include <netinet/ip.h>
 #endif /* CONFIG_TESTING_OPTIONS */
 
-#include <net/ethernet.h>
 #include "utils/common.h"
 #include "utils/eloop.h"
 #include "utils/uuid.h"
@@ -57,6 +56,12 @@
 #include "mesh.h"
 #include "dpp_supplicant.h"
 #include "sme.h"
+
+#ifdef __NetBSD__
+#include <net/if_ether.h>
+#elif !defined(__CYGWIN__) && !defined(CONFIG_NATIVE_WINDOWS)
+#include <net/ethernet.h>
+#endif
 
 static int wpa_supplicant_global_iface_list(struct wpa_global *global,
 					    char *buf, int len);
@@ -2654,7 +2659,6 @@ static char * wpa_supplicant_ie_txt(char *pos, char *end, const char *proto,
 		pos += ret;
 	}
 #endif /* CONFIG_IEEE80211R */
-#ifdef CONFIG_IEEE80211W
 	if (data.key_mgmt & WPA_KEY_MGMT_IEEE8021X_SHA256) {
 		ret = os_snprintf(pos, end - pos, "%sEAP-SHA256",
 				  pos == start ? "" : "+");
@@ -2669,7 +2673,6 @@ static char * wpa_supplicant_ie_txt(char *pos, char *end, const char *proto,
 			return pos;
 		pos += ret;
 	}
-#endif /* CONFIG_IEEE80211W */
 
 #ifdef CONFIG_SUITEB
 	if (data.key_mgmt & WPA_KEY_MGMT_IEEE8021X_SUITE_B) {
@@ -2873,6 +2876,15 @@ static int wpa_supplicant_ctrl_iface_scan_result(
 	}
 	if (bss_is_dmg(bss)) {
 		const char *s;
+
+		if (get_ie_ext((const u8 *) (bss + 1), bss->ie_len,
+			       WLAN_EID_EXT_EDMG_OPERATION)) {
+			ret = os_snprintf(pos, end - pos, "[EDMG]");
+			if (os_snprintf_error(end - pos, ret))
+				return -1;
+			pos += ret;
+		}
+
 		ret = os_snprintf(pos, end - pos, "[DMG]");
 		if (os_snprintf_error(end - pos, ret))
 			return -1;
@@ -5241,10 +5253,8 @@ static void wpa_supplicant_ctrl_iface_drop_sa(struct wpa_supplicant *wpa_s)
 	wpa_drv_set_key(wpa_s, WPA_ALG_NONE, NULL, 1, 0, NULL, 0, NULL, 0);
 	wpa_drv_set_key(wpa_s, WPA_ALG_NONE, NULL, 2, 0, NULL, 0, NULL, 0);
 	wpa_drv_set_key(wpa_s, WPA_ALG_NONE, NULL, 3, 0, NULL, 0, NULL, 0);
-#ifdef CONFIG_IEEE80211W
 	wpa_drv_set_key(wpa_s, WPA_ALG_NONE, NULL, 4, 0, NULL, 0, NULL, 0);
 	wpa_drv_set_key(wpa_s, WPA_ALG_NONE, NULL, 5, 0, NULL, 0, NULL, 0);
-#endif /* CONFIG_IEEE80211W */
 
 	wpa_drv_set_key(wpa_s, WPA_ALG_NONE, wpa_s->bssid, 0, 0, NULL, 0, NULL,
 			0);
@@ -10624,12 +10634,10 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strcmp(buf, "RESEND_ASSOC") == 0) {
 		if (wpas_ctrl_resend_assoc(wpa_s) < 0)
 			reply_len = -1;
-#ifdef CONFIG_IEEE80211W
 	} else if (os_strcmp(buf, "UNPROT_DEAUTH") == 0) {
 		sme_event_unprot_disconnect(
 			wpa_s, wpa_s->bssid, NULL,
 			WLAN_REASON_CLASS2_FRAME_FROM_NONAUTH_STA);
-#endif /* CONFIG_IEEE80211W */
 #endif /* CONFIG_TESTING_OPTIONS */
 	} else if (os_strncmp(buf, "VENDOR_ELEM_ADD ", 16) == 0) {
 		if (wpas_ctrl_vendor_elem_add(wpa_s, buf + 16) < 0)

@@ -141,6 +141,24 @@ SM_STATE(CP, CHANGE)
 		ieee802_1x_kay_delete_sas(sm->kay, sm->lki);
 	if (sm->oki)
 		ieee802_1x_kay_delete_sas(sm->kay, sm->oki);
+	/* The standard doesn't say it but we should clear out the latest
+	 * and old key values. Why would we keep advertising them if
+	 * they've been deleted and the key server has been changed?
+	 */
+	os_free(sm->oki);
+	sm->oki = NULL;
+	sm->otx = FALSE;
+	sm->orx = FALSE;
+	sm->oan = 0;
+	ieee802_1x_kay_set_old_sa_attr(sm->kay, sm->oki, sm->oan,
+				       sm->otx, sm->orx);
+	os_free(sm->lki);
+	sm->lki = NULL;
+	sm->lrx = FALSE;
+	sm->ltx = FALSE;
+	sm->lan = 0;
+	ieee802_1x_kay_set_latest_sa_attr(sm->kay, sm->lki, sm->lan,
+					  sm->ltx, sm->lrx);
 }
 
 
@@ -212,18 +230,6 @@ SM_STATE(CP, SECURED)
 SM_STATE(CP, RECEIVE)
 {
 	SM_ENTRY(CP, RECEIVE);
-	/* RECEIVE state machine not keep with Figure 12-2 in
-	 * IEEE Std 802.1X-2010 */
-	if (sm->oki) {
-		ieee802_1x_kay_delete_sas(sm->kay, sm->oki);
-		os_free(sm->oki);
-	}
-	sm->oki = sm->lki;
-	sm->oan = sm->lan;
-	sm->otx = sm->ltx;
-	sm->orx = sm->lrx;
-	ieee802_1x_kay_set_old_sa_attr(sm->kay, sm->oki, sm->oan,
-				       sm->otx, sm->orx);
 
 	sm->lki = os_malloc(sizeof(*sm->lki));
 	if (!sm->lki) {
@@ -313,24 +319,29 @@ SM_STATE(CP, ABANDON)
 	sm->lki = NULL;
 	ieee802_1x_kay_set_latest_sa_attr(sm->kay, sm->lki, sm->lan,
 					  sm->ltx, sm->lrx);
-	sm->new_sak = FALSE;
 }
 
 
 SM_STATE(CP, RETIRE)
 {
 	SM_ENTRY(CP, RETIRE);
-	/* RETIRE state machine not keep with Figure 12-2 in
-	 * IEEE Std 802.1X-2010 */
 	if (sm->oki) {
 		ieee802_1x_kay_delete_sas(sm->kay, sm->oki);
 		os_free(sm->oki);
 		sm->oki = NULL;
 	}
-	sm->orx = FALSE;
-	sm->otx = FALSE;
+	sm->oki = sm->lki;
+	sm->otx = sm->ltx;
+	sm->orx = sm->lrx;
+	sm->oan = sm->lan;
 	ieee802_1x_kay_set_old_sa_attr(sm->kay, sm->oki, sm->oan,
 				       sm->otx, sm->orx);
+	sm->lki = NULL;
+	sm->ltx = FALSE;
+	sm->lrx = FALSE;
+	sm->lan = 0;
+	ieee802_1x_kay_set_latest_sa_attr(sm->kay, sm->lki, sm->lan,
+					  sm->ltx, sm->lrx);
 }
 
 

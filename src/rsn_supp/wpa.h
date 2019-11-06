@@ -98,7 +98,8 @@ enum wpa_sm_conf_params {
 	WPA_PARAM_MGMT_GROUP,
 	WPA_PARAM_RSN_ENABLED,
 	WPA_PARAM_MFP,
-	WPA_PARAM_OCV
+	WPA_PARAM_OCV,
+	WPA_PARAM_SAE_PWE,
 };
 
 struct rsn_supp_config {
@@ -134,8 +135,12 @@ void wpa_sm_set_eapol(struct wpa_sm *sm, struct eapol_sm *eapol);
 int wpa_sm_set_assoc_wpa_ie(struct wpa_sm *sm, const u8 *ie, size_t len);
 int wpa_sm_set_assoc_wpa_ie_default(struct wpa_sm *sm, u8 *wpa_ie,
 				    size_t *wpa_ie_len);
+int wpa_sm_set_assoc_rsnxe_default(struct wpa_sm *sm, u8 *rsnxe,
+				   size_t *rsnxe_len);
+int wpa_sm_set_assoc_rsnxe(struct wpa_sm *sm, const u8 *ie, size_t len);
 int wpa_sm_set_ap_wpa_ie(struct wpa_sm *sm, const u8 *ie, size_t len);
 int wpa_sm_set_ap_rsn_ie(struct wpa_sm *sm, const u8 *ie, size_t len);
+int wpa_sm_set_ap_rsnxe(struct wpa_sm *sm, const u8 *ie, size_t len);
 int wpa_sm_get_mib(struct wpa_sm *sm, char *buf, size_t buflen);
 
 int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
@@ -256,6 +261,12 @@ static inline int wpa_sm_set_ap_wpa_ie(struct wpa_sm *sm, const u8 *ie,
 
 static inline int wpa_sm_set_ap_rsn_ie(struct wpa_sm *sm, const u8 *ie,
 				       size_t len)
+{
+	return -1;
+}
+
+static inline int wpa_sm_set_ap_rsnxe(struct wpa_sm *sm, const u8 *ie,
+				      size_t len)
 {
 	return -1;
 }

@@ -21,11 +21,32 @@ int dragonfly_suitable_group(int group, int ecc_only)
 	 * purposes: FFC groups whose prime is >= 3072 bits and ECC groups
 	 * defined over a prime field whose prime is >= 256 bits. Furthermore,
 	 * ECC groups defined over a characteristic 2 finite field and ECC
-	 * groups with a co-factor greater than 1 are not suitable. */
+	 * groups with a co-factor greater than 1 are not suitable. Disable
+	 * groups that use Brainpool curves as well for now since they leak more
+	 * timing information due to the prime not being close to a power of
+	 * two. */
 	return group == 19 || group == 20 || group == 21 ||
-		group == 28 || group == 29 || group == 30 ||
 		(!ecc_only &&
 		 (group == 15 || group == 16 || group == 17 || group == 18));
+}
+
+
+unsigned int dragonfly_min_pwe_loop_iter(int group)
+{
+	if (group == 22 || group == 23 || group == 24) {
+		/* FFC groups for which pwd-value is likely to be >= p
+		 * frequently */
+		return 40;
+	}
+
+	if (group == 1 || group == 2 || group == 5 || group == 14 ||
+	    group == 15 || group == 16 || group == 17 || group == 18) {
+		/* FFC groups that have prime that is close to a power of two */
+		return 1;
+	}
+
+	/* Default to 40 (this covers most ECC groups) */
+	return 40;
 }
 
 

@@ -3803,6 +3803,12 @@ static const struct wpa_dbus_property_desc wpas_dbus_interface_properties[] = {
 	  NULL,
 	  NULL
 	},
+	{ "MACAddressRandomizationMask", WPAS_DBUS_NEW_IFACE_INTERFACE,
+	  "a{say}",
+	  wpas_dbus_getter_mac_address_randomization_mask,
+	  wpas_dbus_setter_mac_address_randomization_mask,
+	  NULL
+	},
 	{ NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
@@ -4791,8 +4797,8 @@ void wpas_dbus_unregister_p2p_group(struct wpa_supplicant *wpa_s,
 
 	if (!wpa_s->dbus_groupobj_path) {
 		wpa_printf(MSG_DEBUG,
-			   "%s: Group object '%s' already unregistered",
-			   __func__, wpa_s->dbus_groupobj_path);
+			   "%s: Group object has already unregistered",
+			   __func__);
 		return;
 	}
 

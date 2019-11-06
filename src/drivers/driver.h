@@ -213,6 +213,24 @@ enum ieee80211_op_mode {
 };
 
 /**
+ * struct ieee80211_edmg_config - EDMG configuration
+ *
+ * This structure describes most essential parameters needed
+ * for IEEE 802.11ay EDMG configuration
+ *
+ * @channels: Bitmap that indicates the 2.16 GHz channel(s)
+ *	that are allowed to be used for transmissions.
+ *	Bit 0 indicates channel 1, bit 1 indicates channel 2, etc.
+ *	Set to 0 to indicate EDMG not supported.
+ * @bw_config: Channel BW Configuration subfield encodes
+ *	the allowed channel bandwidth configurations
+ */
+struct ieee80211_edmg_config {
+	u8 channels;
+	enum edmg_bw_config bw_config;
+};
+
+/**
  * struct hostapd_hw_modes - Supported hardware mode information
  */
 struct hostapd_hw_modes {
@@ -272,6 +290,12 @@ struct hostapd_hw_modes {
 	 * he_capab - HE (IEEE 802.11ax) capabilities
 	 */
 	struct he_capabilities he_capab[IEEE80211_MODE_NUM];
+
+	/**
+	 * This structure describes the most essential parameters needed
+	 * for IEEE 802.11ay EDMG configuration.
+	 */
+	struct ieee80211_edmg_config edmg;
 };
 
 
@@ -493,7 +517,7 @@ struct wpa_driver_scan_params {
 	 * mac_addr - MAC address used with randomization. The address cannot be
 	 * a multicast one, i.e., bit 0 of byte 0 should not be set.
 	 */
-	const u8 *mac_addr;
+	u8 *mac_addr;
 
 	/**
 	 * mac_addr_mask - MAC address mask used with randomization.
@@ -744,6 +768,12 @@ struct hostapd_freq_params {
 	 * bandwidth - Channel bandwidth in MHz (20, 40, 80, 160)
 	 */
 	int bandwidth;
+
+	/**
+	 * This structure describes the most essential parameters needed
+	 * for IEEE 802.11ay EDMG configuration.
+	 */
+	struct ieee80211_edmg_config edmg;
 };
 
 /**
@@ -1072,6 +1102,14 @@ struct wpa_driver_associate_params {
 	 * supports it.
 	 */
 	int req_key_mgmt_offload;
+
+	/**
+	 * req_handshake_offload - Request EAPOL handshake offload
+	 *
+	 * Request EAPOL handshake offload for this connection if the device
+	 * supports it.
+	 */
+	int req_handshake_offload;
 
 	/**
 	 * Flag for indicating whether this association includes support for
@@ -1434,6 +1472,21 @@ struct wpa_driver_ap_params {
 	 * type 11 as defined in IEEE Std 802.11-2016, 9.4.2.22.13
 	 */
 	const struct wpabuf *civic;
+
+	/**
+	 * he_spr - Whether Spatial Reuse is enabled
+	 */
+	 int he_spr;
+
+	/**
+	 * he_spr_srg_obss_pd_min_offset - Minimum TX power offset
+	 */
+	 int he_spr_srg_obss_pd_min_offset;
+
+	/**
+	 * he_spr_srg_obss_pd_max_offset - Maximum TX power offset
+	 */
+	 int he_spr_srg_obss_pd_max_offset;
 };
 
 struct wpa_driver_mesh_bss_params {

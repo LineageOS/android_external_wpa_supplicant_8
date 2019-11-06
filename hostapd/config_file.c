@@ -24,14 +24,6 @@
 #include "config_file.h"
 
 
-#ifndef CONFIG_NO_RADIUS
-#ifdef EAP_SERVER
-static struct hostapd_radius_attr *
-hostapd_parse_radius_attr(const char *value);
-#endif /* EAP_SERVER */
-#endif /* CONFIG_NO_RADIUS */
-
-
 #ifndef CONFIG_NO_VLAN
 static int hostapd_config_read_vlan_file(struct hostapd_bss_config *bss,
 					 const char *fname)
@@ -660,75 +652,6 @@ hostapd_config_read_radius_addr(struct hostapd_radius_server **server,
 }
 
 
-static struct hostapd_radius_attr *
-hostapd_parse_radius_attr(const char *value)
-{
-	const char *pos;
-	char syntax;
-	struct hostapd_radius_attr *attr;
-	size_t len;
-
-	attr = os_zalloc(sizeof(*attr));
-	if (attr == NULL)
-		return NULL;
-
-	attr->type = atoi(value);
-
-	pos = os_strchr(value, ':');
-	if (pos == NULL) {
-		attr->val = wpabuf_alloc(1);
-		if (attr->val == NULL) {
-			os_free(attr);
-			return NULL;
-		}
-		wpabuf_put_u8(attr->val, 0);
-		return attr;
-	}
-
-	pos++;
-	if (pos[0] == '\0' || pos[1] != ':') {
-		os_free(attr);
-		return NULL;
-	}
-	syntax = *pos++;
-	pos++;
-
-	switch (syntax) {
-	case 's':
-		attr->val = wpabuf_alloc_copy(pos, os_strlen(pos));
-		break;
-	case 'x':
-		len = os_strlen(pos);
-		if (len & 1)
-			break;
-		len /= 2;
-		attr->val = wpabuf_alloc(len);
-		if (attr->val == NULL)
-			break;
-		if (hexstr2bin(pos, wpabuf_put(attr->val, len), len) < 0) {
-			wpabuf_free(attr->val);
-			os_free(attr);
-			return NULL;
-		}
-		break;
-	case 'd':
-		attr->val = wpabuf_alloc(4);
-		if (attr->val)
-			wpabuf_put_be32(attr->val, atoi(pos));
-		break;
-	default:
-		os_free(attr);
-		return NULL;
-	}
-
-	if (attr->val == NULL) {
-		os_free(attr);
-		return NULL;
-	}
-
-	return attr;
-}
-
 
 static int hostapd_parse_das_client(struct hostapd_bss_config *bss, char *val)
 {
@@ -788,12 +711,10 @@ static int hostapd_config_parse_key_mgmt(int line, const char *value)
 			val |= WPA_KEY_MGMT_FT_IEEE8021X_SHA384;
 #endif /* CONFIG_SHA384 */
 #endif /* CONFIG_IEEE80211R_AP */
-#ifdef CONFIG_IEEE80211W
 		else if (os_strcmp(start, "WPA-PSK-SHA256") == 0)
 			val |= WPA_KEY_MGMT_PSK_SHA256;
 		else if (os_strcmp(start, "WPA-EAP-SHA256") == 0)
 			val |= WPA_KEY_MGMT_IEEE8021X_SHA256;
-#endif /* CONFIG_IEEE80211W */
 #ifdef CONFIG_SAE
 		else if (os_strcmp(start, "SAE") == 0)
 			val |= WPA_KEY_MGMT_SAE;
@@ -2624,6 +2545,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->tls_session_lifetime = atoi(pos);
 	} else if (os_strcmp(buf, "tls_flags") == 0) {
 		bss->tls_flags = parse_tls_flags(pos);
+	} else if (os_strcmp(buf, "max_auth_rounds") == 0) {
+		bss->max_auth_rounds = atoi(pos);
+	} else if (os_strcmp(buf, "max_auth_rounds_short") == 0) {
+		bss->max_auth_rounds_short = atoi(pos);
 	} else if (os_strcmp(buf, "ocsp_stapling_response") == 0) {
 		os_free(bss->ocsp_stapling_response);
 		bss->ocsp_stapling_response = os_strdup(pos);
@@ -2697,6 +2622,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->eap_teap_auth = val;
 	} else if (os_strcmp(buf, "eap_teap_pac_no_inner") == 0) {
 		bss->eap_teap_pac_no_inner = atoi(pos);
+	} else if (os_strcmp(buf, "eap_teap_separate_result") == 0) {
+		bss->eap_teap_separate_result = atoi(pos);
+	} else if (os_strcmp(buf, "eap_teap_id") == 0) {
+		bss->eap_teap_id = atoi(pos);
 #endif /* EAP_SERVER_TEAP */
 #ifdef EAP_SERVER_SIM
 	} else if (os_strcmp(buf, "eap_sim_db") == 0) {
@@ -2706,6 +2635,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->eap_sim_db_timeout = atoi(pos);
 	} else if (os_strcmp(buf, "eap_sim_aka_result_ind") == 0) {
 		bss->eap_sim_aka_result_ind = atoi(pos);
+	} else if (os_strcmp(buf, "eap_sim_id") == 0) {
+		bss->eap_sim_id = atoi(pos);
 #endif /* EAP_SERVER_SIM */
 #ifdef EAP_SERVER_TNC
 	} else if (os_strcmp(buf, "tnc") == 0) {
@@ -2781,8 +2712,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->eapol_key_index_workaround = atoi(pos);
 #ifdef CONFIG_IAPP
 	} else if (os_strcmp(buf, "iapp_interface") == 0) {
-		bss->ieee802_11f = 1;
-		os_strlcpy(bss->iapp_iface, pos, sizeof(bss->iapp_iface));
+		wpa_printf(MSG_INFO, "DEPRECATED: iapp_interface not used");
 #endif /* CONFIG_IAPP */
 	} else if (os_strcmp(buf, "own_ip_addr") == 0) {
 		if (hostapd_parse_ip_addr(pos, &bss->own_ip_addr)) {
@@ -2909,6 +2839,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 				a = a->next;
 			a->next = attr;
 		}
+	} else if (os_strcmp(buf, "radius_req_attr_sqlite") == 0) {
+		os_free(bss->radius_req_attr_sqlite);
+		bss->radius_req_attr_sqlite = os_strdup(pos);
 	} else if (os_strcmp(buf, "radius_das_port") == 0) {
 		bss->radius_das_port = atoi(pos);
 	} else if (os_strcmp(buf, "radius_das_client") == 0) {
@@ -3203,6 +3136,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		}
 	} else if (os_strcmp(buf, "acs_exclude_dfs") == 0) {
 		conf->acs_exclude_dfs = atoi(pos);
+	} else if (os_strcmp(buf, "op_class") == 0) {
+		conf->op_class = atoi(pos);
 	} else if (os_strcmp(buf, "channel") == 0) {
 		if (os_strcmp(pos, "acs_survey") == 0) {
 #ifndef CONFIG_ACS
@@ -3217,6 +3152,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 			conf->channel = atoi(pos);
 			conf->acs = conf->channel == 0;
 		}
+	} else if (os_strcmp(buf, "edmg_channel") == 0) {
+		conf->edmg_channel = atoi(pos);
+	} else if (os_strcmp(buf, "enable_edmg") == 0) {
+		conf->enable_edmg = atoi(pos);
 	} else if (os_strcmp(buf, "chanlist") == 0) {
 		if (hostapd_parse_chanlist(conf, pos)) {
 			wpa_printf(MSG_ERROR, "Line %d: invalid channel list",
@@ -3444,7 +3383,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		}
 	} else if (os_strcmp(buf, "use_driver_iface_addr") == 0) {
 		conf->use_driver_iface_addr = atoi(pos);
-#ifdef CONFIG_IEEE80211W
 	} else if (os_strcmp(buf, "ieee80211w") == 0) {
 		bss->ieee80211w = atoi(pos);
 	} else if (os_strcmp(buf, "group_mgmt_cipher") == 0) {
@@ -3475,7 +3413,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 				   line);
 			return 1;
 		}
-#endif /* CONFIG_IEEE80211W */
 #ifdef CONFIG_OCV
 	} else if (os_strcmp(buf, "ocv") == 0) {
 		bss->ocv = atoi(pos);
@@ -4247,6 +4184,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		}
 	} else if (os_strcmp(buf, "sae_require_mfp") == 0) {
 		bss->sae_require_mfp = atoi(pos);
+	} else if (os_strcmp(buf, "sae_confirm_immediate") == 0) {
+		bss->sae_confirm_immediate = atoi(pos);
+	} else if (os_strcmp(buf, "sae_pwe") == 0) {
+		bss->sae_pwe = atoi(pos);
 	} else if (os_strcmp(buf, "local_pwr_constraint") == 0) {
 		int val = atoi(pos);
 		if (val < 0 || val > 255) {
@@ -4396,6 +4337,12 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 	} else if (os_strcmp(buf, "broadcast_deauth") == 0) {
 		bss->broadcast_deauth = atoi(pos);
 #ifdef CONFIG_DPP
+	} else if (os_strcmp(buf, "dpp_name") == 0) {
+		os_free(bss->dpp_name);
+		bss->dpp_name = os_strdup(pos);
+	} else if (os_strcmp(buf, "dpp_mud_url") == 0) {
+		os_free(bss->dpp_mud_url);
+		bss->dpp_mud_url = os_strdup(pos);
 	} else if (os_strcmp(buf, "dpp_connector") == 0) {
 		os_free(bss->dpp_connector);
 		bss->dpp_connector = os_strdup(pos);
