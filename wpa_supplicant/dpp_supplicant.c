@@ -1500,10 +1500,14 @@ static void wpas_dpp_rx_conf_result(struct wpa_supplicant *wpa_s, const u8 *src,
 	}
 	offchannel_send_action_done(wpa_s);
 	wpas_dpp_listen_stop(wpa_s);
-	if (status == DPP_STATUS_OK)
+	if (status == DPP_STATUS_OK) {
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_SENT);
-	else
+		wpas_notify_dpp_config_sent(wpa_s);
+	}
+	else {
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_FAILED);
+		wpas_notify_dpp_configuration_failure(wpa_s);
+	}
 	dpp_auth_deinit(auth);
 	wpa_s->dpp_auth = NULL;
 	eloop_cancel_timeout(wpas_dpp_config_result_wait_timeout, wpa_s, NULL);
