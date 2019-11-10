@@ -184,6 +184,10 @@ public:
 	Return<void> stopDppInitiator(stopDppInitiator_cb _hidl_cb) override;
 	Return<void> getConnectionCapabilities(
 	    getConnectionCapabilities_cb _hidl_cb) override;
+	Return<void> getWpaDriverCapabilities(
+	    getWpaDriverCapabilities_cb _hidl_cb) override;
+	Return<void> setMboCellularDataStatus(bool available,
+	    setMboCellularDataStatus_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -268,6 +272,8 @@ private:
 			uint32_t own_bootstrap_id);
 	SupplicantStatus stopDppInitiatorInternal();
 	std::pair<SupplicantStatus, ConnectionCapabilities> getConnectionCapabilitiesInternal();
+	std::pair<SupplicantStatus, uint32_t> getWpaDriverCapabilitiesInternal();
+	SupplicantStatus setMboCellularDataStatusInternal(bool available);
 
 	struct wpa_supplicant* retrieveIfacePtr();
 

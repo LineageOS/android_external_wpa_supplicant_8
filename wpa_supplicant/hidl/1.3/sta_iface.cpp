@@ -586,6 +586,22 @@ Return<void> StaIface::stopDppInitiator(stopDppInitiator_cb _hidl_cb)
 	    &StaIface::stopDppInitiatorInternal, _hidl_cb);
 }
 
+Return<void> StaIface::getWpaDriverCapabilities(
+		getWpaDriverCapabilities_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
+	    &StaIface::getWpaDriverCapabilitiesInternal, _hidl_cb);
+}
+
+Return<void> StaIface::setMboCellularDataStatus(bool available,
+		setMboCellularDataStatus_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
+	    &StaIface::setMboCellularDataStatusInternal, _hidl_cb, available);
+}
+
 std::pair<SupplicantStatus, std::string> StaIface::getNameInternal()
 {
 	return {{SupplicantStatusCode::SUCCESS, ""}, ifname_};
@@ -1321,23 +1337,63 @@ SupplicantStatus StaIface::stopDppInitiatorInternal()
 std::pair<SupplicantStatus, ConnectionCapabilities>
 StaIface::getConnectionCapabilitiesInternal()
 {
-    struct wpa_supplicant *wpa_s = retrieveIfacePtr();
-    struct ConnectionCapabilities capa;
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct ConnectionCapabilities capa;
 
-    if (wpa_s->connection_set) {
-        if (wpa_s->connection_he) {
-            capa.technology = WifiTechnology::HE;
-        } else if (wpa_s->connection_vht) {
-            capa.technology = WifiTechnology::VHT;
-        } else if (wpa_s->connection_ht) {
-           capa.technology = WifiTechnology::HT;
-        } else {
-           capa.technology = WifiTechnology::LEGACY;
-        }
-    } else {
-        capa.technology = WifiTechnology::UNKNOWN;
-    }
-    return {{SupplicantStatusCode::SUCCESS, ""}, capa};
+	if (wpa_s->connection_set) {
+		if (wpa_s->connection_he) {
+			capa.technology = WifiTechnology::HE;
+		} else if (wpa_s->connection_vht) {
+			capa.technology = WifiTechnology::VHT;
+		} else if (wpa_s->connection_ht) {
+			capa.technology = WifiTechnology::HT;
+		} else {
+			capa.technology = WifiTechnology::LEGACY;
+		}
+	} else {
+		capa.technology = WifiTechnology::UNKNOWN;
+	}
+	return {{SupplicantStatusCode::SUCCESS, ""}, capa};
+}
+
+std::pair<SupplicantStatus, uint32_t>
+StaIface::getWpaDriverCapabilitiesInternal()
+{
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	uint32_t mask = 0;
+
+#ifdef CONFIG_MBO
+	/* MBO has no capability flags. It's mainly legacy 802.11v BSS
+	 * transition + Cellular steering. 11v is a default feature in
+	 * supplicant. And cellular steering is handled in framework.
+	 */
+	mask |= WpaDriverCapabilitiesMask::MBO;
+	if (wpa_s->enable_oce & OCE_STA) {
+		mask |= WpaDriverCapabilitiesMask::OCE;
+	}
+#endif
+
+	wpa_printf(MSG_DEBUG, "Driver capability mask: 0x%x", mask);
+
+	return {{SupplicantStatusCode::SUCCESS, ""}, mask};
+}
+
+SupplicantStatus StaIface::setMboCellularDataStatusInternal(bool available)
+{
+#ifdef CONFIG_MBO
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	enum mbo_cellular_capa mbo_cell_capa;
+
+	if (available) {
+		mbo_cell_capa = MBO_CELL_CAPA_AVAILABLE;
+	} else {
+		mbo_cell_capa = MBO_CELL_CAPA_NOT_AVAILABLE;
+	}
+	wpas_mbo_update_cell_capa(wpa_s, mbo_cell_capa);
+	return {SupplicantStatusCode::SUCCESS, ""};
+#else
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+#endif
 }
 
 /**
