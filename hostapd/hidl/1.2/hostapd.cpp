@@ -33,7 +33,7 @@ constexpr char kConfFileNameFmt[] = "/data/vendor/wifi/hostapd/hostapd_%s.conf";
 using android::base::RemoveFileIfExists;
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
-using android::hardware::wifi::hostapd::V1_1::IHostapd;
+using android::hardware::wifi::hostapd::V1_2::IHostapd;
 
 std::string WriteHostapdConfig(
     const std::string& interface_name, const std::string& config)
@@ -224,7 +224,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace hostapd {
-namespace V1_1 {
+namespace V1_2 {
 namespace implementation {
 using hidl_return_util::call;
 using namespace android::hardware::wifi::hostapd::V1_0;
@@ -265,38 +265,48 @@ Return<void> Hostapd::terminate()
 }
 
 Return<void> Hostapd::registerCallback(
-    const sp<IHostapdCallback>& callback, registerCallback_cb _hidl_cb)
+    const sp<V1_1::IHostapdCallback>& callback, registerCallback_cb _hidl_cb)
 {
 	return call(
 	    this, &Hostapd::registerCallbackInternal, _hidl_cb, callback);
 }
 
-HostapdStatus Hostapd::addAccessPointInternal(
+Return<void> Hostapd::forceClientDisconnect(
+    const hidl_string& iface_name, const hidl_array<uint8_t, 6>& client_address,
+    V1_2::Ieee80211ReasonCode reason_code, forceClientDisconnect_cb _hidl_cb)
+{
+	return call(
+	    this, &Hostapd::forceClientDisconnectInternal, _hidl_cb, iface_name,
+	    client_address, reason_code);
+}
+
+
+V1_0::HostapdStatus Hostapd::addAccessPointInternal(
     const V1_0::IHostapd::IfaceParams& iface_params,
     const NetworkParams& nw_params)
 {
-	return {HostapdStatusCode::FAILURE_UNKNOWN, ""};
+	return {V1_0::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 }
 
-HostapdStatus Hostapd::addAccessPointInternal_1_1(
+V1_0::HostapdStatus Hostapd::addAccessPointInternal_1_1(
     const IfaceParams& iface_params, const NetworkParams& nw_params)
 {
 	if (hostapd_get_iface(interfaces_, iface_params.V1_0.ifaceName.c_str())) {
 		wpa_printf(
 		    MSG_ERROR, "Interface %s already present",
 		    iface_params.V1_0.ifaceName.c_str());
-		return {HostapdStatusCode::FAILURE_IFACE_EXISTS, ""};
+		return {V1_0::HostapdStatusCode::FAILURE_IFACE_EXISTS, ""};
 	}
 	const auto conf_params = CreateHostapdConfig(iface_params, nw_params);
 	if (conf_params.empty()) {
 		wpa_printf(MSG_ERROR, "Failed to create config params");
-		return {HostapdStatusCode::FAILURE_ARGS_INVALID, ""};
+		return {V1_0::HostapdStatusCode::FAILURE_ARGS_INVALID, ""};
 	}
 	const auto conf_file_path =
 	    WriteHostapdConfig(iface_params.V1_0.ifaceName, conf_params);
 	if (conf_file_path.empty()) {
 		wpa_printf(MSG_ERROR, "Failed to write config file");
-		return {HostapdStatusCode::FAILURE_UNKNOWN, ""};
+		return {V1_0::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	std::string add_iface_param_str = StringPrintf(
 	    "%s config=%s", iface_params.V1_0.ifaceName.c_str(),
@@ -307,7 +317,7 @@ HostapdStatus Hostapd::addAccessPointInternal_1_1(
 		wpa_printf(
 		    MSG_ERROR, "Adding interface %s failed",
 		    add_iface_param_str.c_str());
-		return {HostapdStatusCode::FAILURE_UNKNOWN, ""};
+		return {V1_0::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	struct hostapd_data* iface_hapd =
 	    hostapd_get_iface(interfaces_, iface_params.V1_0.ifaceName.c_str());
@@ -333,12 +343,12 @@ HostapdStatus Hostapd::addAccessPointInternal_1_1(
 		wpa_printf(
 		    MSG_ERROR, "Enabling interface %s failed",
 		    iface_params.V1_0.ifaceName.c_str());
-		return {HostapdStatusCode::FAILURE_UNKNOWN, ""};
+		return {V1_0::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 	}
-	return {HostapdStatusCode::SUCCESS, ""};
+	return {V1_0::HostapdStatusCode::SUCCESS, ""};
 }
 
-HostapdStatus Hostapd::removeAccessPointInternal(const std::string& iface_name)
+V1_0::HostapdStatus Hostapd::removeAccessPointInternal(const std::string& iface_name)
 {
 	std::vector<char> remove_iface_param_vec(
 	    iface_name.begin(), iface_name.end() + 1);
@@ -347,20 +357,42 @@ HostapdStatus Hostapd::removeAccessPointInternal(const std::string& iface_name)
 		wpa_printf(
 		    MSG_ERROR, "Removing interface %s failed",
 		    iface_name.c_str());
-		return {HostapdStatusCode::FAILURE_UNKNOWN, ""};
+		return {V1_0::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 	}
-	return {HostapdStatusCode::SUCCESS, ""};
+	return {V1_0::HostapdStatusCode::SUCCESS, ""};
 }
 
-HostapdStatus Hostapd::registerCallbackInternal(
-    const sp<IHostapdCallback>& callback)
+V1_0::HostapdStatus Hostapd::registerCallbackInternal(
+    const sp<V1_1::IHostapdCallback>& callback)
 {
 	callbacks_.push_back(callback);
-	return {HostapdStatusCode::SUCCESS, ""};
+	return {V1_0::HostapdStatusCode::SUCCESS, ""};
+}
+
+V1_2::HostapdStatus Hostapd::forceClientDisconnectInternal(const std::string& iface_name,
+    const std::array<uint8_t, 6>& client_address, V1_2::Ieee80211ReasonCode reason_code)
+{
+	struct hostapd_data *hapd = hostapd_get_iface(interfaces_, iface_name.c_str());
+	struct sta_info *sta;
+	if (!hapd) {
+		wpa_printf(MSG_ERROR, "Interface %s doesn't exist", iface_name.c_str());
+		return {V1_2::HostapdStatusCode::FAILURE_IFACE_UNKNOWN, ""};
+	}
+	for (sta = hapd->sta_list; sta; sta = sta->next) {
+		int res;
+		res = memcmp(sta->addr, client_address.data(), ETH_ALEN);
+		if (res == 0) {
+			wpa_printf(MSG_INFO, "Force client:" MACSTR " disconnect with reason: %d",
+			    MAC2STR(client_address.data()), (uint16_t) reason_code);
+			ap_sta_disconnect(hapd, sta, sta->addr, (uint16_t) reason_code);
+			return {V1_2::HostapdStatusCode::SUCCESS, ""};
+		}
+	}
+	return {V1_2::HostapdStatusCode::FAILURE_CLIENT_UNKNOWN, ""};
 }
 
 }  // namespace implementation
-}  // namespace V1_1
+}  // namespace V1_2
 }  // namespace hostapd
 }  // namespace wifi
 }  // namespace hardware
