@@ -225,7 +225,7 @@ int joinScanReq(
 	size_t ielen;
 	unsigned int bands;
 
-	if (!wpa_s->global->p2p) {
+	if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
 		wpa_printf(MSG_ERROR,
 		    "P2P: P2P interface is gone, cancel join scan");
 		return -ENXIO;
@@ -1635,6 +1635,10 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
 
+	if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
+		return {SupplicantStatusCode::FAILURE_IFACE_DISABLED, ""};
+	}
+
 	if (!isSsidValid(ssid)) {
 		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, "SSID is invalid."};
 	}
@@ -1644,10 +1648,6 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 	}
 
 	if (!joinExistingGroup) {
-		if (wpa_s->global->p2p == NULL) {
-			return {SupplicantStatusCode::FAILURE_IFACE_DISABLED, ""};
-		}
-
 		struct p2p_data *p2p = wpa_s->global->p2p;
 		os_memcpy(p2p->ssid, ssid.data(), ssid.size());
 		p2p->ssid_len = ssid.size();
@@ -1692,6 +1692,9 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 
 	pending_join_scan_callback =
 	    [wpa_s, ssid, freq]() {
+		if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
+			return;
+		}
 		int ret = joinScanReq(wpa_s, ssid, freq);
 		// for BUSY case, the scan might be occupied by WiFi.
 		// Do not give up immediately, but try again later.
@@ -1708,7 +1711,7 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 	};
 
 	pending_scan_res_join_callback = [wpa_s, ssid, passphrase, peer_address, this]() {
-		if (wpa_s->global->p2p_disabled) {
+		if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
 			return;
 		}
 
