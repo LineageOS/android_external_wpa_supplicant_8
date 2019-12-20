@@ -607,3 +607,8 @@ CONFIG_BGSCAN_SIMPLE=y
 
 # Device Provisioning Protocol (DPP)
 CONFIG_DPP=y
+
+# WLAN Authentication and Privacy Infrastructure (WAPI): interface only.
+# Configure the building of the interface which allows WAPI configuration.
+# Note: does not configure WAPI implementation itself.
+#CONFIG_WAPI_INTERFACE=y

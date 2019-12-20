@@ -188,6 +188,8 @@ public:
 	    getWpaDriverCapabilities_cb _hidl_cb) override;
 	Return<void> setMboCellularDataStatus(bool available,
 	    setMboCellularDataStatus_cb _hidl_cb) override;
+	Return<void> getKeyMgmtCapabilities_1_3(
+	    getKeyMgmtCapabilities_1_3_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -274,6 +276,7 @@ private:
 	std::pair<SupplicantStatus, ConnectionCapabilities> getConnectionCapabilitiesInternal();
 	std::pair<SupplicantStatus, uint32_t> getWpaDriverCapabilitiesInternal();
 	SupplicantStatus setMboCellularDataStatusInternal(bool available);
+	std::pair<SupplicantStatus, uint32_t> getKeyMgmtCapabilitiesInternal_1_3();
 
 	struct wpa_supplicant* retrieveIfacePtr();
 

@@ -27,8 +27,13 @@ extern "C"
 }
 
 namespace {
+using ISupplicantStaNetworkV1_2 =
+	android::hardware::wifi::supplicant::V1_2::ISupplicantStaNetwork;
+using ISupplicantStaNetworkV1_3 =
+	android::hardware::wifi::supplicant::V1_3::ISupplicantStaNetwork;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
+using android::hardware::wifi::supplicant::V1_0::ISupplicantStaNetwork;
 using android::hardware::wifi::supplicant::V1_3::ISupplicantStaIface;
 using android::hardware::wifi::supplicant::V1_3::ConnectionCapabilities;
 using android::hardware::wifi::supplicant::V1_3::WifiTechnology;
@@ -154,6 +159,53 @@ void extRadioWorkStartCb(struct wpa_radio_work *work, int deinit)
 	hidl_manager->notifyExtRadioWorkStart(work->wpa_s, ework->id);
 
 	startExtRadioWork(work);
+}
+
+uint32_t convertWpaKeyMgmtCapabilitiesToHidl (
+    struct wpa_supplicant *wpa_s, struct wpa_driver_capa *capa) {
+
+	uint32_t mask = 0;
+	/* Logic from ctrl_iface.c, NONE and IEEE8021X have no capability
+	 * flags and always enabled.
+	 */
+	mask |=
+	    (ISupplicantStaNetwork::KeyMgmtMask::NONE |
+	     ISupplicantStaNetwork::KeyMgmtMask::IEEE8021X);
+
+	if (capa->key_mgmt &
+	    (WPA_DRIVER_CAPA_KEY_MGMT_WPA | WPA_DRIVER_CAPA_KEY_MGMT_WPA2)) {
+		mask |= ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP;
+	}
+
+	if (capa->key_mgmt & (WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK |
+			     WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK)) {
+		mask |= ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK;
+	}
+#ifdef CONFIG_SUITEB192
+	if (capa->key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SUITE_B_192) {
+		mask |= ISupplicantStaNetworkV1_2::ISupplicantStaNetwork::KeyMgmtMask::SUITE_B_192;
+	}
+#endif /* CONFIG_SUITEB192 */
+#ifdef CONFIG_OWE
+	if (capa->key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_OWE) {
+		mask |= ISupplicantStaNetworkV1_2::ISupplicantStaNetwork::KeyMgmtMask::OWE;
+	}
+#endif /* CONFIG_OWE */
+#ifdef CONFIG_SAE
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE) {
+		mask |= ISupplicantStaNetworkV1_2::ISupplicantStaNetwork::KeyMgmtMask::SAE;
+	}
+#endif /* CONFIG_SAE */
+#ifdef CONFIG_DPP
+	if (capa->key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_DPP) {
+		mask |= ISupplicantStaNetworkV1_2::ISupplicantStaNetwork::KeyMgmtMask::DPP;
+	}
+#endif
+#ifdef CONFIG_WAPI_INTERFACE
+	mask |= ISupplicantStaNetworkV1_3::ISupplicantStaNetwork::KeyMgmtMask::WAPI_PSK;
+	mask |= ISupplicantStaNetworkV1_3::ISupplicantStaNetwork::KeyMgmtMask::WAPI_CERT;
+#endif /* CONFIG_WAPI_INTERFACE */
+	return mask;
 }
 
 }  // namespace
@@ -600,6 +652,14 @@ Return<void> StaIface::setMboCellularDataStatus(bool available,
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
 	    &StaIface::setMboCellularDataStatusInternal, _hidl_cb, available);
+}
+
+Return<void> StaIface::getKeyMgmtCapabilities_1_3(
+    getKeyMgmtCapabilities_1_3_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaIface::getKeyMgmtCapabilitiesInternal_1_3, _hidl_cb);
 }
 
 std::pair<SupplicantStatus, std::string> StaIface::getNameInternal()
@@ -1118,52 +1178,7 @@ SupplicantStatus StaIface::enableAutoReconnectInternal(bool enable)
 std::pair<SupplicantStatus, uint32_t>
 StaIface::getKeyMgmtCapabilitiesInternal()
 {
-	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
-	struct wpa_driver_capa capa;
-	uint32_t mask = 0;
-
-	/* Get capabilities from driver and populate the key management mask */
-	if (wpa_drv_get_capa(wpa_s, &capa) < 0) {
-		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, mask};
-	}
-
-	/* Logic from ctrl_iface.c, NONE and IEEE8021X have no capability
-	 * flags and always enabled.
-	 */
-	mask |=
-	    (ISupplicantStaNetwork::KeyMgmtMask::NONE |
-	     ISupplicantStaNetwork::KeyMgmtMask::IEEE8021X);
-
-	if (capa.key_mgmt &
-	    (WPA_DRIVER_CAPA_KEY_MGMT_WPA | WPA_DRIVER_CAPA_KEY_MGMT_WPA2)) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP;
-	}
-
-	if (capa.key_mgmt & (WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK |
-			     WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK)) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK;
-	}
-#ifdef CONFIG_SUITEB192
-	if (capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SUITE_B_192) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::SUITE_B_192;
-	}
-#endif /* CONFIG_SUITEB192 */
-#ifdef CONFIG_OWE
-	if (capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_OWE) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::OWE;
-	}
-#endif /* CONFIG_OWE */
-#ifdef CONFIG_SAE
-	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::SAE;
-	}
-#endif /* CONFIG_SAE */
-#ifdef CONFIG_DPP
-	if (capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_DPP) {
-		mask |= ISupplicantStaNetwork::KeyMgmtMask::DPP;
-	}
-#endif
-	return {{SupplicantStatusCode::SUCCESS, ""}, mask};
+	return {{SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"}, 0};
 }
 
 std::pair<SupplicantStatus, uint32_t>
@@ -1394,6 +1409,22 @@ SupplicantStatus StaIface::setMboCellularDataStatusInternal(bool available)
 #else
 	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 #endif
+}
+
+std::pair<SupplicantStatus, uint32_t>
+StaIface::getKeyMgmtCapabilitiesInternal_1_3()
+{
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct wpa_driver_capa capa;
+	uint32_t mask = 0;
+
+	/* Get capabilities from driver and populate the key management mask */
+	if (wpa_drv_get_capa(wpa_s, &capa) < 0) {
+		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, mask};
+	}
+
+	return {{SupplicantStatusCode::SUCCESS, ""},
+	    convertWpaKeyMgmtCapabilitiesToHidl(wpa_s, &capa)};
 }
 
 /**

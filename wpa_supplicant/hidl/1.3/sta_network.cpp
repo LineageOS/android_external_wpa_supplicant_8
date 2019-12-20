@@ -37,11 +37,14 @@ constexpr uint32_t kAllowedKeyMgmtMask =
      static_cast<uint32_t>(ISupplicantStaNetworkV1_2::KeyMgmtMask::SUITE_B_192) |
      static_cast<uint32_t>(ISupplicantStaNetworkV1_2::KeyMgmtMask::OWE) |
      static_cast<uint32_t>(ISupplicantStaNetworkV1_2::KeyMgmtMask::WPA_PSK_SHA256) |
-     static_cast<uint32_t>(ISupplicantStaNetworkV1_2::KeyMgmtMask::WPA_EAP_SHA256));
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_2::KeyMgmtMask::WPA_EAP_SHA256) |
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_3::KeyMgmtMask::WAPI_PSK) |
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_3::KeyMgmtMask::WAPI_CERT));
 constexpr uint32_t kAllowedProtoMask =
     (static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::WPA) |
      static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::RSN) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::OSEN));
+     static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::OSEN) |
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_3::ProtoMask::WAPI));
 constexpr uint32_t kAllowedAuthAlgMask =
     (static_cast<uint32_t>(ISupplicantStaNetwork::AuthAlgMask::OPEN) |
      static_cast<uint32_t>(ISupplicantStaNetwork::AuthAlgMask::SHARED) |
@@ -53,13 +56,16 @@ constexpr uint32_t kAllowedGroupCipherMask =
      static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::CCMP) |
      static_cast<uint32_t>(
 	 ISupplicantStaNetwork::GroupCipherMask::GTK_NOT_USED) |
-     static_cast<uint32_t>(ISupplicantStaNetworkV1_2::GroupCipherMask::GCMP_256));
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_2::GroupCipherMask::GCMP_256) |
+     static_cast<uint32_t>(ISupplicantStaNetworkV1_3::GroupCipherMask::SMS4));
 constexpr uint32_t kAllowedPairwisewCipherMask =
     (static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::NONE) |
      static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::TKIP) |
      static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::CCMP) |
      static_cast<uint32_t>(
-	 ISupplicantStaNetworkV1_2::PairwiseCipherMask::GCMP_256));
+	 ISupplicantStaNetworkV1_2::PairwiseCipherMask::GCMP_256) |
+     static_cast<uint32_t>(
+	 ISupplicantStaNetworkV1_3::PairwiseCipherMask::SMS4));
 constexpr uint32_t kAllowedGroupMgmtCipherMask =
 	(static_cast<uint32_t>(
 			ISupplicantStaNetworkV1_2::GroupMgmtCipherMask::BIP_GMAC_128) |
@@ -84,6 +90,10 @@ constexpr char kNetworkEapSimUmtsAuthResponse[] = "UMTS-AUTH";
 constexpr char kNetworkEapSimUmtsAutsResponse[] = "UMTS-AUTS";
 constexpr char kNetworkEapSimGsmAuthFailure[] = "GSM-FAIL";
 constexpr char kNetworkEapSimUmtsAuthFailure[] = "UMTS-FAIL";
+
+#ifdef CONFIG_WAPI_INTERFACE
+std::string dummyWapiCertSuite;
+#endif /* CONFIG_WAPI_INTERFACE */
 }  // namespace
 
 namespace android {
@@ -388,6 +398,13 @@ Return<void> StaNetwork::setUpdateIdentifier(
 	    &StaNetwork::setUpdateIdentifierInternal, _hidl_cb, id);
 }
 
+Return<void> StaNetwork::setWapiCertSuite(
+    const hidl_string& suite, setWapiCertSuite_cb _hidl_cb) {
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::setWapiCertSuiteInternal, _hidl_cb, suite);
+}
+
 Return<void> StaNetwork::getSsid(getSsid_cb _hidl_cb)
 {
 	return validateAndCall(
@@ -609,6 +626,13 @@ Return<void> StaNetwork::getWpsNfcConfigurationToken(
 	    &StaNetwork::getWpsNfcConfigurationTokenInternal, _hidl_cb);
 }
 
+Return<void> StaNetwork::getWapiCertSuite(getWapiCertSuite_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::getWapiCertSuiteInternal, _hidl_cb);
+}
+
 Return<void> StaNetwork::enable(bool no_connect, enable_cb _hidl_cb)
 {
 	return validateAndCall(
@@ -816,6 +840,67 @@ Return<void> StaNetwork::setPmkCache(const hidl_vec<uint8_t> &serializedEntry,
 	    &StaNetwork::setPmkCacheInternal, _hidl_cb, serializedEntry);
 }
 
+Return<void> StaNetwork::setKeyMgmt_1_3(
+    uint32_t key_mgmt_mask, setKeyMgmt_1_3_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::setKeyMgmt_1_3Internal, _hidl_cb, key_mgmt_mask);
+}
+
+Return<void> StaNetwork::getKeyMgmt_1_3(getKeyMgmt_1_3_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::getKeyMgmt_1_3Internal, _hidl_cb);
+}
+
+Return<void> StaNetwork::setProto_1_3(uint32_t proto_mask, setProto_1_3_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::setProto_1_3Internal, _hidl_cb, proto_mask);
+}
+
+Return<void> StaNetwork::getProto_1_3(getProto_1_3_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::getProto_1_3Internal, _hidl_cb);
+}
+
+Return<void> StaNetwork::setGroupCipher_1_3(
+    uint32_t group_cipher_mask, setGroupCipher_1_3_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::setGroupCipher_1_3Internal, _hidl_cb, group_cipher_mask);
+}
+
+Return<void> StaNetwork::getGroupCipher_1_3(getGroupCipher_1_3_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::getGroupCipher_1_3Internal, _hidl_cb);
+}
+
+Return<void> StaNetwork::setPairwiseCipher_1_3(
+    uint32_t pairwise_cipher_mask, setPairwiseCipher_1_3_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::setPairwiseCipher_1_3Internal, _hidl_cb,
+	    pairwise_cipher_mask);
+}
+
+Return<void> StaNetwork::getPairwiseCipher_1_3(
+    getPairwiseCipher_1_3_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::getPairwiseCipher_1_3Internal, _hidl_cb);
+}
+
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getIdInternal()
 {
 	return {{SupplicantStatusCode::SUCCESS, ""}, network_id_};
@@ -896,27 +981,12 @@ SupplicantStatus StaNetwork::setScanSsidInternal(bool enable)
 
 SupplicantStatus StaNetwork::setKeyMgmtInternal(uint32_t key_mgmt_mask)
 {
-	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (key_mgmt_mask & ~kAllowedKeyMgmtMask) {
-		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
-	}
-	setFastTransitionKeyMgmt(key_mgmt_mask);
-	wpa_ssid->key_mgmt = key_mgmt_mask;
-	wpa_printf(MSG_MSGDUMP, "key_mgmt: 0x%x", wpa_ssid->key_mgmt);
-	resetInternalStateAfterParamsUpdate();
-	return {SupplicantStatusCode::SUCCESS, ""};
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"};
 }
 
 SupplicantStatus StaNetwork::setProtoInternal(uint32_t proto_mask)
 {
-	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (proto_mask & ~kAllowedProtoMask) {
-		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
-	}
-	wpa_ssid->proto = proto_mask;
-	wpa_printf(MSG_MSGDUMP, "proto: 0x%x", wpa_ssid->proto);
-	resetInternalStateAfterParamsUpdate();
-	return {SupplicantStatusCode::SUCCESS, ""};
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"};
 }
 
 SupplicantStatus StaNetwork::setAuthAlgInternal(uint32_t auth_alg_mask)
@@ -933,28 +1003,13 @@ SupplicantStatus StaNetwork::setAuthAlgInternal(uint32_t auth_alg_mask)
 
 SupplicantStatus StaNetwork::setGroupCipherInternal(uint32_t group_cipher_mask)
 {
-	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (group_cipher_mask & ~kAllowedGroupCipherMask) {
-		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
-	}
-	wpa_ssid->group_cipher = group_cipher_mask;
-	wpa_printf(MSG_MSGDUMP, "group_cipher: 0x%x", wpa_ssid->group_cipher);
-	resetInternalStateAfterParamsUpdate();
-	return {SupplicantStatusCode::SUCCESS, ""};
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"};
 }
 
 SupplicantStatus StaNetwork::setPairwiseCipherInternal(
     uint32_t pairwise_cipher_mask)
 {
-	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (pairwise_cipher_mask & ~kAllowedPairwisewCipherMask) {
-		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
-	}
-	wpa_ssid->pairwise_cipher = pairwise_cipher_mask;
-	wpa_printf(
-	    MSG_MSGDUMP, "pairwise_cipher: 0x%x", wpa_ssid->pairwise_cipher);
-	resetInternalStateAfterParamsUpdate();
-	return {SupplicantStatusCode::SUCCESS, ""};
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"};
 }
 
 SupplicantStatus StaNetwork::setPskPassphraseInternal(const std::string &psk)
@@ -1317,6 +1372,16 @@ SupplicantStatus StaNetwork::setUpdateIdentifierInternal(uint32_t id)
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
 
+SupplicantStatus StaNetwork::setWapiCertSuiteInternal(const std::string &suite)
+{
+#ifdef CONFIG_WAPI_INTERFACE
+	dummyWapiCertSuite = suite;
+	return {SupplicantStatusCode::SUCCESS, "Dummy implementation"};
+#else
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, "Not implemented"};
+#endif
+}
+
 std::pair<SupplicantStatus, std::vector<uint8_t>> StaNetwork::getSsidInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1346,18 +1411,12 @@ std::pair<SupplicantStatus, bool> StaNetwork::getScanSsidInternal()
 
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getKeyMgmtInternal()
 {
-	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	uint32_t key_mgmt_mask = wpa_ssid->key_mgmt & kAllowedKeyMgmtMask;
-
-	resetFastTransitionKeyMgmt(key_mgmt_mask);
-	return {{SupplicantStatusCode::SUCCESS, ""}, key_mgmt_mask};
+	return {{SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"}, 0};
 }
 
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getProtoInternal()
 {
-	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	return {{SupplicantStatusCode::SUCCESS, ""},
-		wpa_ssid->proto & kAllowedProtoMask};
+	return {{SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"}, 0};
 }
 
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getAuthAlgInternal()
@@ -1369,16 +1428,12 @@ std::pair<SupplicantStatus, uint32_t> StaNetwork::getAuthAlgInternal()
 
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getGroupCipherInternal()
 {
-	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	return {{SupplicantStatusCode::SUCCESS, ""},
-		wpa_ssid->group_cipher & kAllowedGroupCipherMask};
+	return {{SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"}, 0};
 }
 
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getPairwiseCipherInternal()
 {
-	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	return {{SupplicantStatusCode::SUCCESS, ""},
-		wpa_ssid->pairwise_cipher & kAllowedPairwisewCipherMask};
+	return {{SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"}, 0};
 }
 
 std::pair<SupplicantStatus, std::string> StaNetwork::getPskPassphraseInternal()
@@ -1663,6 +1718,15 @@ StaNetwork::getWpsNfcConfigurationTokenInternal()
 	}
 	return {{SupplicantStatusCode::SUCCESS, ""},
 		misc_utils::convertWpaBufToVector(token_buf.get())};
+}
+
+std::pair<SupplicantStatus, std::string> StaNetwork::getWapiCertSuiteInternal()
+{
+#ifdef CONFIG_WAPI_INTERFACE
+	return {{SupplicantStatusCode::SUCCESS, "Dummy implementation"}, dummyWapiCertSuite};
+#else
+	return {{SupplicantStatusCode::FAILURE_UNKNOWN, "Not implemented"}, {}};
+#endif
 }
 
 SupplicantStatus StaNetwork::enableInternal(bool no_connect)
@@ -2010,6 +2074,88 @@ SupplicantStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& ser
 
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
+
+SupplicantStatus StaNetwork::setKeyMgmt_1_3Internal(uint32_t key_mgmt_mask)
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	if (key_mgmt_mask & ~kAllowedKeyMgmtMask) {
+		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
+	}
+	setFastTransitionKeyMgmt(key_mgmt_mask);
+	wpa_ssid->key_mgmt = key_mgmt_mask;
+	wpa_printf(MSG_MSGDUMP, "key_mgmt: 0x%x", wpa_ssid->key_mgmt);
+	resetInternalStateAfterParamsUpdate();
+	return {SupplicantStatusCode::SUCCESS, ""};
+}
+
+std::pair<SupplicantStatus, uint32_t> StaNetwork::getKeyMgmt_1_3Internal()
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	uint32_t key_mgmt_mask = wpa_ssid->key_mgmt & kAllowedKeyMgmtMask;
+
+	resetFastTransitionKeyMgmt(key_mgmt_mask);
+	return {{SupplicantStatusCode::SUCCESS, ""}, key_mgmt_mask};
+}
+
+SupplicantStatus StaNetwork::setProto_1_3Internal(uint32_t proto_mask)
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	if (proto_mask & ~kAllowedProtoMask) {
+		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
+	}
+	wpa_ssid->proto = proto_mask;
+	wpa_printf(MSG_MSGDUMP, "proto: 0x%x", wpa_ssid->proto);
+	resetInternalStateAfterParamsUpdate();
+	return {SupplicantStatusCode::SUCCESS, ""};
+}
+
+std::pair<SupplicantStatus, uint32_t> StaNetwork::getProto_1_3Internal()
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	return {{SupplicantStatusCode::SUCCESS, ""},
+		wpa_ssid->proto & kAllowedProtoMask};
+}
+
+SupplicantStatus StaNetwork::setGroupCipher_1_3Internal(uint32_t group_cipher_mask)
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	if (group_cipher_mask & ~kAllowedGroupCipherMask) {
+		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
+	}
+	wpa_ssid->group_cipher = group_cipher_mask;
+	wpa_printf(MSG_MSGDUMP, "group_cipher: 0x%x", wpa_ssid->group_cipher);
+	resetInternalStateAfterParamsUpdate();
+	return {SupplicantStatusCode::SUCCESS, ""};
+}
+
+std::pair<SupplicantStatus, uint32_t> StaNetwork::getGroupCipher_1_3Internal()
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	return {{SupplicantStatusCode::SUCCESS, ""},
+		wpa_ssid->group_cipher & kAllowedGroupCipherMask};
+}
+
+SupplicantStatus StaNetwork::setPairwiseCipher_1_3Internal(
+    uint32_t pairwise_cipher_mask)
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	if (pairwise_cipher_mask & ~kAllowedPairwisewCipherMask) {
+		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
+	}
+	wpa_ssid->pairwise_cipher = pairwise_cipher_mask;
+	wpa_printf(
+	    MSG_MSGDUMP, "pairwise_cipher: 0x%x", wpa_ssid->pairwise_cipher);
+	resetInternalStateAfterParamsUpdate();
+	return {SupplicantStatusCode::SUCCESS, ""};
+}
+
+std::pair<SupplicantStatus, uint32_t> StaNetwork::getPairwiseCipher_1_3Internal()
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	return {{SupplicantStatusCode::SUCCESS, ""},
+		wpa_ssid->pairwise_cipher & kAllowedPairwisewCipherMask};
+}
+
 /**
  * Retrieve the underlying |wpa_ssid| struct pointer for
  * this network.

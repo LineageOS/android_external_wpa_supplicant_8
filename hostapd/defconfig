@@ -377,6 +377,11 @@ CONFIG_IPV6=y
 # Experimental implementation of draft-harkins-owe-07.txt
 #CONFIG_OWE=y
 
+# WLAN Authentication and Privacy Infrastructure (WAPI): interface only.
+# Configure the building of the interface which allows WAPI configuration.
+# Note: does not configure WAPI implementation itself.
+#CONFIG_WAPI_INTERFACE=y
+
 # Airtime policy support
 #CONFIG_AIRTIME_POLICY=y
 

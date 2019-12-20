@@ -48,10 +48,13 @@ public:
 	// Hidl methods exposed.
 	Return<void> addAccessPoint(
 	    const V1_0::IHostapd::IfaceParams& iface_params,
-	    const NetworkParams& nw_params, addAccessPoint_cb _hidl_cb) override;
+	    const V1_0::IHostapd::NetworkParams& nw_params, addAccessPoint_cb _hidl_cb) override;
 	Return<void> addAccessPoint_1_1(
-	    const IfaceParams& iface_params, const NetworkParams& nw_params,
-	    addAccessPoint_cb _hidl_cb) override;
+	    const V1_1::IHostapd::IfaceParams& iface_params,
+	    const V1_0::IHostapd::NetworkParams& nw_params, addAccessPoint_cb _hidl_cb) override;
+	Return<void> addAccessPoint_1_2(
+	    const V1_2::IHostapd::IfaceParams& iface_params, const NetworkParams& nw_params,
+	    addAccessPoint_1_2_cb _hidl_cb) override;
 	Return<void> removeAccessPoint(
 	    const hidl_string& iface_name,
 	    removeAccessPoint_cb _hidl_cb) override;
@@ -67,9 +70,13 @@ private:
 	// Corresponding worker functions for the HIDL methods.
 	V1_0::HostapdStatus addAccessPointInternal(
 	    const V1_0::IHostapd::IfaceParams& iface_params,
-	    const NetworkParams& nw_params);
+	    const V1_0::IHostapd::NetworkParams& nw_params);
 	V1_0::HostapdStatus addAccessPointInternal_1_1(
-	    const IfaceParams& IfaceParams, const NetworkParams& nw_params);
+	    const V1_1::IHostapd::IfaceParams& IfaceParams,
+	    const V1_0::IHostapd::NetworkParams& nw_params);
+	V1_2::HostapdStatus addAccessPointInternal_1_2(
+	    const V1_2::IHostapd::IfaceParams& IfaceParams,
+	    const V1_0::IHostapd::NetworkParams& nw_params);
 	V1_0::HostapdStatus removeAccessPointInternal(const std::string& iface_name);
 	V1_0::HostapdStatus registerCallbackInternal(
 	    const sp<V1_1::IHostapdCallback>& callback);

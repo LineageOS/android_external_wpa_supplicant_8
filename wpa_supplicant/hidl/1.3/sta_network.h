@@ -232,6 +232,25 @@ public:
 	    getOcsp_cb _hidl_cb) override;
 	Return<void> setPmkCache(const hidl_vec<uint8_t>& serializedEntry,
 			setPmkCache_cb _hidl_cb) override;
+	Return<void> setKeyMgmt_1_3(
+	    uint32_t key_mgmt_mask, setKeyMgmt_1_3_cb _hidl_cb) override;
+	Return<void> getKeyMgmt_1_3(getKeyMgmt_1_3_cb _hidl_cb) override;
+	Return<void> setProto_1_3(
+	    uint32_t proto_mask, setProto_cb _hidl_cb) override;
+	Return<void> getProto_1_3(getProto_cb _hidl_cb) override;
+	Return<void> setPairwiseCipher_1_3(
+	    uint32_t pairwise_cipher_mask,
+	    setPairwiseCipher_1_3_cb _hidl_cb) override;
+	Return<void> getPairwiseCipher_1_3(
+	    getPairwiseCipher_1_3_cb _hidl_cb) override;
+	Return<void> setGroupCipher_1_3(
+	    uint32_t group_cipher_mask,
+	    setGroupCipher_1_3_cb _hidl_cb) override;
+	Return<void> getGroupCipher_1_3(
+	    getGroupCipher_1_3_cb _hidl_cb) override;
+	Return<void> setWapiCertSuite(
+	    const hidl_string& suite, setWapiCertSuite_cb _hidl_cb) override;
+	Return<void> getWapiCertSuite(getWapiCertSuite_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -351,6 +370,17 @@ private:
 	SupplicantStatus setOcspInternal(OcspType ocspType);
 	std::pair<SupplicantStatus, OcspType> getOcspInternal();
 	SupplicantStatus setPmkCacheInternal(const std::vector<uint8_t>& serialziedEntry);
+	SupplicantStatus setWapiCertSuiteInternal(const std::string& suite);
+	std::pair<SupplicantStatus, std::string> getWapiCertSuiteInternal();
+	SupplicantStatus setKeyMgmt_1_3Internal(uint32_t key_mgmt_mask);
+	std::pair<SupplicantStatus, uint32_t> getKeyMgmt_1_3Internal();
+	SupplicantStatus setProto_1_3Internal(uint32_t proto_mask);
+	std::pair<SupplicantStatus, uint32_t> getProto_1_3Internal();
+	std::pair<SupplicantStatus, uint32_t> getGroupCipher_1_3Internal();
+	SupplicantStatus setGroupCipher_1_3Internal(uint32_t group_cipher_mask);
+	std::pair<SupplicantStatus, uint32_t> getPairwiseCipher_1_3Internal();
+	SupplicantStatus setPairwiseCipher_1_3Internal(
+	    uint32_t pairwise_cipher_mask);
 
 	struct wpa_ssid* retrieveNetworkPtr();
 	struct wpa_supplicant* retrieveIfacePtr();

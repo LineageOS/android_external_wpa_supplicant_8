@@ -374,6 +374,14 @@ static_assert(
 	WPA_KEY_MGMT_IEEE8021X_SHA256,
     "KeyMgmt value mismatch");
 static_assert(
+    static_cast<uint32_t>(V1_3::ISupplicantStaNetwork::KeyMgmtMask::WAPI_PSK) ==
+	WPA_KEY_MGMT_WAPI_PSK,
+    "KeyMgmt value mismatch");
+static_assert(
+    static_cast<uint32_t>(V1_3::ISupplicantStaNetwork::KeyMgmtMask::WAPI_CERT) ==
+	WPA_KEY_MGMT_WAPI_CERT,
+    "KeyMgmt value mismatch");
+static_assert(
     static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::WPA) ==
 	WPA_PROTO_WPA,
     "Proto value mismatch");
@@ -384,6 +392,10 @@ static_assert(
 static_assert(
     static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::OSEN) ==
 	WPA_PROTO_OSEN,
+    "Proto value mismatch");
+static_assert(
+    static_cast<uint32_t>(V1_3::ISupplicantStaNetwork::ProtoMask::WAPI) ==
+	WPA_PROTO_WAPI,
     "Proto value mismatch");
 static_assert(
     static_cast<uint32_t>(ISupplicantStaNetwork::AuthAlgMask::OPEN) ==
@@ -418,6 +430,10 @@ static_assert(
 	WPA_CIPHER_GCMP_256,
     "GroupCipher value mismatch");
 static_assert(
+    static_cast<uint32_t>(V1_3::ISupplicantStaNetwork::GroupCipherMask::SMS4) ==
+	WPA_CIPHER_SMS4,
+    "GroupCipher value mismatch");
+static_assert(
     static_cast<uint32_t>(
 	ISupplicantStaNetwork::GroupCipherMask::GTK_NOT_USED) ==
 	WPA_CIPHER_GTK_NOT_USED,
@@ -438,6 +454,11 @@ static_assert(
     static_cast<uint32_t>(
 	ISupplicantStaNetwork::PairwiseCipherMask::GCMP_256) ==
 	WPA_CIPHER_GCMP_256,
+    "PairwiseCipher value mismatch");
+static_assert(
+    static_cast<uint32_t>(
+	V1_3::ISupplicantStaNetwork::PairwiseCipherMask::SMS4) ==
+	WPA_CIPHER_SMS4,
     "PairwiseCipher value mismatch");
 static_assert(
     static_cast<uint32_t>(ISupplicantStaIfaceCallback::State::DISCONNECTED) ==
