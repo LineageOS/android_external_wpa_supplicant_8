@@ -111,6 +111,12 @@ extern "C"
 	void wpas_hidl_notify_dpp_timeout(struct wpa_supplicant *wpa_s);
 	void wpas_hidl_notify_dpp_auth_failure(struct wpa_supplicant *wpa_s);
 	void wpas_hidl_notify_dpp_fail(struct wpa_supplicant *wpa_s);
+	void wpas_hidl_notify_dpp_config_sent_wait_response(struct wpa_supplicant *wpa_s);
+	void wpas_hidl_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s);
+	void wpas_hidl_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s);
+	void wpas_hidl_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
+	    enum dpp_status_error status, const char *ssid,
+	    const char *channel_list, unsigned short band_list[], int size);
 	void wpas_hidl_notify_pmk_cache_added(
 	    struct wpa_supplicant *wpas, struct rsn_pmksa_cache_entry *pmksa_entry);
 #else   // CONFIG_CTRL_IFACE_HIDL
@@ -240,6 +246,14 @@ static void wpas_hidl_notify_dpp_invalid_uri(struct wpa_supplicant *wpa_s)
 static void wpas_hidl_notify_dpp_timeout(struct wpa_supplicant *wpa_s)
 {}
 static void wpas_hidl_notify_dpp_failure(struct wpa_supplicant *wpa_s)
+{}
+void wpas_hidl_notify_dpp_config_sent_wait_response(struct wpa_supplicant *wpa_s)
+{}
+void wpas_hidl_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s)
+{}
+void wpas_hidl_notify_dpp_config_applied(struct wpa_supplicant *wpa_s)
+{}
+void wpas_hidl_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s)
 {}
 static void wpas_hidl_notify_pmk_cache_added(struct wpa_supplicant *wpas,
 					     struct rsn_pmksa_cache_entry *pmksa_entry)

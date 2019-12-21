@@ -402,7 +402,6 @@ namespace wifi {
 namespace supplicant {
 namespace V1_3 {
 namespace implementation {
-
 using V1_0::ISupplicantStaIfaceCallback;
 
 HidlManager *HidlManager::instance_ = NULL;
@@ -1477,7 +1476,9 @@ void HidlManager::notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 		/* Unsupported AKM */
 		wpa_printf(MSG_ERROR, "DPP: Error: Unsupported AKM 0x%X",
 				config->key_mgmt);
-		notifyDppFailure(wpa_s, DppFailureCode::NOT_SUPPORTED);
+		notifyDppFailure(wpa_s,
+				android::hardware::wifi::supplicant::V1_3::DppFailureCode
+				::NOT_SUPPORTED);
 		return;
 	}
 
@@ -1515,13 +1516,29 @@ void HidlManager::notifyDppConfigSent(struct wpa_supplicant *wpa_s)
  * @param ifname Interface name
  * @param code Status code
  */
-void HidlManager::notifyDppFailure(struct wpa_supplicant *wpa_s, DppFailureCode code)
-{
+void HidlManager::notifyDppFailure(struct wpa_supplicant *wpa_s,
+		android::hardware::wifi::supplicant::V1_3::DppFailureCode code) {
 	std::string hidl_ifname = wpa_s->ifname;
 
-	callWithEachStaIfaceCallback_1_2(hidl_ifname,
-			std::bind(&V1_2::ISupplicantStaIfaceCallback::onDppFailure,
-					std::placeholders::_1, code));
+	notifyDppFailure(wpa_s, code, NULL, NULL, NULL, 0);
+}
+
+/**
+ * Notify listener about a DPP failure event
+ *
+ * @param ifname Interface name
+ * @param code Status code
+ */
+void HidlManager::notifyDppFailure(struct wpa_supplicant *wpa_s,
+		android::hardware::wifi::supplicant::V1_3::DppFailureCode code,
+		const char *ssid, const char *channel_list, unsigned short band_list[],
+		int size) {
+	std::string hidl_ifname = wpa_s->ifname;
+	std::vector<uint16_t> band_list_vec(band_list, band_list + size);
+
+	callWithEachStaIfaceCallback_1_3(hidl_ifname,
+			std::bind(&V1_3::ISupplicantStaIfaceCallback::onDppFailure_1_3,
+					std::placeholders::_1, code, ssid, channel_list, band_list_vec));
 }
 
 /**
@@ -1530,12 +1547,27 @@ void HidlManager::notifyDppFailure(struct wpa_supplicant *wpa_s, DppFailureCode 
  * @param ifname Interface name
  * @param code Status code
  */
-void HidlManager::notifyDppProgress(struct wpa_supplicant *wpa_s, DppProgressCode code)
+void HidlManager::notifyDppProgress(struct wpa_supplicant *wpa_s,
+		android::hardware::wifi::supplicant::V1_3::DppProgressCode code) {
+	std::string hidl_ifname = wpa_s->ifname;
+
+	callWithEachStaIfaceCallback_1_3(hidl_ifname,
+			std::bind(&V1_3::ISupplicantStaIfaceCallback::onDppProgress_1_3,
+					std::placeholders::_1, code));
+}
+
+/**
+ * Notify listener about a DPP success event
+ *
+ * @param ifname Interface name
+ * @param code Status code
+ */
+void HidlManager::notifyDppSuccess(struct wpa_supplicant *wpa_s, DppSuccessCode code)
 {
 	std::string hidl_ifname = wpa_s->ifname;
 
-	callWithEachStaIfaceCallback_1_2(hidl_ifname,
-			std::bind(&V1_2::ISupplicantStaIfaceCallback::onDppProgress,
+	callWithEachStaIfaceCallback_1_3(hidl_ifname,
+			std::bind(&V1_3::ISupplicantStaIfaceCallback::onDppSuccess,
 					std::placeholders::_1, code));
 }
 
@@ -1923,6 +1955,23 @@ void HidlManager::callWithEachStaIfaceCallback_1_2(
     const std::string &ifname,
     const std::function<
 	Return<void>(android::sp<V1_2::ISupplicantStaIfaceCallback>)> &method)
+{
+	callWithEachIfaceCallbackDerived(ifname, method, sta_iface_callbacks_map_);
+}
+
+/**
+ * Helper function to invoke the provided callback method on all the
+ * registered V1.3 interface callback hidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required hidl method from
+ * |V1_3::ISupplicantIfaceCallback|.
+ */
+void HidlManager::callWithEachStaIfaceCallback_1_3(
+    const std::string &ifname,
+    const std::function<
+	Return<void>(android::sp<V1_3::ISupplicantStaIfaceCallback>)> &method)
 {
 	callWithEachIfaceCallbackDerived(ifname, method, sta_iface_callbacks_map_);
 }

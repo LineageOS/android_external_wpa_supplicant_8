@@ -133,8 +133,15 @@ public:
 	void notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 			struct wpa_ssid *config);
 	void notifyDppConfigSent(struct wpa_supplicant *wpa_s);
-	void notifyDppFailure(struct wpa_supplicant *wpa_s, DppFailureCode code);
-	void notifyDppProgress(struct wpa_supplicant *wpa_s, DppProgressCode code);
+	void notifyDppSuccess(struct wpa_supplicant *wpa_s, DppSuccessCode code);
+	void notifyDppFailure(struct wpa_supplicant *wpa_s,
+			android::hardware::wifi::supplicant::V1_3::DppFailureCode code);
+	void notifyDppFailure(struct wpa_supplicant *wpa_s,
+			android::hardware::wifi::supplicant::V1_3::DppFailureCode code,
+			const char *ssid, const char *channel_list, unsigned short band_list[],
+			int size);
+	void notifyDppProgress(struct wpa_supplicant *wpa_s,
+			android::hardware::wifi::supplicant::V1_3::DppProgressCode code);
 	void notifyPmkCacheAdded(struct wpa_supplicant *wpa_s,
 			struct rsn_pmksa_cache_entry *pmksa_entry);
 
@@ -210,6 +217,10 @@ private:
 	    const std::string &ifname,
 	    const std::function<android::hardware::Return<void>(
 	    android::sp<V1_2::ISupplicantStaIfaceCallback>)> &method);
+	void callWithEachStaIfaceCallback_1_3(
+	    const std::string &ifname,
+	    const std::function<android::hardware::Return<void>(
+	    android::sp<V1_3::ISupplicantStaIfaceCallback>)> &method);
 	template <class CallbackTypeDerived>
 	void callWithEachStaIfaceCallbackDerived(
 	    const std::string &ifname,

@@ -1303,6 +1303,11 @@ SupplicantStatus StaIface::startDppConfiguratorInitiatorInternal(
 	cmd += " conf=";
 	cmd += role;
 
+	if (net_role == DppNetRole::STA) {
+		/* DPP R2 connection status request */
+		cmd += " conn_status=1";
+	}
+
 	wpa_printf(MSG_DEBUG,
 		   "DPP initiator command: %s", cmd.c_str());
 

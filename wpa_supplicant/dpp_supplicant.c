@@ -1435,6 +1435,7 @@ static void wpas_dpp_config_result_wait_timeout(void *eloop_ctx,
 	wpa_printf(MSG_DEBUG,
 		   "DPP: Timeout while waiting for Configuration Result");
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_FAILED);
+	wpas_notify_dpp_configuration_failure(wpa_s);
 	dpp_auth_deinit(auth);
 	wpa_s->dpp_auth = NULL;
 }
@@ -1452,6 +1453,7 @@ static void wpas_dpp_conn_status_result_wait_timeout(void *eloop_ctx,
 	wpa_printf(MSG_DEBUG,
 		   "DPP: Timeout while waiting for Connection Status Result");
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONN_STATUS_RESULT "timeout");
+	wpas_notify_dpp_timeout(wpa_s);
 	wpas_dpp_listen_stop(wpa_s);
 	dpp_auth_deinit(auth);
 	wpa_s->dpp_auth = NULL;
@@ -1485,6 +1487,7 @@ static void wpas_dpp_rx_conf_result(struct wpa_supplicant *wpa_s, const u8 *src,
 		wpa_msg(wpa_s, MSG_INFO,
 			DPP_EVENT_CONF_SENT "wait_conn_status=1");
 		wpa_printf(MSG_DEBUG, "DPP: Wait for Connection Status Result");
+		wpas_notify_dpp_config_accepted(wpa_s);
 		eloop_cancel_timeout(wpas_dpp_config_result_wait_timeout,
 				     wpa_s, NULL);
 		auth->waiting_conn_status_result = 1;
@@ -1506,7 +1509,7 @@ static void wpas_dpp_rx_conf_result(struct wpa_supplicant *wpa_s, const u8 *src,
 	}
 	else {
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_FAILED);
-		wpas_notify_dpp_configuration_failure(wpa_s);
+		wpas_notify_dpp_config_rejected(wpa_s);
 	}
 	dpp_auth_deinit(auth);
 	wpa_s->dpp_auth = NULL;
@@ -1538,6 +1541,8 @@ static void wpas_dpp_rx_conn_status_result(struct wpa_supplicant *wpa_s,
 		"result=%d ssid=%s channel_list=%s",
 		status, wpa_ssid_txt(ssid, ssid_len),
 		channel_list ? channel_list : "N/A");
+	wpas_notify_dpp_conn_status(wpa_s, status, wpa_ssid_txt(ssid, ssid_len),
+			channel_list, auth->band_list, auth->band_list_size);
 	os_free(channel_list);
 	offchannel_send_action_done(wpa_s);
 	wpas_dpp_listen_stop(wpa_s);
@@ -2199,6 +2204,7 @@ wpas_dpp_gas_status_handler(void *ctx, struct wpabuf *resp, int ok)
 	if (ok && auth->peer_version >= 2 &&
 	    auth->conf_resp_status == DPP_STATUS_OK) {
 		wpa_printf(MSG_DEBUG, "DPP: Wait for Configuration Result");
+		wpas_notify_dpp_config_sent_wait_response(wpa_s);
 		auth->waiting_conf_result = 1;
 		auth->conf_resp = NULL;
 		wpabuf_free(resp);
