@@ -119,6 +119,7 @@ extern "C"
 	    const char *channel_list, unsigned short band_list[], int size);
 	void wpas_hidl_notify_pmk_cache_added(
 	    struct wpa_supplicant *wpas, struct rsn_pmksa_cache_entry *pmksa_entry);
+	void wpas_hidl_notify_bss_tm_status(struct wpa_supplicant *wpa_s);
 #else   // CONFIG_CTRL_IFACE_HIDL
 static inline int wpas_hidl_register_interface(struct wpa_supplicant *wpa_s)
 {
@@ -257,6 +258,8 @@ void wpas_hidl_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s)
 {}
 static void wpas_hidl_notify_pmk_cache_added(struct wpa_supplicant *wpas,
 					     struct rsn_pmksa_cache_entry *pmksa_entry)
+{}
+void wpas_hidl_notify_bss_tm_status(struct wpa_supplicant *wpa_s)
 {}
 #endif  // CONFIG_CTRL_IFACE_HIDL
 

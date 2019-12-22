@@ -1378,6 +1378,10 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_MBO
 	wpa_s->wnm_mbo_trans_reason_present = 0;
 	wpa_s->wnm_mbo_transition_reason = 0;
+	wpa_s->wnm_mbo_cell_pref_present = 0;
+	wpa_s->wnm_mbo_cell_preference = 0;
+	wpa_s->wnm_mbo_assoc_retry_delay_present = 0;
+	wpa_s->wnm_mbo_assoc_retry_delay_sec = 0;
 #endif /* CONFIG_MBO */
 
 	if (wpa_s->current_bss)

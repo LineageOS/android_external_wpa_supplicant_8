@@ -861,3 +861,17 @@ void wpas_hidl_notify_pmk_cache_added(
 
 	hidl_manager->notifyPmkCacheAdded(wpa_s, pmksa_entry);
 }
+
+void wpas_hidl_notify_bss_tm_status(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s)
+		return;
+
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying BSS transition status");
+
+	hidl_manager->notifyBssTmStatus(wpa_s);
+}

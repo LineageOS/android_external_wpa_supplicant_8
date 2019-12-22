@@ -144,6 +144,7 @@ public:
 			android::hardware::wifi::supplicant::V1_3::DppProgressCode code);
 	void notifyPmkCacheAdded(struct wpa_supplicant *wpa_s,
 			struct rsn_pmksa_cache_entry *pmksa_entry);
+	void notifyBssTmStatus(struct wpa_supplicant *wpa_s);
 
 	// Methods called from hidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);

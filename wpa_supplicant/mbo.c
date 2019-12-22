@@ -464,9 +464,8 @@ void wpas_mbo_scan_ie(struct wpa_supplicant *wpa_s, struct wpabuf *ie)
 void wpas_mbo_ie_trans_req(struct wpa_supplicant *wpa_s, const u8 *mbo_ie,
 			   size_t len)
 {
-	const u8 *pos, *cell_pref = NULL;
+	const u8 *pos;
 	u8 id, elen;
-	u16 disallowed_sec = 0;
 
 	if (len <= 4 || WPA_GET_BE24(mbo_ie) != OUI_WFA ||
 	    mbo_ie[3] != MBO_OUI_TYPE)
@@ -489,11 +488,14 @@ void wpas_mbo_ie_trans_req(struct wpa_supplicant *wpa_s, const u8 *mbo_ie,
 				goto fail;
 
 			if (wpa_s->conf->mbo_cell_capa ==
-			    MBO_CELL_CAPA_AVAILABLE)
-				cell_pref = pos;
-			else
+			    MBO_CELL_CAPA_AVAILABLE) {
+				wpa_s->wnm_mbo_cell_pref_present = 1;
+				wpa_s->wnm_mbo_cell_preference = *pos;
+			} else {
 				wpa_printf(MSG_DEBUG,
-					   "MBO: Station does not support Cellular data connection");
+					   "MBO: Station does not support "
+					   "Cellular data connection");
+			}
 			break;
 		case MBO_ATTR_ID_TRANSITION_REASON:
 			if (elen != 1)
@@ -509,17 +511,20 @@ void wpas_mbo_ie_trans_req(struct wpa_supplicant *wpa_s, const u8 *mbo_ie,
 			if (wpa_s->wnm_mode &
 			    WNM_BSS_TM_REQ_BSS_TERMINATION_INCLUDED) {
 				wpa_printf(MSG_DEBUG,
-					   "MBO: Unexpected association retry delay, BSS is terminating");
+					   "MBO: Unexpected association retry delay, "
+					   "BSS is terminating");
 				goto fail;
 			} else if (wpa_s->wnm_mode &
 				   WNM_BSS_TM_REQ_DISASSOC_IMMINENT) {
-				disallowed_sec = WPA_GET_LE16(pos);
+				wpa_s->wnm_mbo_assoc_retry_delay_present = 1;
+				wpa_s->wnm_mbo_assoc_retry_delay_sec = WPA_GET_LE16(pos);
 				wpa_printf(MSG_DEBUG,
 					   "MBO: Association retry delay: %u",
-					   disallowed_sec);
+					   wpa_s->wnm_mbo_assoc_retry_delay_sec);
 			} else {
 				wpa_printf(MSG_DEBUG,
-					   "MBO: Association retry delay attribute not in disassoc imminent mode");
+					   "MBO: Association retry delay attribute "
+					   "not in disassoc imminent mode");
 			}
 
 			break;
@@ -542,17 +547,17 @@ void wpas_mbo_ie_trans_req(struct wpa_supplicant *wpa_s, const u8 *mbo_ie,
 		len -= elen;
 	}
 
-	if (cell_pref)
+	if (wpa_s->wnm_mbo_cell_pref_present)
 		wpa_msg(wpa_s, MSG_INFO, MBO_CELL_PREFERENCE "preference=%u",
-			*cell_pref);
+			wpa_s->wnm_mbo_cell_preference);
 
 	if (wpa_s->wnm_mbo_trans_reason_present)
 		wpa_msg(wpa_s, MSG_INFO, MBO_TRANSITION_REASON "reason=%u",
 			wpa_s->wnm_mbo_transition_reason);
 
-	if (disallowed_sec && wpa_s->current_bss)
+	if (wpa_s->wnm_mbo_assoc_retry_delay_sec && wpa_s->current_bss)
 		wpa_bss_tmp_disallow(wpa_s, wpa_s->current_bss->bssid,
-				     disallowed_sec, 0);
+				     wpa_s->wnm_mbo_assoc_retry_delay_sec, 0);
 
 	return;
 fail:

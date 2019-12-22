@@ -1093,7 +1093,11 @@ struct wpa_supplicant {
 	u8 coloc_intf_timeout;
 #ifdef CONFIG_MBO
 	unsigned int wnm_mbo_trans_reason_present:1;
+	unsigned int wnm_mbo_cell_pref_present:1;
+	unsigned int wnm_mbo_assoc_retry_delay_present:1;
 	u8 wnm_mbo_transition_reason;
+	u8 wnm_mbo_cell_preference;
+	u16 wnm_mbo_assoc_retry_delay_sec;
 #endif /* CONFIG_MBO */
 #endif /* CONFIG_WNM */
 

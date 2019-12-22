@@ -1597,6 +1597,158 @@ void HidlManager::notifyPmkCacheAdded(
 	callWithEachStaIfaceCallbackDerived(hidl_ifname, func);
 }
 
+#ifdef CONFIG_WNM
+V1_3::ISupplicantStaIfaceCallback::BssTmStatusCode convertSupplicantBssTmStatusToHidl(
+    enum bss_trans_mgmt_status_code bss_tm_status)
+{
+	switch (bss_tm_status) {
+		case WNM_BSS_TM_ACCEPT:
+			return V1_3::ISupplicantStaIfaceCallback::BssTmStatusCode::ACCEPT;
+		case WNM_BSS_TM_REJECT_UNSPECIFIED:
+			return V1_3::ISupplicantStaIfaceCallback::
+			    BssTmStatusCode::REJECT_UNSPECIFIED;
+		case WNM_BSS_TM_REJECT_INSUFFICIENT_BEACON:
+			return V1_3::ISupplicantStaIfaceCallback::
+			    BssTmStatusCode::REJECT_INSUFFICIENT_BEACON;
+		case WNM_BSS_TM_REJECT_INSUFFICIENT_CAPABITY:
+			return V1_3::ISupplicantStaIfaceCallback::
+			    BssTmStatusCode::REJECT_INSUFFICIENT_CAPABITY;
+		case WNM_BSS_TM_REJECT_UNDESIRED:
+			return V1_3::ISupplicantStaIfaceCallback::
+			    BssTmStatusCode::REJECT_BSS_TERMINATION_UNDESIRED;
+		case WNM_BSS_TM_REJECT_DELAY_REQUEST:
+			return V1_3::ISupplicantStaIfaceCallback::
+			    BssTmStatusCode::REJECT_BSS_TERMINATION_DELAY_REQUEST;
+		case WNM_BSS_TM_REJECT_STA_CANDIDATE_LIST_PROVIDED:
+			return V1_3::ISupplicantStaIfaceCallback::
+			    BssTmStatusCode::REJECT_STA_CANDIDATE_LIST_PROVIDED;
+		case WNM_BSS_TM_REJECT_NO_SUITABLE_CANDIDATES:
+			return V1_3::ISupplicantStaIfaceCallback::
+			    BssTmStatusCode::REJECT_NO_SUITABLE_CANDIDATES;
+		case WNM_BSS_TM_REJECT_LEAVING_ESS:
+			return V1_3::ISupplicantStaIfaceCallback::
+			    BssTmStatusCode::REJECT_LEAVING_ESS;
+		default:
+			return V1_3::ISupplicantStaIfaceCallback::
+			    BssTmStatusCode::REJECT_UNSPECIFIED;
+	}
+}
+
+uint32_t setBssTmDataFlagsMask(struct wpa_supplicant *wpa_s)
+{
+	uint32_t flags = 0;
+
+	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_BSS_TERMINATION_INCLUDED) {
+		flags |= V1_3::ISupplicantStaIfaceCallback::
+		    BssTmDataFlagsMask::WNM_MODE_BSS_TERMINATION_INCLUDED;
+	}
+	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT) {
+		flags |= V1_3::ISupplicantStaIfaceCallback::
+		    BssTmDataFlagsMask::WNM_MODE_ESS_DISASSOCIATION_IMMINENT;
+	}
+	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_DISASSOC_IMMINENT) {
+		flags |= V1_3::ISupplicantStaIfaceCallback::
+		    BssTmDataFlagsMask::WNM_MODE_DISASSOCIATION_IMMINENT;
+	}
+	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_ABRIDGED) {
+		flags |= V1_3::ISupplicantStaIfaceCallback::
+		    BssTmDataFlagsMask::WNM_MODE_ABRIDGED;
+	}
+	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_PREF_CAND_LIST_INCLUDED) {
+		flags |= V1_3::ISupplicantStaIfaceCallback::
+		    BssTmDataFlagsMask::WNM_MODE_PREFERRED_CANDIDATE_LIST_INCLUDED;
+	}
+#ifdef CONFIG_MBO
+	if (wpa_s->wnm_mbo_assoc_retry_delay_present) {
+		flags |= V1_3::ISupplicantStaIfaceCallback::
+		    BssTmDataFlagsMask::MBO_ASSOC_RETRY_DELAY_INCLUDED;
+	}
+	if (wpa_s->wnm_mbo_trans_reason_present) {
+		flags |= V1_3::ISupplicantStaIfaceCallback::
+		    BssTmDataFlagsMask::MBO_TRANSITION_REASON_CODE_INCLUDED;
+	}
+	if (wpa_s->wnm_mbo_cell_pref_present) {
+		flags |= V1_3::ISupplicantStaIfaceCallback::
+		    BssTmDataFlagsMask::MBO_CELLULAR_DATA_CONNECTION_PREFERENCE_INCLUDED;
+	}
+#endif
+	return flags;
+}
+
+uint32_t getBssTmDataAssocRetryDelayMs(struct wpa_supplicant *wpa_s)
+{
+	uint32_t beacon_int;
+	uint32_t duration_ms = 0;
+
+	if (wpa_s->current_bss)
+		beacon_int = wpa_s->current_bss->beacon_int;
+	else
+		beacon_int = 100; /* best guess */
+
+	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_BSS_TERMINATION_INCLUDED) {
+		//wnm_bss_termination_duration contains 12 bytes of BSS
+		//termination duration subelement. Format of IE is
+		// Sub eid | Length | BSS termination TSF | Duration
+		//    1         1             8                2
+		// Duration indicates number of minutes for which BSS is not
+		// present.
+		duration_ms = WPA_GET_LE16(wpa_s->wnm_bss_termination_duration + 10);
+		// minutes to milliseconds
+		duration_ms = duration_ms * 60 * 1000;
+	} else if ((wpa_s->wnm_mode & WNM_BSS_TM_REQ_DISASSOC_IMMINENT)
+		   || (wpa_s->wnm_mode & WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT)) {
+		// number of tbtts to milliseconds
+		duration_ms = wpa_s->wnm_dissoc_timer * beacon_int * 128 / 125;
+#ifdef CONFIG_MBO
+		if (wpa_s->wnm_mbo_assoc_retry_delay_present) {
+			// number of seconds to milliseconds
+			duration_ms = wpa_s->wnm_mbo_assoc_retry_delay_sec * 1000;
+		}
+#endif
+	}
+
+	return duration_ms;
+}
+#endif
+
+/**
+ * Notify listener about the status of BSS transition management
+ * request frame handling.
+ *
+ * @param wpa_s |wpa_supplicant| struct corresponding to the interface on which
+ * the network is present.
+ */
+void HidlManager::notifyBssTmStatus(struct wpa_supplicant *wpa_s)
+{
+#ifdef CONFIG_WNM
+	std::string hidl_ifname = wpa_s->ifname;
+	V1_3::ISupplicantStaIfaceCallback::BssTmData hidl_bsstm_data = {};
+
+	hidl_bsstm_data.status = convertSupplicantBssTmStatusToHidl(wpa_s->bss_tm_status);
+	hidl_bsstm_data.flags = setBssTmDataFlagsMask(wpa_s);
+	hidl_bsstm_data.assocRetryDelayMs = getBssTmDataAssocRetryDelayMs(wpa_s);
+#ifdef CONFIG_MBO
+	if (wpa_s->wnm_mbo_cell_pref_present) {
+		hidl_bsstm_data.mboCellPreference = static_cast
+		    <V1_3::ISupplicantStaIfaceCallback::MboCellularDataConnectionPrefValue>
+		    (wpa_s->wnm_mbo_cell_preference);
+	}
+	if (wpa_s->wnm_mbo_trans_reason_present) {
+		hidl_bsstm_data.mboTransitionReason =
+		    static_cast<V1_3::ISupplicantStaIfaceCallback::MboTransitionReasonCode>
+		    (wpa_s->wnm_mbo_transition_reason);
+	}
+#endif
+
+	const std::function<
+	    Return<void>(android::sp<V1_3::ISupplicantStaIfaceCallback>)>
+	    func = std::bind(
+		&V1_3::ISupplicantStaIfaceCallback::onBssTmHandlingDone,
+		std::placeholders::_1, hidl_bsstm_data);
+	callWithEachStaIfaceCallbackDerived(hidl_ifname, func);
+#endif
+}
+
 /**
  * Retrieve the |ISupplicantP2pIface| hidl object reference using the provided
  * ifname.

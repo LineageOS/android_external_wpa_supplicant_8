@@ -198,6 +198,10 @@ void wpas_notify_bss_tm_status(struct wpa_supplicant *wpa_s)
 		return;
 
 	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_BSS_TM_STATUS);
+
+#ifdef CONFIG_WNM
+	wpas_hidl_notify_bss_tm_status(wpa_s);
+#endif
 }
 
 
