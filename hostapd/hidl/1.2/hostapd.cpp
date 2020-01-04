@@ -299,6 +299,12 @@ Return<void> Hostapd::forceClientDisconnect(
 	    client_address, reason_code);
 }
 
+Return<void> Hostapd::setDebugParams(
+    DebugLevel level, setDebugParams_cb _hidl_cb)
+{
+	return call(
+	    this, &Hostapd::setDebugParamsInternal, _hidl_cb, level);
+}
 
 V1_0::HostapdStatus Hostapd::addAccessPointInternal(
     const V1_0::IHostapd::IfaceParams& iface_params,
@@ -415,6 +421,12 @@ V1_2::HostapdStatus Hostapd::forceClientDisconnectInternal(const std::string& if
 		}
 	}
 	return {V1_2::HostapdStatusCode::FAILURE_CLIENT_UNKNOWN, ""};
+}
+
+V1_2::HostapdStatus Hostapd::setDebugParamsInternal(DebugLevel level)
+{
+	wpa_debug_level = static_cast<uint32_t>(level);
+	return {V1_2::HostapdStatusCode::SUCCESS, ""};
 }
 
 }  // namespace implementation

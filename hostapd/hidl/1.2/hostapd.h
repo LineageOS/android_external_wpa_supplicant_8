@@ -66,6 +66,8 @@ public:
 	    const hidl_string& iface_name,
 	    const hidl_array<uint8_t, 6>& client_address,
 	    V1_2::Ieee80211ReasonCode reason_code, forceClientDisconnect_cb _hidl_cb) override;
+	Return<void> setDebugParams(
+	    DebugLevel level, setDebugParams_cb _hidl_cb) override;
 private:
 	// Corresponding worker functions for the HIDL methods.
 	V1_0::HostapdStatus addAccessPointInternal(
@@ -84,6 +86,7 @@ private:
 	    const std::string& iface_name,
 	    const std::array<uint8_t, 6>& client_address,
 	    V1_2::Ieee80211ReasonCode reason_code);
+	V1_2::HostapdStatus setDebugParamsInternal(DebugLevel level);
 	// Raw pointer to the global structure maintained by the core.
 	struct hapd_interfaces* interfaces_;
 	// Callbacks registered.
