@@ -184,6 +184,24 @@ std::string CreateHostapdConfig(
 		}
 	}
 
+	std::string he_params_as_string;
+	if (iface_params.hwModeParams.enable80211AX) {
+		he_params_as_string = StringPrintf(
+		    "ieee80211ax=1\n"
+		    "he_su_beamformer=%d\n"
+		    "he_su_beamformee=%d\n"
+		    "he_mu_beamformer=%d\n"
+		    "he_bss_color=%d\n"
+		    "he_twt_required=%d\n",
+		    iface_params.hwModeParams.enableHeSingleUserBeamformer ? 1 : 0,
+		    iface_params.hwModeParams.enableHeSingleUserBeamformee ? 1 : 0,
+		    iface_params.hwModeParams.enableHeMultiUserBeamformer ? 1 : 0,
+		    iface_params.hwModeParams.heBssColor,
+		    iface_params.hwModeParams.enableHeTargetWakeTime ? 1 : 0);
+	} else {
+		he_params_as_string = "ieee80211ax=0";
+	}
+
 	return StringPrintf(
 	    "interface=%s\n"
 	    "driver=nl80211\n"
@@ -195,7 +213,7 @@ std::string CreateHostapdConfig(
 	    "%s\n"
 	    "ieee80211n=%d\n"
 	    "ieee80211ac=%d\n"
-	    "ieee80211ax=%d\n"
+	    "%s\n"
 	    "%s\n"
 	    "%s\n"
 	    "ignore_broadcast_ssid=%d\n"
@@ -205,7 +223,7 @@ std::string CreateHostapdConfig(
 	    channel_config_as_string.c_str(),
 	    iface_params.V1_1.V1_0.hwModeParams.enable80211N ? 1 : 0,
 	    iface_params.V1_1.V1_0.hwModeParams.enable80211AC ? 1 : 0,
-	    iface_params.hwModeParams.enable80211AX ? 1 : 0,
+	    he_params_as_string.c_str(),
 	    hw_mode_as_string.c_str(), ht_cap_vht_oper_chwidth_as_string.c_str(),
 	    nw_params.isHidden ? 1 : 0, encryption_config_as_string.c_str());
 }
