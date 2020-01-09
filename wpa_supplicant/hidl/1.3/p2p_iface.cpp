@@ -349,7 +349,7 @@ int joinGroup(
 
 	if (wpas_p2p_group_add_persistent(
 		wpa_s, wpa_network, 0, 0, 0, 0, ht40, vht,
-		CHANWIDTH_USE_HT, 0, NULL, 0, 1)) {
+		CHANWIDTH_USE_HT, 0, NULL, 0, 0)) {
 		ret = -1;
 	}
 

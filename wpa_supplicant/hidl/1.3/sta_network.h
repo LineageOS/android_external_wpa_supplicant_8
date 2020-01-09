@@ -251,6 +251,10 @@ public:
 	Return<void> setWapiCertSuite(
 	    const hidl_string& suite, setWapiCertSuite_cb _hidl_cb) override;
 	Return<void> getWapiCertSuite(getWapiCertSuite_cb _hidl_cb) override;
+	Return<void> getAuthAlg_1_3(getAuthAlg_cb _hidl_cb) override;
+	Return<void> setAuthAlg_1_3(uint32_t auth_alg_mask,
+			std::function<void(const SupplicantStatus &status)> _hidl_cb)
+					override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
