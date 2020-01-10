@@ -65,6 +65,144 @@ std::string WriteHostapdConfig(
 	return "";
 }
 
+/*
+ * Get the op_class for a channel/band
+ * The logic here is based on Table E-4 in the 802.11 Specification
+ */
+int getOpClassForChannel(int channel, int band, bool support11n, bool support11ac) {
+	// 2GHz Band
+	if ((band & IHostapd::BandMask::BAND_2_GHZ) != 0) {
+		if (channel == 14) {
+			return 82;
+		}
+		if (channel >= 1 && channel <= 13) {
+			if (!support11n) {
+				//20MHz channel
+				return 81;
+			}
+			if (channel <= 9) {
+				// HT40 with secondary channel above primary
+				return 83;
+			}
+			// HT40 with secondary channel below primary
+			return 84;
+		}
+		// Error
+		return 0;
+	}
+
+	// 5GHz Band
+	if ((band & IHostapd::BandMask::BAND_5_GHZ) != 0) {
+		if (support11ac) {
+			switch (channel) {
+				case 42:
+				case 58:
+				case 106:
+				case 122:
+				case 138:
+				case 155:
+					// 80MHz channel
+					return 128;
+				case 50:
+				case 114:
+					// 160MHz channel
+					return 129;
+			}
+		}
+
+		if (!support11n) {
+			if (channel >= 36 && channel <= 48) {
+				return 115;
+			}
+			if (channel >= 52 && channel <= 64) {
+				return 118;
+			}
+			if (channel >= 100 && channel <= 144) {
+				return 121;
+			}
+			if (channel >= 149 && channel <= 161) {
+				return 124;
+			}
+			if (channel >= 165 && channel <= 169) {
+				return 125;
+			}
+		} else {
+			switch (channel) {
+				case 36:
+				case 44:
+					// HT40 with secondary channel above primary
+					return 116;
+				case 40:
+				case 48:
+					// HT40 with secondary channel below primary
+					return 117;
+				case 52:
+				case 60:
+					// HT40 with secondary channel above primary
+					return  119;
+				case 56:
+				case 64:
+					// HT40 with secondary channel below primary
+					return 120;
+				case 100:
+				case 108:
+				case 116:
+				case 124:
+				case 132:
+				case 140:
+					// HT40 with secondary channel above primary
+					return 122;
+				case 104:
+				case 112:
+				case 120:
+				case 128:
+				case 136:
+				case 144:
+					// HT40 with secondary channel below primary
+					return 123;
+				case 149:
+				case 157:
+					// HT40 with secondary channel above primary
+					return 126;
+				case 153:
+				case 161:
+					// HT40 with secondary channel below primary
+					return 127;
+			}
+		}
+		// Error
+		return 0;
+	}
+
+	// 6GHz Band
+	if ((band & IHostapd::BandMask::BAND_6_GHZ) != 0) {
+		// Channels 1, 5. 9, 13, ...
+		if ((channel & 0x03) == 0x01) {
+			// 20MHz channel
+			return 131;
+		}
+		// Channels 3, 11, 19, 27, ...
+		if ((channel & 0x07) == 0x03) {
+			// 40MHz channel
+			return 132;
+		}
+		// Channels 7, 23, 39, 55, ...
+		if ((channel & 0x0F) == 0x07) {
+			// 80MHz channel
+			return 133;
+		}
+		// Channels 15, 47, 69, ...
+		if ((channel & 0x1F) == 0x0F) {
+			// 160MHz channel
+			return 134;
+		}
+		// Error
+		return 0;
+	}
+
+	return 0;
+}
+
 std::string CreateHostapdConfig(
     const IHostapd::IfaceParams& iface_params,
     const IHostapd::NetworkParams& nw_params)
@@ -125,42 +263,51 @@ std::string CreateHostapdConfig(
 		return "";
 	}
 
+	unsigned int band = 0;
+	band |= iface_params.channelParams.bandMask;
+
 	std::string channel_config_as_string;
+	bool isFirst = true;
 	if (iface_params.V1_1.V1_0.channelParams.enableAcs) {
-		std::string chanlist_as_string;
+		std::string freqList_as_string;
 		for (const auto &range :
-		     iface_params.V1_1.channelParams.acsChannelRanges) {
+		    iface_params.channelParams.acsChannelFreqRangesMhz) {
+			if (!isFirst) {
+				freqList_as_string += ",";
+			}
+			isFirst = false;
+
 			if (range.start != range.end) {
-				chanlist_as_string +=
-				    StringPrintf("%d-%d ", range.start, range.end);
+				freqList_as_string +=
+				    StringPrintf("%d-%d", range.start, range.end);
 			} else {
-				chanlist_as_string += StringPrintf("%d ", range.start);
+				freqList_as_string += StringPrintf("%d", range.start);
 			}
 		}
 		channel_config_as_string = StringPrintf(
 		    "channel=0\n"
 		    "acs_exclude_dfs=%d\n"
-		    "chanlist=%s",
+		    "freqlist=%s",
 		    iface_params.V1_1.V1_0.channelParams.acsShouldExcludeDfs,
-		    chanlist_as_string.c_str());
+		    freqList_as_string.c_str());
 	} else {
+		int op_class = getOpClassForChannel(
+		    iface_params.V1_1.V1_0.channelParams.channel,
+		    band,
+		    iface_params.V1_1.V1_0.hwModeParams.enable80211N,
+		    iface_params.V1_1.V1_0.hwModeParams.enable80211AC);
 		channel_config_as_string = StringPrintf(
-		    "channel=%d", iface_params.V1_1.V1_0.channelParams.channel);
+		    "channel=%d\n"
+		    "op_class=%d",
+		    iface_params.V1_1.V1_0.channelParams.channel, op_class);
 	}
 
-	// Hw Mode String
-	// TODO: b/146186687 Still missing the handling when 6GHz band is included
 	std::string hw_mode_as_string;
 	std::string ht_cap_vht_oper_chwidth_as_string;
-	unsigned int band = 0;
-	if (iface_params.V1_1.V1_0.channelParams.enableAcs) {
-		band |= iface_params.channelParams.bandMask;
-	} else {
-		band |= iface_params.V1_1.V1_0.channelParams.band;
-	}
 
 	if ((band & IHostapd::BandMask::BAND_2_GHZ) != 0) {
-		if ((band & IHostapd::BandMask::BAND_5_GHZ) != 0) {
+		if (((band & IHostapd::BandMask::BAND_5_GHZ) != 0)
+		    || ((band & IHostapd::BandMask::BAND_6_GHZ) != 0)) {
 			hw_mode_as_string = "hw_mode=any";
 			if (iface_params.V1_1.V1_0.channelParams.enableAcs) {
 				ht_cap_vht_oper_chwidth_as_string =
@@ -171,7 +318,8 @@ std::string CreateHostapdConfig(
 			hw_mode_as_string = "hw_mode=g";
 		}
 	} else {
-		if ((band & IHostapd::BandMask::BAND_5_GHZ) != 0) {
+		if (((band & IHostapd::BandMask::BAND_5_GHZ) != 0)
+		    || ((band & IHostapd::BandMask::BAND_6_GHZ) != 0)) {
 			hw_mode_as_string = "hw_mode=a";
 			if (iface_params.V1_1.V1_0.channelParams.enableAcs) {
 				ht_cap_vht_oper_chwidth_as_string =

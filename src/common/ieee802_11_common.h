@@ -198,7 +198,8 @@ struct oper_class_map {
 	u8 min_chan;
 	u8 max_chan;
 	u8 inc;
-	enum { BW20, BW40PLUS, BW40MINUS, BW80, BW2160, BW160, BW80P80 } bw;
+	enum { BW20, BW40PLUS, BW40MINUS, BW80, BW2160, BW160, BW80P80, BW4320,
+	       BW6480, BW8640} bw;
 	enum { P2P_SUPP, NO_P2P_SUPP } p2p;
 };
 
@@ -225,11 +226,14 @@ int oper_class_bw_to_int(const struct oper_class_map *map);
 int center_idx_to_bw_6ghz(u8 idx);
 int is_6ghz_freq(int freq);
 int is_6ghz_op_class(u8 op_class);
+int is_6ghz_psc_frequency(int freq);
 
 int ieee802_11_parse_candidate_list(const char *pos, u8 *nei_rep,
 				    size_t nei_rep_len);
 
 int ieee802_11_ext_capab(const u8 *ie, unsigned int capab);
+int op_class_to_bandwidth(u8 op_class);
+int op_class_to_ch_width(u8 op_class);
 
 /* element iteration helpers */
 #define for_each_element(_elem, _data, _datalen)			\

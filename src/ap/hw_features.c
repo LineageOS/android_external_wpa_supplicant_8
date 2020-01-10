@@ -227,13 +227,25 @@ int hostapd_prepare_rates(struct hostapd_iface *iface,
 #ifdef CONFIG_IEEE80211N
 static int ieee80211n_allowed_ht40_channel_pair(struct hostapd_iface *iface)
 {
-	int pri_chan, sec_chan;
+	int pri_freq, sec_freq;
+	struct hostapd_channel_data *p_chan, *s_chan;
 
-	pri_chan = iface->conf->channel;
-	sec_chan = pri_chan + iface->conf->secondary_channel * 4;
+	pri_freq = iface->freq;
+	sec_freq = pri_freq + iface->conf->secondary_channel * 20;
 
-	return allowed_ht40_channel_pair(iface->current_mode, pri_chan,
-					 sec_chan);
+	if (!iface->current_mode)
+		return 0;
+
+	p_chan = hw_get_channel_freq(iface->current_mode->mode, pri_freq, NULL,
+				     iface->hw_features,
+				     iface->num_hw_features);
+
+	s_chan = hw_get_channel_freq(iface->current_mode->mode, sec_freq, NULL,
+				     iface->hw_features,
+				     iface->num_hw_features);
+
+	return allowed_ht40_channel_pair(iface->current_mode->mode,
+					 p_chan, s_chan);
 }
 
 
@@ -241,9 +253,11 @@ static void ieee80211n_switch_pri_sec(struct hostapd_iface *iface)
 {
 	if (iface->conf->secondary_channel > 0) {
 		iface->conf->channel += 4;
+		iface->freq += 20;
 		iface->conf->secondary_channel = -1;
 	} else {
 		iface->conf->channel -= 4;
+		iface->freq -= 20;
 		iface->conf->secondary_channel = 1;
 	}
 }
@@ -252,13 +266,23 @@ static void ieee80211n_switch_pri_sec(struct hostapd_iface *iface)
 static int ieee80211n_check_40mhz_5g(struct hostapd_iface *iface,
 				     struct wpa_scan_results *scan_res)
 {
-	int pri_chan, sec_chan;
+	unsigned int pri_freq, sec_freq;
 	int res;
+	struct hostapd_channel_data *pri_chan, *sec_chan;
 
-	pri_chan = iface->conf->channel;
-	sec_chan = pri_chan + iface->conf->secondary_channel * 4;
+	pri_freq = iface->freq;
+	sec_freq = pri_freq + iface->conf->secondary_channel * 20;
 
-	res = check_40mhz_5g(iface->current_mode, scan_res, pri_chan, sec_chan);
+	if (!iface->current_mode)
+		return 0;
+	pri_chan = hw_get_channel_freq(iface->current_mode->mode, pri_freq,
+				       NULL, iface->hw_features,
+				       iface->num_hw_features);
+	sec_chan = hw_get_channel_freq(iface->current_mode->mode, sec_freq,
+				       NULL, iface->hw_features,
+				       iface->num_hw_features);
+
+	res = check_40mhz_5g(scan_res, pri_chan, sec_chan);
 
 	if (res == 2) {
 		if (iface->conf->no_pri_sec_switch) {
@@ -352,7 +376,7 @@ static void ieee80211n_scan_channels_2g4(struct hostapd_iface *iface,
 	if (iface->current_mode == NULL)
 		return;
 
-	pri_freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
+	pri_freq = iface->freq;
 	if (iface->conf->secondary_channel > 0)
 		sec_freq = pri_freq + 20;
 	else
@@ -397,7 +421,7 @@ static void ieee80211n_scan_channels_5g(struct hostapd_iface *iface,
 	if (iface->current_mode == NULL)
 		return;
 
-	pri_freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
+	pri_freq = iface->freq;
 	if (iface->conf->secondary_channel > 0) {
 		affected_start = pri_freq - 10;
 		affected_end = pri_freq + 30;
@@ -670,6 +694,9 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
 {
 #ifdef CONFIG_IEEE80211N
 	int ret;
+
+	if (is_6ghz_freq(iface->freq))
+		return 0;
 	if (!iface->conf->ieee80211n)
 		return 0;
 
@@ -731,14 +758,15 @@ int hostapd_check_edmg_capab(struct hostapd_iface *iface)
 
 
 static int hostapd_is_usable_chan(struct hostapd_iface *iface,
-				  int channel, int primary)
+				  int frequency, int primary)
 {
 	struct hostapd_channel_data *chan;
 
 	if (!iface->current_mode)
 		return 0;
 
-	chan = hw_get_channel_chan(iface->current_mode, channel, NULL);
+	chan = hw_get_channel_freq(iface->current_mode->mode, frequency, NULL,
+				   iface->hw_features, iface->num_hw_features);
 	if (!chan)
 		return 0;
 
@@ -747,8 +775,8 @@ static int hostapd_is_usable_chan(struct hostapd_iface *iface,
 		return 1;
 
 	wpa_printf(MSG_INFO,
-		   "Channel %d (%s) not allowed for AP mode, flags: 0x%x%s%s",
-		   channel, primary ? "primary" : "secondary",
+		   "Frequency %d (%s) not allowed for AP mode, flags: 0x%x%s%s",
+		   frequency, primary ? "primary" : "secondary",
 		   chan->flag,
 		   chan->flag & HOSTAPD_CHAN_NO_IR ? " NO-IR" : "",
 		   chan->flag & HOSTAPD_CHAN_RADAR ? " RADAR" : "");
@@ -762,19 +790,28 @@ static int hostapd_is_usable_edmg(struct hostapd_iface *iface)
 	int num_of_enabled = 0;
 	int max_contiguous = 0;
 	struct ieee80211_edmg_config edmg;
+	struct hostapd_channel_data *pri_chan;
 
 	if (!iface->conf->enable_edmg)
 		return 1;
 
+	if (!iface->current_mode)
+		return 0;
+	pri_chan = hw_get_channel_freq(iface->current_mode->mode,
+				       iface->freq, NULL,
+				       iface->hw_features,
+				       iface->num_hw_features);
 	hostapd_encode_edmg_chan(iface->conf->enable_edmg,
 				 iface->conf->edmg_channel,
-				 iface->conf->channel,
+				 pri_chan->chan,
 				 &edmg);
-	if (!(edmg.channels & BIT(iface->conf->channel - 1)))
+	if (!(edmg.channels & BIT(pri_chan->chan - 1)))
 		return 0;
 
 	/* 60 GHz channels 1..6 */
 	for (i = 0; i < 6; i++) {
+		int freq = 56160 + 2160 * i;
+
 		if (edmg.channels & BIT(i)) {
 			contiguous++;
 			num_of_enabled++;
@@ -789,7 +826,7 @@ static int hostapd_is_usable_edmg(struct hostapd_iface *iface)
 		if (num_of_enabled > 4)
 			return 0;
 
-		if (!hostapd_is_usable_chan(iface, i + 1, 1))
+		if (!hostapd_is_usable_chan(iface, freq, 1))
 			return 0;
 
 		if (contiguous > max_contiguous)
@@ -819,17 +856,23 @@ static int hostapd_is_usable_edmg(struct hostapd_iface *iface)
 
 static int hostapd_is_usable_chans(struct hostapd_iface *iface)
 {
-	int secondary_chan;
+	int secondary_freq;
 	struct hostapd_channel_data *pri_chan;
 
-	pri_chan = hw_get_channel_chan(iface->current_mode,
-				       iface->conf->channel, NULL);
-	if (!pri_chan)
+	if (!iface->current_mode)
 		return 0;
-
-	if (!hostapd_is_usable_chan(iface, iface->conf->channel, 1))
+	pri_chan = hw_get_channel_freq(iface->current_mode->mode,
+				       iface->freq, NULL,
+				       iface->hw_features,
+				       iface->num_hw_features);
+	if (!pri_chan) {
+		wpa_printf(MSG_ERROR, "Primary frequency not present");
 		return 0;
-
+	}
+	if (!hostapd_is_usable_chan(iface, pri_chan->freq, 1)) {
+		wpa_printf(MSG_ERROR, "Primary frequency not allowed");
+		return 0;
+	}
 	if (!hostapd_is_usable_edmg(iface))
 		return 0;
 
@@ -838,19 +881,19 @@ static int hostapd_is_usable_chans(struct hostapd_iface *iface)
 
 	if (!iface->conf->ht40_plus_minus_allowed)
 		return hostapd_is_usable_chan(
-			iface, iface->conf->channel +
-			iface->conf->secondary_channel * 4, 0);
+			iface,
+			iface->freq + iface->conf->secondary_channel * 20, 0);
 
 	/* Both HT40+ and HT40- are set, pick a valid secondary channel */
-	secondary_chan = iface->conf->channel + 4;
-	if (hostapd_is_usable_chan(iface, secondary_chan, 0) &&
+	secondary_freq = iface->freq + 20;
+	if (hostapd_is_usable_chan(iface, secondary_freq, 0) &&
 	    (pri_chan->allowed_bw & HOSTAPD_CHAN_WIDTH_40P)) {
 		iface->conf->secondary_channel = 1;
 		return 1;
 	}
 
-	secondary_chan = iface->conf->channel - 4;
-	if (hostapd_is_usable_chan(iface, secondary_chan, 0) &&
+	secondary_freq = iface->freq - 20;
+	if (hostapd_is_usable_chan(iface, secondary_freq, 0) &&
 	    (pri_chan->allowed_bw & HOSTAPD_CHAN_WIDTH_40M)) {
 		iface->conf->secondary_channel = -1;
 		return 1;
@@ -863,7 +906,7 @@ static int hostapd_is_usable_chans(struct hostapd_iface *iface)
 static enum hostapd_chan_status
 hostapd_check_chans(struct hostapd_iface *iface)
 {
-	if (iface->conf->channel) {
+	if (iface->freq) {
 		if (hostapd_is_usable_chans(iface))
 			return HOSTAPD_CHAN_VALID;
 		else
@@ -897,9 +940,9 @@ static void hostapd_notify_bad_chans(struct hostapd_iface *iface)
 	hostapd_logger(iface->bss[0], NULL,
 		       HOSTAPD_MODULE_IEEE80211,
 		       HOSTAPD_LEVEL_WARNING,
-		       "Configured channel (%d) not found from the "
-		       "channel list of current mode (%d) %s",
+		       "Configured channel (%d) or frequency (%d) not found from the channel list of the current mode (%d) %s",
 		       iface->conf->channel,
+		       iface->freq,
 		       iface->current_mode->mode,
 		       hostapd_hw_mode_txt(iface->current_mode->mode));
 	hostapd_logger(iface->bss[0], NULL, HOSTAPD_MODULE_IEEE80211,
@@ -919,9 +962,7 @@ int hostapd_acs_completed(struct hostapd_iface *iface, int err)
 	case HOSTAPD_CHAN_VALID:
 		wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO,
 			ACS_EVENT_COMPLETED "freq=%d channel=%d",
-			hostapd_hw_get_freq(iface->bss[0],
-					    iface->conf->channel),
-			iface->conf->channel);
+			iface->freq, iface->conf->channel);
 		break;
 	case HOSTAPD_CHAN_ACS:
 		wpa_printf(MSG_ERROR, "ACS error - reported complete, but no result available");
@@ -961,7 +1002,6 @@ out:
 int hostapd_select_hw_mode(struct hostapd_iface *iface)
 {
 	int i;
-	int freq = -1;
 
 	if (iface->num_hw_features < 1)
 		return -1;
@@ -978,13 +1018,13 @@ int hostapd_select_hw_mode(struct hostapd_iface *iface)
 	}
 
 	iface->current_mode = NULL;
-	if (iface->conf->channel && iface->conf->op_class)
-		freq = ieee80211_chan_to_freq(NULL, iface->conf->op_class,
-					      iface->conf->channel);
 	for (i = 0; i < iface->num_hw_features; i++) {
 		struct hostapd_hw_modes *mode = &iface->hw_features[i];
 		if (mode->mode == iface->conf->hw_mode) {
-			if (freq > 0 && !hw_get_chan(mode, freq))
+			if (iface->freq > 0 &&
+			    !hw_get_chan(mode->mode, iface->freq,
+					 iface->hw_features,
+					 iface->num_hw_features))
 				continue;
 			iface->current_mode = mode;
 			break;
@@ -1048,7 +1088,9 @@ int hostapd_hw_get_channel(struct hostapd_data *hapd, int freq)
 	struct hostapd_hw_modes *mode;
 
 	if (hapd->iface->current_mode) {
-		channel = hw_get_chan(hapd->iface->current_mode, freq);
+		channel = hw_get_chan(hapd->iface->current_mode->mode, freq,
+				      hapd->iface->hw_features,
+				      hapd->iface->num_hw_features);
 		if (channel)
 			return channel;
 	}
@@ -1059,7 +1101,9 @@ int hostapd_hw_get_channel(struct hostapd_data *hapd, int freq)
 		return 0;
 	for (i = 0; i < hapd->iface->num_hw_features; i++) {
 		mode = &hapd->iface->hw_features[i];
-		channel = hw_get_chan(mode, freq);
+		channel = hw_get_chan(mode->mode, freq,
+				      hapd->iface->hw_features,
+				      hapd->iface->num_hw_features);
 		if (channel)
 			return channel;
 	}

@@ -296,7 +296,7 @@ static struct wpa_config_blob * wpa_config_read_blob(FILE *f, int *line,
 {
 	struct wpa_config_blob *blob;
 	char buf[256], *pos;
-	unsigned char *encoded = NULL, *nencoded;
+	char *encoded = NULL, *nencoded;
 	int end = 0;
 	size_t encoded_len = 0, len;
 
@@ -1098,7 +1098,7 @@ static void wpa_config_write_cred(FILE *f, struct wpa_cred *cred)
 #ifndef CONFIG_NO_CONFIG_BLOBS
 static int wpa_config_write_blob(FILE *f, struct wpa_config_blob *blob)
 {
-	unsigned char *encoded;
+	char *encoded;
 
 	encoded = base64_encode(blob->data, blob->len, NULL);
 	if (encoded == NULL)
@@ -1287,6 +1287,8 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		fprintf(f, "p2p_go_vht=%d\n", config->p2p_go_vht);
 	if (config->p2p_go_he)
 		fprintf(f, "p2p_go_he=%d\n", config->p2p_go_he);
+	if (config->p2p_go_edmg)
+		fprintf(f, "p2p_go_edmg=%d\n", config->p2p_go_edmg);
 	if (config->p2p_go_ctwindow != DEFAULT_P2P_GO_CTWINDOW)
 		fprintf(f, "p2p_go_ctwindow=%d\n", config->p2p_go_ctwindow);
 	if (config->p2p_disabled)

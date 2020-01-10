@@ -664,6 +664,7 @@ struct hostapd_bss_config {
 	struct wpabuf *own_ie_override;
 	int sae_reflection_attack;
 	struct wpabuf *sae_commit_override;
+	struct wpabuf *rsnxe_override_eapol;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #define MESH_ENABLED BIT(0)
@@ -881,8 +882,11 @@ struct hostapd_config {
 	u8 edmg_channel;
 	u8 acs;
 	struct wpa_freq_range_list acs_ch_list;
+	struct wpa_freq_range_list acs_freq_list;
+	u8 acs_freq_list_present;
 	int acs_exclude_dfs;
 	enum hostapd_hw_mode hw_mode; /* HOSTAPD_MODE_IEEE80211A, .. */
+	int acs_exclude_6ghz_non_psc;
 	enum {
 		LONG_PREAMBLE = 0,
 		SHORT_PREAMBLE = 1

@@ -98,7 +98,8 @@ u8 * hostapd_eid_supp_rates(struct hostapd_data *hapd, u8 *eid)
 		num++;
 	if (hapd->iconf->ieee80211ac && hapd->iconf->require_vht)
 		num++;
-	if (hapd->conf->sae_pwe == 1)
+	if (hapd->conf->sae_pwe == 1 &&
+	    wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt))
 		num++;
 	if (num > 8) {
 		/* rest of the rates are encoded in Extended supported
@@ -126,7 +127,9 @@ u8 * hostapd_eid_supp_rates(struct hostapd_data *hapd, u8 *eid)
 		*pos++ = 0x80 | BSS_MEMBERSHIP_SELECTOR_VHT_PHY;
 	}
 
-	if (hapd->conf->sae_pwe == 1 && count < 8) {
+	if (hapd->conf->sae_pwe == 1 &&
+	    wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt) &&
+	    count < 8) {
 		count++;
 		*pos++ = 0x80 | BSS_MEMBERSHIP_SELECTOR_SAE_H2E_ONLY;
 	}
@@ -148,7 +151,8 @@ u8 * hostapd_eid_ext_supp_rates(struct hostapd_data *hapd, u8 *eid)
 		num++;
 	if (hapd->iconf->ieee80211ac && hapd->iconf->require_vht)
 		num++;
-	if (hapd->conf->sae_pwe == 1)
+	if (hapd->conf->sae_pwe == 1 &&
+	    wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt))
 		num++;
 	if (num <= 8)
 		return eid;
@@ -179,7 +183,8 @@ u8 * hostapd_eid_ext_supp_rates(struct hostapd_data *hapd, u8 *eid)
 			*pos++ = 0x80 | BSS_MEMBERSHIP_SELECTOR_VHT_PHY;
 	}
 
-	if (hapd->conf->sae_pwe == 1) {
+	if (hapd->conf->sae_pwe == 1 &&
+	    wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt)) {
 		count++;
 		if (count > 8)
 			*pos++ = 0x80 | BSS_MEMBERSHIP_SELECTOR_SAE_H2E_ONLY;
@@ -1117,8 +1122,10 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 	if (!sta->sae) {
 		if (auth_transaction != 1 ||
 		    !sae_status_success(hapd, status_code)) {
-			resp = -1;
-			goto remove_sta;
+			wpa_printf(MSG_DEBUG, "SAE: Unexpected Status Code %u",
+				   status_code);
+			resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			goto reply;
 		}
 		sta->sae = os_zalloc(sizeof(*sta->sae));
 		if (!sta->sae) {
@@ -1273,9 +1280,9 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 
 		if (sta->sae->tmp &&
 		    check_sae_rejected_groups(
-			    hapd, sta->sae->tmp->peer_rejected_groups) < 0) {
+			    hapd, sta->sae->tmp->peer_rejected_groups)) {
 			resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
-			goto remove_sta;
+			goto reply;
 		}
 
 		if (!token && use_sae_anti_clogging(hapd) && !allow_reuse) {

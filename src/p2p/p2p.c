@@ -1404,6 +1404,7 @@ static void p2p_prepare_channel_best(struct p2p_data *p2p)
 	const int op_classes_5ghz[] = { 124, 125, 115, 0 };
 	const int op_classes_ht40[] = { 126, 127, 116, 117, 0 };
 	const int op_classes_vht[] = { 128, 0 };
+	const int op_classes_edmg[] = { 181, 182, 183, 0 };
 
 	p2p_dbg(p2p, "Prepare channel best");
 
@@ -1435,6 +1436,11 @@ static void p2p_prepare_channel_best(struct p2p_data *p2p)
 		p2p_dbg(p2p, "Select first pref_chan entry as operating channel preference");
 		p2p->op_reg_class = p2p->cfg->pref_chan[0].op_class;
 		p2p->op_channel = p2p->cfg->pref_chan[0].chan;
+	} else if (p2p_channel_select(&p2p->cfg->channels, op_classes_edmg,
+				      &p2p->op_reg_class, &p2p->op_channel) ==
+		   0) {
+		p2p_dbg(p2p, "Select possible EDMG channel (op_class %u channel %u) as operating channel preference",
+			p2p->op_reg_class, p2p->op_channel);
 	} else if (p2p_channel_select(&p2p->cfg->channels, op_classes_vht,
 				      &p2p->op_reg_class, &p2p->op_channel) ==
 		   0) {
@@ -4926,6 +4932,7 @@ int p2p_send_action(struct p2p_data *p2p, unsigned int freq, const u8 *dst,
 	res = p2p->cfg->send_action(p2p->cfg->cb_ctx, freq, dst, src, bssid,
 				    buf, len, wait_time, &scheduled);
 	if (res == 0 && scheduled && p2p->in_listen && freq > 0 &&
+	    p2p->drv_in_listen > 0 &&
 	    (unsigned int) p2p->drv_in_listen != freq) {
 		p2p_dbg(p2p,
 			"Stop listen on %d MHz to allow a frame to be sent immediately on %d MHz",

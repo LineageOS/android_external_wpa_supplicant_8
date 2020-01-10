@@ -663,6 +663,42 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 		wpa_s->ignore_assoc_disallow = !!atoi(value);
 		wpa_drv_ignore_assoc_disallow(wpa_s,
 					      wpa_s->ignore_assoc_disallow);
+	} else if (os_strcasecmp(cmd, "ignore_sae_h2e_only") == 0) {
+		wpa_s->ignore_sae_h2e_only = !!atoi(value);
+	} else if (os_strcasecmp(cmd, "extra_sae_rejected_groups") == 0) {
+		char *pos;
+
+		os_free(wpa_s->extra_sae_rejected_groups);
+		wpa_s->extra_sae_rejected_groups = NULL;
+		pos = value;
+		while (pos && pos[0]) {
+			int group;
+
+			group = atoi(pos);
+			wpa_printf(MSG_DEBUG,
+				   "TESTING: Extra rejection of SAE group %d",
+				   group);
+			if (group)
+				int_array_add_unique(
+					&wpa_s->extra_sae_rejected_groups,
+					group);
+			pos = os_strchr(pos, ' ');
+			if (!pos)
+				break;
+			pos++;
+		}
+	} else if (os_strcasecmp(cmd, "rsnxe_override_assoc") == 0) {
+		wpabuf_free(wpa_s->rsnxe_override_assoc);
+		if (os_strcmp(value, "NULL") == 0)
+			wpa_s->rsnxe_override_assoc = NULL;
+		else
+			wpa_s->rsnxe_override_assoc = wpabuf_parse_bin(value);
+	} else if (os_strcasecmp(cmd, "rsnxe_override_eapol") == 0) {
+		wpabuf_free(wpa_s->rsnxe_override_eapol);
+		if (os_strcmp(value, "NULL") == 0)
+			wpa_s->rsnxe_override_eapol = NULL;
+		else
+			wpa_s->rsnxe_override_eapol = wpabuf_parse_bin(value);
 	} else if (os_strcasecmp(cmd, "reject_btm_req_reason") == 0) {
 		wpa_s->reject_btm_req_reason = atoi(value);
 	} else if (os_strcasecmp(cmd, "get_pref_freq_list_override") == 0) {
@@ -5637,6 +5673,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
 	int freq = 0;
 	int pd;
 	int ht40, vht, max_oper_chwidth, chwidth = 0, freq2 = 0;
+	int edmg;
 	u8 _group_ssid[SSID_MAX_LEN], *group_ssid = NULL;
 	size_t group_ssid_len = 0;
 	int he;
@@ -5652,7 +5689,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
 	/* <addr> <"pbc" | "pin" | PIN> [label|display|keypad|p2ps]
 	 * [persistent|persistent=<network id>]
 	 * [join] [auth] [go_intent=<0..15>] [freq=<in MHz>] [provdisc]
-	 * [ht40] [vht] [he] [auto] [ssid=<hexdump>] */
+	 * [ht40] [vht] [he] [edmg] [auto] [ssid=<hexdump>] */
 
 	if (hwaddr_aton(cmd, addr))
 		return -1;
@@ -5684,6 +5721,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
 	ht40 = (os_strstr(cmd, " ht40") != NULL) || wpa_s->conf->p2p_go_ht40 ||
 		vht;
 	he = (os_strstr(cmd, " he") != NULL) || wpa_s->conf->p2p_go_he;
+	edmg = (os_strstr(cmd, " edmg") != NULL) || wpa_s->conf->p2p_go_edmg;
 
 	pos2 = os_strstr(pos, " go_intent=");
 	if (pos2) {
@@ -5754,7 +5792,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
 	new_pin = wpas_p2p_connect(wpa_s, addr, pin, wps_method,
 				   persistent_group, automatic, join,
 				   auth, go_intent, freq, freq2, persistent_id,
-				   pd, ht40, vht, max_oper_chwidth, he,
+				   pd, ht40, vht, max_oper_chwidth, he, edmg,
 				   group_ssid, group_ssid_len);
 	if (new_pin == -2) {
 		os_memcpy(buf, "FAIL-CHANNEL-UNAVAILABLE\n", 25);
@@ -6311,6 +6349,7 @@ static int p2p_ctrl_invite_persistent(struct wpa_supplicant *wpa_s, char *cmd)
 	u8 *_peer = NULL, peer[ETH_ALEN];
 	int freq = 0, pref_freq = 0;
 	int ht40, vht, he, max_oper_chwidth, chwidth = 0, freq2 = 0;
+	int edmg;
 
 	id = atoi(cmd);
 	pos = os_strstr(cmd, " peer=");
@@ -6348,6 +6387,7 @@ static int p2p_ctrl_invite_persistent(struct wpa_supplicant *wpa_s, char *cmd)
 	ht40 = (os_strstr(cmd, " ht40") != NULL) || wpa_s->conf->p2p_go_ht40 ||
 		vht;
 	he = (os_strstr(cmd, " he") != NULL) || wpa_s->conf->p2p_go_he;
+	edmg = (os_strstr(cmd, " edmg") != NULL) || wpa_s->conf->p2p_go_edmg;
 
 	pos = os_strstr(cmd, "freq2=");
 	if (pos)
@@ -6362,7 +6402,7 @@ static int p2p_ctrl_invite_persistent(struct wpa_supplicant *wpa_s, char *cmd)
 		return -1;
 
 	return wpas_p2p_invite(wpa_s, _peer, ssid, NULL, freq, freq2, ht40, vht,
-			       max_oper_chwidth, pref_freq, he);
+			       max_oper_chwidth, pref_freq, he, edmg);
 }
 
 
@@ -6411,7 +6451,7 @@ static int p2p_ctrl_invite(struct wpa_supplicant *wpa_s, char *cmd)
 static int p2p_ctrl_group_add_persistent(struct wpa_supplicant *wpa_s,
 					 int id, int freq, int vht_center_freq2,
 					 int ht40, int vht, int vht_chwidth,
-					 int he)
+					 int he, int edmg)
 {
 	struct wpa_ssid *ssid;
 
@@ -6425,7 +6465,8 @@ static int p2p_ctrl_group_add_persistent(struct wpa_supplicant *wpa_s,
 
 	return wpas_p2p_group_add_persistent(wpa_s, ssid, 0, freq,
 					     vht_center_freq2, 0, ht40, vht,
-					     vht_chwidth, he, NULL, 0, 0);
+					     vht_chwidth, he, edmg,
+					     NULL, 0, 0);
 }
 
 
@@ -6435,6 +6476,7 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
 	int he = wpa_s->conf->p2p_go_he;
+	int edmg = wpa_s->conf->p2p_go_edmg;
 	int max_oper_chwidth, chwidth = 0, freq2 = 0;
 	char *token, *context = NULL;
 #ifdef CONFIG_ACS
@@ -6459,6 +6501,8 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
 			ht40 = 1;
 		} else if (os_strcmp(token, "he") == 0) {
 			he = 1;
+		} else if (os_strcmp(token, "edmg") == 0) {
+			edmg = 1;
 		} else if (os_strcmp(token, "persistent") == 0) {
 			persistent = 1;
 		} else {
@@ -6496,10 +6540,11 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
 	if (group_id >= 0)
 		return p2p_ctrl_group_add_persistent(wpa_s, group_id,
 						     freq, freq2, ht40, vht,
-						     max_oper_chwidth, he);
+						     max_oper_chwidth, he,
+						     edmg);
 
 	return wpas_p2p_group_add(wpa_s, persistent, freq, freq2, ht40, vht,
-				  max_oper_chwidth, he);
+				  max_oper_chwidth, he, edmg);
 }
 
 
@@ -8045,12 +8090,19 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 	wpa_s->ignore_auth_resp = 0;
 	wpa_s->ignore_assoc_disallow = 0;
 	wpa_s->testing_resend_assoc = 0;
+	wpa_s->ignore_sae_h2e_only = 0;
 	wpa_s->reject_btm_req_reason = 0;
 	wpa_sm_set_test_assoc_ie(wpa_s->wpa, NULL);
 	os_free(wpa_s->get_pref_freq_list_override);
 	wpa_s->get_pref_freq_list_override = NULL;
 	wpabuf_free(wpa_s->sae_commit_override);
 	wpa_s->sae_commit_override = NULL;
+	os_free(wpa_s->extra_sae_rejected_groups);
+	wpa_s->extra_sae_rejected_groups = NULL;
+	wpabuf_free(wpa_s->rsnxe_override_assoc);
+	wpa_s->rsnxe_override_assoc = NULL;
+	wpabuf_free(wpa_s->rsnxe_override_eapol);
+	wpa_s->rsnxe_override_eapol = NULL;
 #ifdef CONFIG_DPP
 	os_free(wpa_s->dpp_config_obj_override);
 	wpa_s->dpp_config_obj_override = NULL;
@@ -9465,16 +9517,16 @@ static void wpas_ctrl_neighbor_rep_cb(void *ctx, struct wpabuf *neighbor_rep)
 
 		if (pos[0] != WLAN_EID_NEIGHBOR_REPORT ||
 		    nr_len < NR_IE_MIN_LEN) {
-			wpa_printf(MSG_DEBUG,
-				   "CTRL: Invalid Neighbor Report element: id=%u len=%u",
-				   data[0], nr_len);
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"CTRL: Invalid Neighbor Report element: id=%u len=%u",
+				data[0], nr_len);
 			goto out;
 		}
 
 		if (2U + nr_len > len) {
-			wpa_printf(MSG_DEBUG,
-				   "CTRL: Invalid Neighbor Report element: id=%u len=%zu nr_len=%u",
-				   data[0], len, nr_len);
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"CTRL: Invalid Neighbor Report element: id=%u len=%zu nr_len=%u",
+				data[0], len, nr_len);
 			goto out;
 		}
 		pos += 2;
@@ -9544,8 +9596,8 @@ static int wpas_ctrl_iface_send_neighbor_rep(struct wpa_supplicant *wpa_s,
 	ssid_s = os_strstr(cmd, "ssid=");
 	if (ssid_s) {
 		if (ssid_parse(ssid_s + 5, &ssid)) {
-			wpa_printf(MSG_ERROR,
-				   "CTRL: Send Neighbor Report: bad SSID");
+			wpa_msg(wpa_s, MSG_INFO,
+				"CTRL: Send Neighbor Report: bad SSID");
 			return -1;
 		}
 
@@ -10671,6 +10723,17 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 		int res;
 
 		res = wpas_dpp_qr_code(wpa_s, buf + 12);
+		if (res < 0) {
+			reply_len = -1;
+		} else {
+			reply_len = os_snprintf(reply, reply_size, "%d", res);
+			if (os_snprintf_error(reply_size, reply_len))
+				reply_len = -1;
+		}
+	} else if (os_strncmp(buf, "DPP_NFC_URI ", 12) == 0) {
+		int res;
+
+		res = wpas_dpp_nfc_uri(wpa_s, buf + 12);
 		if (res < 0) {
 			reply_len = -1;
 		} else {

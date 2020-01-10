@@ -722,13 +722,14 @@ enum hostapd_hw_mode ieee80211_freq_to_chan(int freq, u8 *channel)
  * for HT40 and VHT. DFS channels are not covered.
  * @freq: Frequency (MHz) to convert
  * @sec_channel: 0 = non-HT40, 1 = sec. channel above, -1 = sec. channel below
- * @vht: VHT channel width (CHANWIDTH_*)
+ * @chanwidth: VHT/EDMG channel width (CHANWIDTH_*)
  * @op_class: Buffer for returning operating class
  * @channel: Buffer for returning channel number
  * Returns: hw_mode on success, NUM_HOSTAPD_MODES on failure
  */
 enum hostapd_hw_mode ieee80211_freq_to_channel_ext(unsigned int freq,
-						   int sec_channel, int vht,
+						   int sec_channel,
+						   int chanwidth,
 						   u8 *op_class, u8 *channel)
 {
 	u8 vht_opclass;
@@ -742,7 +743,7 @@ enum hostapd_hw_mode ieee80211_freq_to_channel_ext(unsigned int freq,
 		if ((freq - 2407) % 5)
 			return NUM_HOSTAPD_MODES;
 
-		if (vht)
+		if (chanwidth)
 			return NUM_HOSTAPD_MODES;
 
 		/* 2.407 GHz, channels 1..13 */
@@ -759,7 +760,7 @@ enum hostapd_hw_mode ieee80211_freq_to_channel_ext(unsigned int freq,
 	}
 
 	if (freq == 2484) {
-		if (sec_channel || vht)
+		if (sec_channel || chanwidth)
 			return NUM_HOSTAPD_MODES;
 
 		*op_class = 82; /* channel 14 */
@@ -776,7 +777,7 @@ enum hostapd_hw_mode ieee80211_freq_to_channel_ext(unsigned int freq,
 		return HOSTAPD_MODE_IEEE80211A;
 	}
 
-	switch (vht) {
+	switch (chanwidth) {
 	case CHANWIDTH_80MHZ:
 		vht_opclass = 128;
 		break;
@@ -877,17 +878,6 @@ enum hostapd_hw_mode ieee80211_freq_to_channel_ext(unsigned int freq,
 		return HOSTAPD_MODE_IEEE80211A;
 	}
 
-	/* 56.16 GHz, channel 1..6 */
-	if (freq >= 56160 + 2160 * 1 && freq <= 56160 + 2160 * 6) {
-		if (sec_channel || vht)
-			return NUM_HOSTAPD_MODES;
-
-		*channel = (freq - 56160) / 2160;
-		*op_class = 180;
-
-		return HOSTAPD_MODE_IEEE80211AD;
-	}
-
 	if (freq > 5940 && freq <= 7105) {
 		int bw;
 		u8 idx = (freq - 5940) / 5;
@@ -901,6 +891,48 @@ enum hostapd_hw_mode ieee80211_freq_to_channel_ext(unsigned int freq,
 		return HOSTAPD_MODE_IEEE80211A;
 	}
 
+	/* 56.16 GHz, channel 1..6 */
+	if (freq >= 56160 + 2160 * 1 && freq <= 56160 + 2160 * 6) {
+		if (sec_channel)
+			return NUM_HOSTAPD_MODES;
+
+		switch (chanwidth) {
+		case CHANWIDTH_USE_HT:
+		case CHANWIDTH_2160MHZ:
+			*channel = (freq - 56160) / 2160;
+			*op_class = 180;
+			break;
+		case CHANWIDTH_4320MHZ:
+			/* EDMG channels 9 - 13 */
+			if (freq > 56160 + 2160 * 5)
+				return NUM_HOSTAPD_MODES;
+
+			*channel = (freq - 56160) / 2160 + 8;
+			*op_class = 181;
+			break;
+		case CHANWIDTH_6480MHZ:
+			/* EDMG channels 17 - 20 */
+			if (freq > 56160 + 2160 * 4)
+				return NUM_HOSTAPD_MODES;
+
+			*channel = (freq - 56160) / 2160 + 16;
+			*op_class = 182;
+			break;
+		case CHANWIDTH_8640MHZ:
+			/* EDMG channels 25 - 27 */
+			if (freq > 56160 + 2160 * 3)
+				return NUM_HOSTAPD_MODES;
+
+			*channel = (freq - 56160) / 2160 + 24;
+			*op_class = 183;
+			break;
+		default:
+			return NUM_HOSTAPD_MODES;
+		}
+
+		return HOSTAPD_MODE_IEEE80211AD;
+	}
+
 	return NUM_HOSTAPD_MODES;
 }
 
@@ -908,27 +940,39 @@ enum hostapd_hw_mode ieee80211_freq_to_channel_ext(unsigned int freq,
 int ieee80211_chaninfo_to_channel(unsigned int freq, enum chan_width chanwidth,
 				  int sec_channel, u8 *op_class, u8 *channel)
 {
-	int vht = CHAN_WIDTH_UNKNOWN;
+	int cw = CHAN_WIDTH_UNKNOWN;
 
 	switch (chanwidth) {
 	case CHAN_WIDTH_UNKNOWN:
 	case CHAN_WIDTH_20_NOHT:
 	case CHAN_WIDTH_20:
 	case CHAN_WIDTH_40:
-		vht = CHANWIDTH_USE_HT;
+		cw = CHANWIDTH_USE_HT;
 		break;
 	case CHAN_WIDTH_80:
-		vht = CHANWIDTH_80MHZ;
+		cw = CHANWIDTH_80MHZ;
 		break;
 	case CHAN_WIDTH_80P80:
-		vht = CHANWIDTH_80P80MHZ;
+		cw = CHANWIDTH_80P80MHZ;
 		break;
 	case CHAN_WIDTH_160:
-		vht = CHANWIDTH_160MHZ;
+		cw = CHANWIDTH_160MHZ;
+		break;
+	case CHAN_WIDTH_2160:
+		cw = CHANWIDTH_2160MHZ;
+		break;
+	case CHAN_WIDTH_4320:
+		cw = CHANWIDTH_4320MHZ;
+		break;
+	case CHAN_WIDTH_6480:
+		cw = CHANWIDTH_6480MHZ;
+		break;
+	case CHAN_WIDTH_8640:
+		cw = CHANWIDTH_8640MHZ;
 		break;
 	}
 
-	if (ieee80211_freq_to_channel_ext(freq, sec_channel, vht, op_class,
+	if (ieee80211_freq_to_channel_ext(freq, sec_channel, cw, op_class,
 					  channel) == NUM_HOSTAPD_MODES) {
 		wpa_printf(MSG_WARNING,
 			   "Cannot determine operating class and channel (freq=%u chanwidth=%d sec_channel=%d)",
@@ -1010,10 +1054,22 @@ static int ieee80211_chan_to_freq_us(u8 op_class, u8 chan)
 		if (chan < 149 || chan > 165)
 			return -1;
 		return 5000 + 5 * chan;
-	case 34: /* 60 GHz band, channels 1..6 */
-		if (chan < 1 || chan > 6)
+	case 34: /* 60 GHz band, channels 1..8 */
+		if (chan < 1 || chan > 8)
 			return -1;
 		return 56160 + 2160 * chan;
+	case 37: /* 60 GHz band, EDMG CB2, channels 9..15 */
+		if (chan < 9 || chan > 15)
+			return -1;
+		return 56160 + 2160 * (chan - 8);
+	case 38: /* 60 GHz band, EDMG CB3, channels 17..22 */
+		if (chan < 17 || chan > 22)
+			return -1;
+		return 56160 + 2160 * (chan - 16);
+	case 39: /* 60 GHz band, EDMG CB4, channels 25..29 */
+		if (chan < 25 || chan > 29)
+			return -1;
+		return 56160 + 2160 * (chan - 24);
 	}
 	return -1;
 }
@@ -1052,6 +1108,18 @@ static int ieee80211_chan_to_freq_eu(u8 op_class, u8 chan)
 		if (chan < 1 || chan > 6)
 			return -1;
 		return 56160 + 2160 * chan;
+	case 21: /* 60 GHz band, EDMG CB2, channels 9..11 */
+		if (chan < 9 || chan > 11)
+			return -1;
+		return 56160 + 2160 * (chan - 8);
+	case 22: /* 60 GHz band, EDMG CB3, channels 17..18 */
+		if (chan < 17 || chan > 18)
+			return -1;
+		return 56160 + 2160 * (chan - 16);
+	case 23: /* 60 GHz band, EDMG CB4, channels 25 */
+		if (chan != 25)
+			return -1;
+		return 56160 + 2160 * (chan - 24);
 	}
 	return -1;
 }
@@ -1096,6 +1164,18 @@ static int ieee80211_chan_to_freq_jp(u8 op_class, u8 chan)
 		if (chan < 1 || chan > 6)
 			return -1;
 		return 56160 + 2160 * chan;
+	case 62: /* 60 GHz band, EDMG CB2, channels 9..11 */
+		if (chan < 9 || chan > 11)
+			return -1;
+		return 56160 + 2160 * (chan - 8);
+	case 63: /* 60 GHz band, EDMG CB3, channels 17..18 */
+		if (chan < 17 || chan > 18)
+			return -1;
+		return 56160 + 2160 * (chan - 16);
+	case 64: /* 60 GHz band, EDMG CB4, channel 25 */
+		if (chan != 25)
+			return -1;
+		return 56160 + 2160 * (chan - 24);
 	}
 	return -1;
 }
@@ -1188,10 +1268,22 @@ static int ieee80211_chan_to_freq_global(u8 op_class, u8 chan)
 		if (chan < 1 || chan > 233)
 			return -1;
 		return 5940 + chan * 5;
-	case 180: /* 60 GHz band, channels 1..6 */
-		if (chan < 1 || chan > 6)
+	case 180: /* 60 GHz band, channels 1..8 */
+		if (chan < 1 || chan > 8)
 			return -1;
 		return 56160 + 2160 * chan;
+	case 181: /* 60 GHz band, EDMG CB2, channels 9..15 */
+		if (chan < 9 || chan > 15)
+			return -1;
+		return 56160 + 2160 * (chan - 8);
+	case 182: /* 60 GHz band, EDMG CB3, channels 17..22 */
+		if (chan < 17 || chan > 22)
+			return -1;
+		return 56160 + 2160 * (chan - 16);
+	case 183: /* 60 GHz band, EDMG CB4, channel 25..29 */
+		if (chan < 25 || chan > 29)
+			return -1;
+		return 56160 + 2160 * (chan - 24);
 	}
 	return -1;
 }
@@ -1619,7 +1711,16 @@ const struct oper_class_map global_op_class[] = {
 	{ HOSTAPD_MODE_IEEE80211A, 129, 50, 114, 16, BW160, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 130, 36, 161, 4, BW80P80, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 131, 1, 233, 4, BW20, P2P_SUPP },
-	{ HOSTAPD_MODE_IEEE80211AD, 180, 1, 4, 1, BW2160, P2P_SUPP },
+
+	/*
+	 * IEEE Std 802.11ad-2012 and P802.ay/D5.0 60 GHz operating classes.
+	 * Class 180 has the legacy channels 1-6. Classes 181-183 include
+	 * channels which implement channel bonding features.
+	 */
+	{ HOSTAPD_MODE_IEEE80211AD, 180, 1, 6, 1, BW2160, P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211AD, 181, 9, 13, 1, BW4320, P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211AD, 182, 17, 20, 1, BW6480, P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211AD, 183, 25, 27, 1, BW8640, P2P_SUPP },
 	{ -1, 0, 0, 0, 0, BW20, NO_P2P_SUPP }
 };
 
@@ -1970,6 +2071,26 @@ int is_6ghz_op_class(u8 op_class)
 }
 
 
+int is_6ghz_psc_frequency(int freq)
+{
+	int i;
+
+	if (!is_6ghz_freq(freq))
+		return 0;
+	if ((((freq - 5940) / 5) & 0x3) != 0x1)
+		return 0;
+
+	i = (freq - 5940 + 55) % 80;
+	if (i == 0)
+		i = (freq - 5940 + 55) / 80;
+
+	if (i >= 1 && i <= 15)
+		return 1;
+
+	return 0;
+}
+
+
 int ieee802_11_parse_candidate_list(const char *pos, u8 *nei_rep,
 				    size_t nei_rep_len)
 {
@@ -2149,4 +2270,122 @@ int ieee802_edmg_is_allowed(struct ieee80211_edmg_config allowed,
 		return 0;
 
 	return 1;
+}
+
+
+int op_class_to_bandwidth(u8 op_class)
+{
+	switch (op_class) {
+	case 81:
+	case 82:
+		return 20;
+	case 83: /* channels 1..9; 40 MHz */
+	case 84: /* channels 5..13; 40 MHz */
+		return 40;
+	case 115: /* channels 36,40,44,48; indoor only */
+		return 20;
+	case 116: /* channels 36,44; 40 MHz; indoor only */
+	case 117: /* channels 40,48; 40 MHz; indoor only */
+		return 40;
+	case 118: /* channels 52,56,60,64; dfs */
+		return 20;
+	case 119: /* channels 52,60; 40 MHz; dfs */
+	case 120: /* channels 56,64; 40 MHz; dfs */
+		return 40;
+	case 121: /* channels 100-140 */
+		return 20;
+	case 122: /* channels 100-142; 40 MHz */
+	case 123: /* channels 104-136; 40 MHz */
+		return 40;
+	case 124: /* channels 149,153,157,161 */
+	case 125: /* channels 149,153,157,161,165,169 */
+		return 20;
+	case 126: /* channels 149,157; 40 MHz */
+	case 127: /* channels 153,161; 40 MHz */
+		return 40;
+	case 128: /* center freqs 42, 58, 106, 122, 138, 155; 80 MHz */
+		return 80;
+	case 129: /* center freqs 50, 114; 160 MHz */
+		return 160;
+	case 130: /* center freqs 42, 58, 106, 122, 138, 155; 80+80 MHz */
+		return 80;
+	case 131: /* UHB channels, 20 MHz: 1, 5, 9.. */
+		return 20;
+	case 132: /* UHB channels, 40 MHz: 3, 11, 19.. */
+		return 40;
+	case 133: /* UHB channels, 80 MHz: 7, 23, 39.. */
+		return 80;
+	case 134: /* UHB channels, 160 MHz: 15, 47, 79.. */
+	case 135: /* UHB channels, 80+80 MHz: 7, 23, 39.. */
+		return 160;
+	case 180: /* 60 GHz band, channels 1..8 */
+		return 2160;
+	case 181: /* 60 GHz band, EDMG CB2, channels 9..15 */
+		return 4320;
+	case 182: /* 60 GHz band, EDMG CB3, channels 17..22 */
+		return 6480;
+	case 183: /* 60 GHz band, EDMG CB4, channel 25..29 */
+		return 8640;
+	}
+
+	return 20;
+}
+
+
+int op_class_to_ch_width(u8 op_class)
+{
+	switch (op_class) {
+	case 81:
+	case 82:
+		return CHANWIDTH_USE_HT;
+	case 83: /* channels 1..9; 40 MHz */
+	case 84: /* channels 5..13; 40 MHz */
+		return CHANWIDTH_USE_HT;
+	case 115: /* channels 36,40,44,48; indoor only */
+		return CHANWIDTH_USE_HT;
+	case 116: /* channels 36,44; 40 MHz; indoor only */
+	case 117: /* channels 40,48; 40 MHz; indoor only */
+		return CHANWIDTH_USE_HT;
+	case 118: /* channels 52,56,60,64; dfs */
+		return CHANWIDTH_USE_HT;
+	case 119: /* channels 52,60; 40 MHz; dfs */
+	case 120: /* channels 56,64; 40 MHz; dfs */
+		return CHANWIDTH_USE_HT;
+	case 121: /* channels 100-140 */
+		return CHANWIDTH_USE_HT;
+	case 122: /* channels 100-142; 40 MHz */
+	case 123: /* channels 104-136; 40 MHz */
+		return CHANWIDTH_USE_HT;
+	case 124: /* channels 149,153,157,161 */
+	case 125: /* channels 149,153,157,161,165,169 */
+		return CHANWIDTH_USE_HT;
+	case 126: /* channels 149,157; 40 MHz */
+	case 127: /* channels 153,161; 40 MHz */
+		return CHANWIDTH_USE_HT;
+	case 128: /* center freqs 42, 58, 106, 122, 138, 155; 80 MHz */
+		return CHANWIDTH_80MHZ;
+	case 129: /* center freqs 50, 114; 160 MHz */
+		return CHANWIDTH_160MHZ;
+	case 130: /* center freqs 42, 58, 106, 122, 138, 155; 80+80 MHz */
+		return CHANWIDTH_80P80MHZ;
+	case 131: /* UHB channels, 20 MHz: 1, 5, 9.. */
+		return CHANWIDTH_USE_HT;
+	case 132: /* UHB channels, 40 MHz: 3, 11, 19.. */
+		return CHANWIDTH_USE_HT;
+	case 133: /* UHB channels, 80 MHz: 7, 23, 39.. */
+		return CHANWIDTH_80MHZ;
+	case 134: /* UHB channels, 160 MHz: 15, 47, 79.. */
+		return CHANWIDTH_160MHZ;
+	case 135: /* UHB channels, 80+80 MHz: 7, 23, 39.. */
+		return CHANWIDTH_80P80MHZ;
+	case 180: /* 60 GHz band, channels 1..8 */
+		return CHANWIDTH_2160MHZ;
+	case 181: /* 60 GHz band, EDMG CB2, channels 9..15 */
+		return CHANWIDTH_4320MHZ;
+	case 182: /* 60 GHz band, EDMG CB3, channels 17..22 */
+		return CHANWIDTH_6480MHZ;
+	case 183: /* 60 GHz band, EDMG CB4, channel 25..29 */
+		return CHANWIDTH_8640MHZ;
+	}
+	return CHANWIDTH_USE_HT;
 }

@@ -857,6 +857,13 @@ static int rate_match(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 					if (debug_print)
 						wpa_dbg(wpa_s, MSG_DEBUG,
 							"   SAE H2E disabled");
+#ifdef CONFIG_TESTING_OPTIONS
+					if (wpa_s->ignore_sae_h2e_only) {
+						wpa_dbg(wpa_s, MSG_DEBUG,
+							"TESTING: Ignore SAE H2E requirement mismatch");
+						continue;
+					}
+#endif /* CONFIG_TESTING_OPTIONS */
 					return 0;
 				}
 				continue;
@@ -1914,7 +1921,7 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	if (wnm_scan_process(wpa_s, 1) > 0)
 		goto scan_work_done;
 
-	if (sme_proc_obss_scan(wpa_s) > 0)
+	if (sme_proc_obss_scan(wpa_s, scan_res) > 0)
 		goto scan_work_done;
 
 	if (own_request && data &&
@@ -2939,6 +2946,16 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 
 	wpa_s->last_eapol_matches_bssid = 0;
 
+#ifdef CONFIG_TESTING_OPTIONS
+	if (wpa_s->rsnxe_override_eapol) {
+		wpa_printf(MSG_DEBUG,
+			   "TESTING: RSNXE EAPOL-Key msg 2/4 override");
+		wpa_sm_set_assoc_rsnxe(wpa_s->wpa,
+				       wpabuf_head(wpa_s->rsnxe_override_eapol),
+				       wpabuf_len(wpa_s->rsnxe_override_eapol));
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
+
 	if (wpa_s->pending_eapol_rx) {
 		struct os_reltime now, age;
 		os_get_reltime(&now);
@@ -3054,9 +3071,10 @@ static int could_be_psk_mismatch(struct wpa_supplicant *wpa_s, u16 reason_code,
 				 int locally_generated)
 {
 	if (wpa_s->wpa_state != WPA_4WAY_HANDSHAKE ||
+	    !wpa_s->new_connection ||
 	    !wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt) ||
 	    wpa_key_mgmt_sae(wpa_s->key_mgmt))
-		return 0; /* Not in 4-way handshake with PSK */
+		return 0; /* Not in initial 4-way handshake with PSK */
 
 	/*
 	 * It looks like connection was lost while trying to go through PSK

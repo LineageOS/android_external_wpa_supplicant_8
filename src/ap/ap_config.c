@@ -441,7 +441,7 @@ int hostapd_setup_sae_pt(struct hostapd_bss_config *conf)
 	struct hostapd_ssid *ssid = &conf->ssid;
 	struct sae_password_entry *pw;
 
-	if (conf->sae_pwe == 0)
+	if (conf->sae_pwe == 0 || !wpa_key_mgmt_sae(conf->wpa_key_mgmt))
 		return 0; /* PT not needed */
 
 	sae_deinit_pt(ssid->pt);
@@ -880,6 +880,7 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 #ifdef CONFIG_TESTING_OPTIONS
 	wpabuf_free(conf->own_ie_override);
 	wpabuf_free(conf->sae_commit_override);
+	wpabuf_free(conf->rsnxe_override_eapol);
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	os_free(conf->no_probe_resp_if_seen_on);
@@ -935,6 +936,7 @@ void hostapd_config_free(struct hostapd_config *conf)
 	os_free(conf->supported_rates);
 	os_free(conf->basic_rates);
 	os_free(conf->acs_ch_list.range);
+	os_free(conf->acs_freq_list.range);
 	os_free(conf->driver_params);
 #ifdef CONFIG_ACS
 	os_free(conf->acs_chan_bias);

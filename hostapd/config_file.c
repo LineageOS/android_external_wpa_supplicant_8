@@ -3162,6 +3162,15 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 				   line);
 			return 1;
 		}
+	} else if (os_strcmp(buf, "freqlist") == 0) {
+		if (freq_range_list_parse(&conf->acs_freq_list, pos)) {
+			wpa_printf(MSG_ERROR, "Line %d: invalid frequency list",
+				   line);
+			return 1;
+		}
+		conf->acs_freq_list_present = 1;
+	} else if (os_strcmp(buf, "acs_exclude_6ghz_non_psc") == 0) {
+		conf->acs_exclude_6ghz_non_psc = atoi(pos);
 	} else if (os_strcmp(buf, "beacon_int") == 0) {
 		int val = atoi(pos);
 		/* MIB defines range as 1..65535, but very small values
@@ -4156,6 +4165,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 	} else if (os_strcmp(buf, "sae_commit_override") == 0) {
 		wpabuf_free(bss->sae_commit_override);
 		bss->sae_commit_override = wpabuf_parse_bin(pos);
+	} else if (os_strcmp(buf, "rsnxe_override_eapol") == 0) {
+		wpabuf_free(bss->rsnxe_override_eapol);
+		bss->rsnxe_override_eapol = wpabuf_parse_bin(pos);
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_SAE
 	} else if (os_strcmp(buf, "sae_password") == 0) {

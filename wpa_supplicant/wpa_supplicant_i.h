@@ -931,6 +931,7 @@ struct wpa_supplicant {
 	unsigned int p2p_pd_before_go_neg:1;
 	unsigned int p2p_go_ht40:1;
 	unsigned int p2p_go_vht:1;
+	unsigned int p2p_go_edmg:1;
 	unsigned int p2p_go_he:1;
 	unsigned int user_initiated_pd:1;
 	unsigned int p2p_go_group_formation_completed:1;
@@ -1123,6 +1124,7 @@ struct wpa_supplicant {
 	unsigned int ignore_auth_resp:1;
 	unsigned int ignore_assoc_disallow:1;
 	unsigned int testing_resend_assoc:1;
+	unsigned int ignore_sae_h2e_only:1;
 	struct wpabuf *sae_commit_override;
 	enum wpa_alg last_tk_alg;
 	u8 last_tk_addr[ETH_ALEN];
@@ -1130,6 +1132,9 @@ struct wpa_supplicant {
 	u8 last_tk[WPA_TK_MAX_LEN];
 	size_t last_tk_len;
 	struct wpabuf *last_assoc_req_wpa_ie;
+	int *extra_sae_rejected_groups;
+	struct wpabuf *rsnxe_override_assoc;
+	struct wpabuf *rsnxe_override_eapol;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	struct wmm_ac_assoc_data *wmm_ac_assoc_info;
@@ -1232,7 +1237,7 @@ struct wpa_supplicant {
 	unsigned int dpp_listen_freq;
 	u8 dpp_allowed_roles;
 	int dpp_qr_mutual;
-	int dpp_netrole_ap;
+	int dpp_netrole;
 	int dpp_auth_ok_on_ack;
 	int dpp_in_response_listen;
 	int dpp_gas_client;

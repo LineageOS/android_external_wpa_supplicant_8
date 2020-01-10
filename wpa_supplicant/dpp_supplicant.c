@@ -89,6 +89,24 @@ int wpas_dpp_qr_code(struct wpa_supplicant *wpa_s, const char *cmd)
 }
 
 
+/**
+ * wpas_dpp_nfc_uri - Parse and add DPP bootstrapping info from NFC Tag (URI)
+ * @wpa_s: Pointer to wpa_supplicant data
+ * @cmd: DPP URI read from a NFC Tag (URI NDEF message)
+ * Returns: Identifier of the stored info or -1 on failure
+ */
+int wpas_dpp_nfc_uri(struct wpa_supplicant *wpa_s, const char *cmd)
+{
+	struct dpp_bootstrap_info *bi;
+
+	bi = dpp_add_nfc_uri(wpa_s->dpp, cmd);
+	if (!bi)
+		return -1;
+
+	return bi->id;
+}
+
+
 static void wpas_dpp_auth_resp_retry_timeout(void *eloop_ctx, void *timeout_ctx)
 {
 	struct wpa_supplicant *wpa_s = eloop_ctx;
@@ -180,6 +198,8 @@ static void wpas_dpp_conn_status_result_timeout(void *eloop_ctx,
 		result = DPP_STATUS_NO_AP;
 	else
 		result = 255; /* What to report here for unexpected state? */
+	if (wpa_s->wpa_state == WPA_SCANNING)
+		wpas_abort_ongoing_scan(wpa_s);
 	wpas_dpp_send_conn_status_result(wpa_s, result);
 }
 
@@ -663,7 +683,12 @@ int wpas_dpp_auth_init(struct wpa_supplicant *wpa_s, const char *cmd)
 	pos = os_strstr(cmd, " netrole=");
 	if (pos) {
 		pos += 9;
-		wpa_s->dpp_netrole_ap = os_strncmp(pos, "ap", 2) == 0;
+		if (os_strncmp(pos, "ap", 2) == 0)
+			wpa_s->dpp_netrole = DPP_NETROLE_AP;
+		else if (os_strncmp(pos, "configurator", 12) == 0)
+			wpa_s->dpp_netrole = DPP_NETROLE_CONFIGURATOR;
+		else
+			wpa_s->dpp_netrole = DPP_NETROLE_STA;
 	}
 
 	pos = os_strstr(cmd, " neg_freq=");
@@ -815,7 +840,12 @@ int wpas_dpp_listen(struct wpa_supplicant *wpa_s, const char *cmd)
 		wpa_s->dpp_allowed_roles = DPP_CAPAB_CONFIGURATOR |
 			DPP_CAPAB_ENROLLEE;
 	wpa_s->dpp_qr_mutual = os_strstr(cmd, " qr=mutual") != NULL;
-	wpa_s->dpp_netrole_ap = os_strstr(cmd, " netrole=ap") != NULL;
+	if (os_strstr(cmd, " netrole=ap"))
+		wpa_s->dpp_netrole = DPP_NETROLE_AP;
+	else if (os_strstr(cmd, " netrole=configurator"))
+		wpa_s->dpp_netrole = DPP_NETROLE_CONFIGURATOR;
+	else
+		wpa_s->dpp_netrole = DPP_NETROLE_STA;
 	if (wpa_s->dpp_listen_freq == (unsigned int) freq) {
 		wpa_printf(MSG_DEBUG, "DPP: Already listening on %u MHz",
 			   freq);
@@ -1120,6 +1150,9 @@ static int wpas_dpp_handle_config_obj(struct wpa_supplicant *wpa_s,
 	if (conf->ssid_len)
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
 			wpa_ssid_txt(conf->ssid, conf->ssid_len));
+	if (conf->ssid_charset)
+		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_SSID_CHARSET "%d",
+			conf->ssid_charset);
 	if (conf->connector) {
 		/* TODO: Save the Connector and consider using a command
 		 * to fetch the value instead of sending an event with
@@ -1283,7 +1316,7 @@ static void wpas_dpp_start_gas_client(struct wpa_supplicant *wpa_s)
 
 	supp_op_classes = wpas_supp_op_classes(wpa_s);
 	buf = dpp_build_conf_req_helper(auth, wpa_s->conf->dpp_name,
-					wpa_s->dpp_netrole_ap,
+					wpa_s->dpp_netrole,
 					wpa_s->conf->dpp_mud_url,
 					supp_op_classes);
 	os_free(supp_op_classes);
