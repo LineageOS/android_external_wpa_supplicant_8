@@ -78,7 +78,7 @@ private:
 	    const V1_0::IHostapd::NetworkParams& nw_params);
 	V1_2::HostapdStatus addAccessPointInternal_1_2(
 	    const V1_2::IHostapd::IfaceParams& IfaceParams,
-	    const V1_0::IHostapd::NetworkParams& nw_params);
+	    const V1_2::IHostapd::NetworkParams& nw_params);
 	V1_0::HostapdStatus removeAccessPointInternal(const std::string& iface_name);
 	V1_0::HostapdStatus registerCallbackInternal(
 	    const sp<V1_1::IHostapdCallback>& callback);

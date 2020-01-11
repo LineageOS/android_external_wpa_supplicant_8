@@ -203,29 +203,22 @@ int getOpClassForChannel(int channel, int band, bool support11n, bool support11a
 	return 0;
 }
 
+bool validatePassphrase(int passphrase_len, int min_len, int max_len)
+{
+	if (min_len != -1 && passphrase_len < min_len) return false;
+	if (max_len != -1 && passphrase_len > max_len) return false;
+	return true;
+}
+
 std::string CreateHostapdConfig(
     const IHostapd::IfaceParams& iface_params,
     const IHostapd::NetworkParams& nw_params)
 {
-	if (nw_params.ssid.size() >
+	if (nw_params.V1_0.ssid.size() >
 	    static_cast<uint32_t>(
 		IHostapd::ParamSizeLimits::SSID_MAX_LEN_IN_BYTES)) {
 		wpa_printf(
-		    MSG_ERROR, "Invalid SSID size: %zu", nw_params.ssid.size());
-		return "";
-	}
-	if ((nw_params.encryptionType != IHostapd::EncryptionType::NONE) &&
-	    (nw_params.pskPassphrase.size() <
-		 static_cast<uint32_t>(
-		     IHostapd::ParamSizeLimits::
-			 WPA2_PSK_PASSPHRASE_MIN_LEN_IN_BYTES) ||
-	     nw_params.pskPassphrase.size() >
-		 static_cast<uint32_t>(
-		     IHostapd::ParamSizeLimits::
-			 WPA2_PSK_PASSPHRASE_MAX_LEN_IN_BYTES))) {
-		wpa_printf(
-		    MSG_ERROR, "Invalid psk passphrase size: %zu",
-		    nw_params.pskPassphrase.size());
+		    MSG_ERROR, "Invalid SSID size: %zu", nw_params.V1_0.ssid.size());
 		return "";
 	}
 
@@ -233,7 +226,7 @@ std::string CreateHostapdConfig(
 	std::stringstream ss;
 	ss << std::hex;
 	ss << std::setfill('0');
-	for (uint8_t b : nw_params.ssid) {
+	for (uint8_t b : nw_params.V1_0.ssid) {
 		ss << std::setw(2) << static_cast<unsigned int>(b);
 	}
 	const std::string ssid_as_string = ss.str();
@@ -245,18 +238,67 @@ std::string CreateHostapdConfig(
 		// no security params
 		break;
 	case IHostapd::EncryptionType::WPA:
+		if (!validatePassphrase(
+		    nw_params.passphrase.size(),
+		    static_cast<uint32_t>(IHostapd::ParamSizeLimits::
+				WPA2_PSK_PASSPHRASE_MIN_LEN_IN_BYTES),
+		    static_cast<uint32_t>(IHostapd::ParamSizeLimits::
+				WPA2_PSK_PASSPHRASE_MAX_LEN_IN_BYTES))) {
+			return "";
+		}
 		encryption_config_as_string = StringPrintf(
 		    "wpa=3\n"
 		    "wpa_pairwise=TKIP CCMP\n"
 		    "wpa_passphrase=%s",
-		    nw_params.pskPassphrase.c_str());
+		    nw_params.passphrase.c_str());
 		break;
 	case IHostapd::EncryptionType::WPA2:
+		if (!validatePassphrase(
+		    nw_params.passphrase.size(),
+		    static_cast<uint32_t>(IHostapd::ParamSizeLimits::
+				WPA2_PSK_PASSPHRASE_MIN_LEN_IN_BYTES),
+		    static_cast<uint32_t>(IHostapd::ParamSizeLimits::
+				WPA2_PSK_PASSPHRASE_MAX_LEN_IN_BYTES))) {
+			return "";
+		}
 		encryption_config_as_string = StringPrintf(
 		    "wpa=2\n"
 		    "rsn_pairwise=CCMP\n"
 		    "wpa_passphrase=%s",
-		    nw_params.pskPassphrase.c_str());
+		    nw_params.passphrase.c_str());
+		break;
+	case IHostapd::EncryptionType::WPA3_SAE_TRANSITION:
+		if (!validatePassphrase(
+		    nw_params.passphrase.size(),
+		    static_cast<uint32_t>(IHostapd::ParamSizeLimits::
+				WPA2_PSK_PASSPHRASE_MIN_LEN_IN_BYTES),
+		    static_cast<uint32_t>(IHostapd::ParamSizeLimits::
+				WPA2_PSK_PASSPHRASE_MAX_LEN_IN_BYTES))) {
+			return "";
+		}
+		encryption_config_as_string = StringPrintf(
+		    "wpa=2\n"
+		    "rsn_pairwise=CCMP\n"
+		    "wpa_key_mgmt=WPA-PSK SAE\n"
+		    "ieee80211w=1\n"
+		    "sae_require_mfp=1\n"
+		    "wpa_passphrase=%s\n"
+		    "sae_password=%s",
+		    nw_params.passphrase.c_str(),
+		    nw_params.passphrase.c_str());
+		break;
+	case IHostapd::EncryptionType::WPA3_SAE:
+		if (!validatePassphrase(nw_params.passphrase.size(), 1, -1)) {
+			return "";
+		}
+		encryption_config_as_string = StringPrintf(
+		    "wpa=2\n"
+		    "rsn_pairwise=CCMP\n"
+		    "wpa_key_mgmt=SAE\n"
+		    "ieee80211w=2\n"
+		    "sae_require_mfp=2\n"
+		    "sae_password=%s",
+		    nw_params.passphrase.c_str());
 		break;
 	default:
 		wpa_printf(MSG_ERROR, "Unknown encryption type");
@@ -373,7 +415,7 @@ std::string CreateHostapdConfig(
 	    iface_params.V1_1.V1_0.hwModeParams.enable80211AC ? 1 : 0,
 	    he_params_as_string.c_str(),
 	    hw_mode_as_string.c_str(), ht_cap_vht_oper_chwidth_as_string.c_str(),
-	    nw_params.isHidden ? 1 : 0, encryption_config_as_string.c_str());
+	    nw_params.V1_0.isHidden ? 1 : 0, encryption_config_as_string.c_str());
 }
 
 // hostapd core functions accept "C" style function pointers, so use global
@@ -410,7 +452,7 @@ Hostapd::Hostapd(struct hapd_interfaces* interfaces) : interfaces_(interfaces)
 
 Return<void> Hostapd::addAccessPoint(
     const V1_0::IHostapd::IfaceParams& iface_params,
-    const NetworkParams& nw_params, addAccessPoint_cb _hidl_cb)
+    const V1_0::IHostapd::NetworkParams& nw_params, addAccessPoint_cb _hidl_cb)
 {
 	return call(
 	    this, &Hostapd::addAccessPointInternal, _hidl_cb, iface_params,
@@ -419,7 +461,7 @@ Return<void> Hostapd::addAccessPoint(
 
 Return<void> Hostapd::addAccessPoint_1_1(
     const V1_1::IHostapd::IfaceParams& iface_params,
-    const NetworkParams& nw_params, addAccessPoint_cb _hidl_cb)
+    const V1_0::IHostapd::NetworkParams& nw_params, addAccessPoint_cb _hidl_cb)
 {
 	return call(
 	    this, &Hostapd::addAccessPointInternal_1_1, _hidl_cb, iface_params,
@@ -474,14 +516,14 @@ Return<void> Hostapd::setDebugParams(
 
 V1_0::HostapdStatus Hostapd::addAccessPointInternal(
     const V1_0::IHostapd::IfaceParams& iface_params,
-    const NetworkParams& nw_params)
+    const V1_0::IHostapd::NetworkParams& nw_params)
 {
 	return {V1_0::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 }
 
 V1_0::HostapdStatus Hostapd::addAccessPointInternal_1_1(
     const V1_1::IHostapd::IfaceParams& iface_params,
-    const NetworkParams& nw_params)
+    const V1_1::IHostapd::NetworkParams& nw_params)
 {
 	return {V1_0::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 }
