@@ -1431,27 +1431,14 @@ void HidlManager::notifyExtRadioWorkTimeout(
 
 void HidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
 {
-	typedef V1_1::ISupplicantStaIfaceCallback::EapErrorCode EapErrorCode;
-
 	if (!wpa_s)
 		return;
 
-	switch (static_cast<EapErrorCode>(error_code)) {
-	case EapErrorCode::SIM_GENERAL_FAILURE_AFTER_AUTH:
-	case EapErrorCode::SIM_TEMPORARILY_DENIED:
-	case EapErrorCode::SIM_NOT_SUBSCRIBED:
-	case EapErrorCode::SIM_GENERAL_FAILURE_BEFORE_AUTH:
-	case EapErrorCode::SIM_VENDOR_SPECIFIC_EXPIRED_CERT:
-		break;
-	default:
-		return;
-	}
-
-	callWithEachStaIfaceCallback_1_1(
+	callWithEachStaIfaceCallback_1_3(
 	    wpa_s->ifname,
 	    std::bind(
-		&V1_1::ISupplicantStaIfaceCallback::onEapFailure_1_1,
-		std::placeholders::_1, static_cast<EapErrorCode>(error_code)));
+		&V1_3::ISupplicantStaIfaceCallback::onEapFailure_1_3,
+		std::placeholders::_1, error_code));
 }
 
 /**

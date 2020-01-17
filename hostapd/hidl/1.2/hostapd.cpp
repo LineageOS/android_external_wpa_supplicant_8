@@ -381,12 +381,10 @@ std::string CreateHostapdConfig(
 		    "he_su_beamformer=%d\n"
 		    "he_su_beamformee=%d\n"
 		    "he_mu_beamformer=%d\n"
-		    "he_bss_color=%d\n"
 		    "he_twt_required=%d\n",
 		    iface_params.hwModeParams.enableHeSingleUserBeamformer ? 1 : 0,
 		    iface_params.hwModeParams.enableHeSingleUserBeamformee ? 1 : 0,
 		    iface_params.hwModeParams.enableHeMultiUserBeamformer ? 1 : 0,
-		    iface_params.hwModeParams.heBssColor,
 		    iface_params.hwModeParams.enableHeTargetWakeTime ? 1 : 0);
 	} else {
 		he_params_as_string = "ieee80211ax=0";

@@ -209,6 +209,12 @@ void scanResJoinWrapper(
     struct wpa_supplicant *wpa_s,
     struct wpa_scan_results *scan_res)
 {
+	if (wpa_s->p2p_scan_work) {
+		struct wpa_radio_work *work = wpa_s->p2p_scan_work;
+		wpa_s->p2p_scan_work = NULL;
+		radio_work_done(work);
+	}
+
 	if (pending_scan_res_join_callback) {
 		pending_scan_res_join_callback();
 	}
@@ -310,6 +316,9 @@ int joinScanReq(
 	ret = wpa_drv_scan(wpa_s, &params);
 	if (!ret) {
 		os_get_reltime(&wpa_s->scan_trigger_time);
+		if (wpa_s->scan_res_handler) {
+			wpa_printf(MSG_DEBUG, "Replace current running scan result handler");
+		}
 		wpa_s->scan_res_handler = scanResJoinWrapper;
 		wpa_s->own_scan_requested = 1;
 		wpa_s->clear_driver_scan_cache = 0;
@@ -382,6 +391,13 @@ void notifyGroupJoinFailure(
 
 void scanResJoinIgnore(struct wpa_supplicant *wpa_s, struct wpa_scan_results *scan_res) {
 	wpa_printf(MSG_DEBUG, "P2P: Ignore group join scan results.");
+
+	if (wpa_s->p2p_scan_work) {
+		struct wpa_radio_work *work = wpa_s->p2p_scan_work;
+		wpa_s->p2p_scan_work = NULL;
+		radio_work_done(work);
+	}
+
 }
 
 }  // namespace
