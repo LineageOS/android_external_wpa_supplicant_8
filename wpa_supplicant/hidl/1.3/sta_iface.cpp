@@ -205,6 +205,14 @@ uint32_t convertWpaKeyMgmtCapabilitiesToHidl (
 	mask |= ISupplicantStaNetworkV1_3::ISupplicantStaNetwork::KeyMgmtMask::WAPI_PSK;
 	mask |= ISupplicantStaNetworkV1_3::ISupplicantStaNetwork::KeyMgmtMask::WAPI_CERT;
 #endif /* CONFIG_WAPI_INTERFACE */
+#ifdef CONFIG_FILS
+	if (capa->key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FILS_SHA256) {
+		mask |= ISupplicantStaNetworkV1_3::ISupplicantStaNetwork::KeyMgmtMask::FILS_SHA256;
+	}
+	if (capa->key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FILS_SHA384) {
+		mask |= ISupplicantStaNetworkV1_3::ISupplicantStaNetwork::KeyMgmtMask::FILS_SHA384;
+	}
+#endif /* CONFIG_FILS */
 	return mask;
 }
 
@@ -256,6 +264,22 @@ Return<void> StaIface::removeNetwork(
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 	    &StaIface::removeNetworkInternal, _hidl_cb, id);
+}
+
+Return<void> StaIface::filsHlpFlushRequest(filsHlpFlushRequest_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &StaIface::filsHlpFlushRequestInternal, _hidl_cb);
+}
+
+Return<void> StaIface::filsHlpAddRequest(
+    const hidl_array<uint8_t, 6> &dst_mac, const hidl_vec<uint8_t> &pkt,
+    filsHlpAddRequest_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &StaIface::filsHlpAddRequestInternal, _hidl_cb, dst_mac, pkt);
 }
 
 Return<void> StaIface::getNetwork(
@@ -670,6 +694,48 @@ std::pair<SupplicantStatus, std::string> StaIface::getNameInternal()
 std::pair<SupplicantStatus, IfaceType> StaIface::getTypeInternal()
 {
 	return {{SupplicantStatusCode::SUCCESS, ""}, IfaceType::STA};
+}
+
+SupplicantStatus StaIface::filsHlpFlushRequestInternal()
+{
+#ifdef CONFIG_FILS
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+
+	wpas_flush_fils_hlp_req(wpa_s);
+	return {SupplicantStatusCode::SUCCESS, ""};
+#else /* CONFIG_FILS */
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+#endif /* CONFIG_FILS */
+}
+
+SupplicantStatus StaIface::filsHlpAddRequestInternal(
+    const std::array<uint8_t, 6> &dst_mac, const std::vector<uint8_t> &pkt)
+{
+#ifdef CONFIG_FILS
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct fils_hlp_req *req;
+
+	if (!pkt.size())
+		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
+
+
+	req = (struct fils_hlp_req *)os_zalloc(sizeof(*req));
+	if (!req)
+		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+
+	os_memcpy(req->dst, dst_mac.data(), ETH_ALEN);
+
+	req->pkt = wpabuf_alloc_copy(pkt.data(), pkt.size());
+	if (!req->pkt) {
+		os_free(req);
+		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+	}
+
+	dl_list_add_tail(&wpa_s->fils_hlp_req, &req->list);
+	return {SupplicantStatusCode::SUCCESS, ""};
+#else /* CONFIG_FILS */
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+#endif /* CONFIG_FILS */
 }
 
 std::pair<SupplicantStatus, sp<ISupplicantNetwork>>

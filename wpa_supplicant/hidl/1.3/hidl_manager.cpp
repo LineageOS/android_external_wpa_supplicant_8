@@ -700,13 +700,22 @@ int HidlManager::notifyStateChange(struct wpa_supplicant *wpa_s)
 	} else {
 		bssid = wpa_s->bssid;
 	}
-	callWithEachStaIfaceCallback(
-	    wpa_s->ifname, std::bind(
-			       &ISupplicantStaIfaceCallback::onStateChanged,
-			       std::placeholders::_1,
-			       static_cast<ISupplicantStaIfaceCallback::State>(
-				   wpa_s->wpa_state),
-			       bssid, hidl_network_id, hidl_ssid));
+	bool fils_hlp_sent =
+		(wpa_auth_alg_fils(wpa_s->auth_alg) &&
+		 !dl_list_empty(&wpa_s->fils_hlp_req) &&
+		 (wpa_s->wpa_state == WPA_COMPLETED)) ? true : false;
+
+	// Invoke the |onStateChanged_1_3| method on all registered callbacks.
+	const std::function<
+		Return<void>(android::sp<V1_3::ISupplicantStaIfaceCallback>)>
+		func = std::bind(
+			&V1_3::ISupplicantStaIfaceCallback::onStateChanged_1_3,
+			std::placeholders::_1,
+			static_cast<ISupplicantStaIfaceCallback::State>(
+				wpa_s->wpa_state),
+				bssid, hidl_network_id, hidl_ssid,
+				fils_hlp_sent);
+	callWithEachStaIfaceCallbackDerived(wpa_s->ifname, func);
 	return 0;
 }
 

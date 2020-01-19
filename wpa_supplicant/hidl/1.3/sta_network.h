@@ -255,6 +255,7 @@ public:
 	Return<void> setAuthAlg_1_3(uint32_t auth_alg_mask,
 			std::function<void(const SupplicantStatus &status)> _hidl_cb)
 					override;
+	Return<void> setEapErp(bool enable, setEapErp_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -409,6 +410,7 @@ private:
 	    const char* hexdump_prefix);
 	void setFastTransitionKeyMgmt(uint32_t &key_mgmt_mask);
 	void resetFastTransitionKeyMgmt(uint32_t &key_mgmt_mask);
+	SupplicantStatus setEapErpInternal(bool enable);
 
 	// Reference to the global wpa_struct. This is assumed to be valid
 	// for the lifetime of the process.

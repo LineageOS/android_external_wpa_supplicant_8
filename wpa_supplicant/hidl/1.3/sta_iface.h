@@ -17,7 +17,7 @@
 
 #include <android/hardware/wifi/supplicant/1.3/ISupplicantStaIface.h>
 #include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIfaceCallback.h>
-#include <android/hardware/wifi/supplicant/1.2/ISupplicantStaNetwork.h>
+#include <android/hardware/wifi/supplicant/1.3/ISupplicantStaNetwork.h>
 
 extern "C"
 {
@@ -70,6 +70,11 @@ public:
 	Return<void> addNetwork(addNetwork_cb _hidl_cb) override;
 	Return<void> removeNetwork(
 	    SupplicantNetworkId id, removeNetwork_cb _hidl_cb) override;
+	Return<void> filsHlpFlushRequest(
+	    filsHlpFlushRequest_cb _hidl_cb) override;
+	Return<void> filsHlpAddRequest(
+	    const hidl_array<uint8_t, 6>& dst_mac, const hidl_vec<uint8_t>& pkt,
+	    filsHlpAddRequest_cb _hidl_cb) override;
 	Return<void> getNetwork(
 	    SupplicantNetworkId id, getNetwork_cb _hidl_cb) override;
 	Return<void> listNetworks(listNetworks_cb _hidl_cb) override;
@@ -197,6 +202,10 @@ private:
 	std::pair<SupplicantStatus, IfaceType> getTypeInternal();
 	std::pair<SupplicantStatus, sp<ISupplicantNetwork>>
 	addNetworkInternal();
+	SupplicantStatus filsHlpFlushRequestInternal();
+	SupplicantStatus filsHlpAddRequestInternal(
+	    const std::array<uint8_t, 6>& dst_mac,
+	    const std::vector<uint8_t>& pkt);
 	SupplicantStatus removeNetworkInternal(SupplicantNetworkId id);
 	std::pair<SupplicantStatus, sp<ISupplicantNetwork>> getNetworkInternal(
 	    SupplicantNetworkId id);
