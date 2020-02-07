@@ -1102,6 +1102,12 @@ struct ieee80211_vht_operation {
 	le16 vht_basic_mcs_set;
 } STRUCT_PACKED;
 
+struct ieee80211_vht_operation_info {
+	u8 vht_op_info_chwidth;
+	u8 vht_op_info_chan_center_freq_seg0_idx;
+	u8 vht_op_info_chan_center_freq_seg1_idx;
+} STRUCT_PACKED;
+
 struct ieee80211_ampe_ie {
 	u8 selected_pairwise_suite[4];
 	u8 local_nonce[32];
@@ -2122,9 +2128,13 @@ enum nr_chan_width {
 struct ieee80211_he_capabilities {
 	u8 he_mac_capab_info[6];
 	u8 he_phy_capab_info[11];
-	/* Followed by 4, 8, or 12 octets of Supported HE-MCS And NSS Set field
+	struct {
+		le16 rx_map;
+		le16 tx_map;
+	} he_basic_supported_mcs_set;
+	/* Followed by 0, 4, or 8 octets of optional supported HE-MCS And NSS Set field
 	* and optional variable length PPE Thresholds field. */
-	u8 optional[37];
+	u8 optional[33];
 } STRUCT_PACKED;
 
 struct ieee80211_he_operation {
@@ -2152,8 +2162,17 @@ struct ieee80211_spatial_reuse {
 	u8 params[19];
 } STRUCT_PACKED;
 
-/* HE Capabilities Information defines */
+struct ieee80211_6ghz_operation_info {
+	u8 primary_chan;
+	u8 control;
+	u8 chan_center_freq_seg0_idx;
+	u8 chan_center_freq_seg1_idx;
+	u8 minimum_rate;
+} STRUCT_PACKED;
 
+#define HE_CAPABILITIES_IE_MIN_LEN 21
+
+/* HE Capabilities Information defines */
 #define HE_PHYCAP_CHANNEL_WIDTH_SET_IDX		0
 #define HE_PHYCAP_CHANNEL_WIDTH_MASK		((u8) (BIT(1) | BIT(2) | \
 						      BIT(3) | BIT(4)))
@@ -2200,12 +2219,22 @@ struct ieee80211_spatial_reuse {
 #define HE_OPERATION_BSS_COLOR_DISABLED		((u32) BIT(31))
 #define HE_OPERATION_BSS_COLOR_OFFSET		24
 
+/* HE operation fields length*/
+#define HE_OPERATION_IE_MIN_LEN 6
+#define HE_OPERATION_VHT_OPER_INFO_LEN 3
+#define HE_OPERATION_COHOSTED_BSSID_INDICATOR_LEN 1
+#define HE_OPERATION_6GHZ_OPER_INFO_LEN 5
+
 /* Spatial Reuse defines */
 #define SPATIAL_REUSE_SRP_DISALLOWED		BIT(0)
 #define SPATIAL_REUSE_NON_SRG_OBSS_PD_SR_DISALLOWED	BIT(1)
 #define SPATIAL_REUSE_NON_SRG_OFFSET_PRESENT	BIT(2)
 #define SPATIAL_REUSE_SRG_INFORMATION_PRESENT	BIT(3)
 #define SPATIAL_REUSE_HESIGA_SR_VAL15_ALLOWED	BIT(4)
+
+/* 6GHz operation control field defines*/
+#define SIX_GHZ_CONTROL_CHANNEL_WIDTH_MASK 	((u8) BIT(0) | BIT(1))
+#define SIX_GHZ_CONTROL_DUPLICATE_BEACON 	BIT(2)
 
 struct ieee80211_he_mu_edca_parameter_set {
 	u8 he_qos_info;

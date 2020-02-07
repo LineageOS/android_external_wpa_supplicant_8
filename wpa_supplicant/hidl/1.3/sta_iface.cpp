@@ -31,6 +31,7 @@ using ISupplicantStaNetworkV1_2 =
 	android::hardware::wifi::supplicant::V1_2::ISupplicantStaNetwork;
 using ISupplicantStaNetworkV1_3 =
 	android::hardware::wifi::supplicant::V1_3::ISupplicantStaNetwork;
+using android::hardware::wifi::V1_0::WifiChannelWidthInMhz;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
 using android::hardware::wifi::supplicant::V1_0::ISupplicantStaNetwork;
@@ -1436,8 +1437,33 @@ StaIface::getConnectionCapabilitiesInternal()
 		} else {
 			capa.technology = WifiTechnology::LEGACY;
 		}
+		switch (wpa_s->connection_channel_bandwidth) {
+		case CHAN_WIDTH_20:
+			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
+			break;
+		case CHAN_WIDTH_40:
+			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_40;
+			break;
+		case CHAN_WIDTH_80:
+			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_80;
+			break;
+		case CHAN_WIDTH_160:
+			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_160;
+			break;
+		case CHAN_WIDTH_80P80:
+			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_80P80;
+			break;
+		default:
+			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
+			break;
+		}
+		capa.maxNumberRxSpatialStreams = wpa_s->connection_max_nss_rx;
+		capa.maxNumberTxSpatialStreams = wpa_s->connection_max_nss_tx;
 	} else {
 		capa.technology = WifiTechnology::UNKNOWN;
+		capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
+		capa.maxNumberTxSpatialStreams = 1;
+		capa.maxNumberRxSpatialStreams = 1;
 	}
 	return {{SupplicantStatusCode::SUCCESS, ""}, capa};
 }

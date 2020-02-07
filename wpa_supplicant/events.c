@@ -2476,6 +2476,30 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 				resp_elems.vht_capabilities;
 			wpa_s->connection_he = req_elems.he_capabilities &&
 				resp_elems.he_capabilities;
+
+			int max_nss_rx_req = get_max_nss_capability(&req_elems, 1);
+			int max_nss_rx_resp = get_max_nss_capability(&resp_elems, 1);
+			wpa_s->connection_max_nss_rx = (max_nss_rx_resp > max_nss_rx_req) ?
+				max_nss_rx_req : max_nss_rx_resp;
+			int max_nss_tx_req = get_max_nss_capability(&req_elems, 0);
+			int max_nss_tx_resp = get_max_nss_capability(&resp_elems, 0);
+			wpa_s->connection_max_nss_tx = (max_nss_tx_resp > max_nss_tx_req) ?
+				max_nss_tx_req : max_nss_tx_resp;
+
+			struct supported_chan_width sta_supported_chan_width =
+				get_supported_channel_width(&req_elems);
+			enum chan_width ap_operation_chan_width =
+				get_operation_channel_width(&resp_elems);
+			if (wpa_s->connection_vht || wpa_s->connection_he) {
+				wpa_s->connection_channel_bandwidth =
+					get_sta_operation_chan_width(ap_operation_chan_width,
+					sta_supported_chan_width);
+			} else if (wpa_s->connection_ht) {
+				wpa_s->connection_channel_bandwidth = (ap_operation_chan_width
+					== CHAN_WIDTH_40) ? CHAN_WIDTH_40 : CHAN_WIDTH_20;
+			} else {
+				wpa_s->connection_channel_bandwidth = CHAN_WIDTH_20;
+			}
 		}
 	}
 
