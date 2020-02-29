@@ -1247,6 +1247,16 @@ void HidlManager::notifyP2pGroupStarted(
 	bool hidl_is_go = (client == 0 ? true : false);
 	bool hidl_is_persistent = (persistent == 1 ? true : false);
 
+	// notify the group device again to ensure the framework knowing this device.
+	struct p2p_data *p2p = wpa_s->global->p2p;
+	struct p2p_device *dev = p2p_get_device(p2p, wpa_group_s->go_dev_addr);
+	if (NULL != dev) {
+		wpa_printf(MSG_DEBUG, "P2P: Update GO device on group started.");
+		p2p->cfg->dev_found(p2p->cfg->cb_ctx, wpa_group_s->go_dev_addr,
+				&dev->info, !(dev->flags & P2P_DEV_REPORTED_ONCE));
+		dev->flags |= P2P_DEV_REPORTED | P2P_DEV_REPORTED_ONCE;
+	}
+
 	callWithEachP2pIfaceCallback(
 	    wpa_s->ifname,
 	    std::bind(
