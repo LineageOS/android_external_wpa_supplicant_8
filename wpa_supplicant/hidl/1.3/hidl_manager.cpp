@@ -1691,6 +1691,10 @@ uint32_t getBssTmDataAssocRetryDelayMs(struct wpa_supplicant *wpa_s)
 	else
 		beacon_int = 100; /* best guess */
 
+	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_DISASSOC_IMMINENT) {
+		// number of tbtts to milliseconds
+		duration_ms = wpa_s->wnm_dissoc_timer * beacon_int * 128 / 125;
+	}
 	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_BSS_TERMINATION_INCLUDED) {
 		//wnm_bss_termination_duration contains 12 bytes of BSS
 		//termination duration subelement. Format of IE is
@@ -1701,17 +1705,13 @@ uint32_t getBssTmDataAssocRetryDelayMs(struct wpa_supplicant *wpa_s)
 		duration_ms = WPA_GET_LE16(wpa_s->wnm_bss_termination_duration + 10);
 		// minutes to milliseconds
 		duration_ms = duration_ms * 60 * 1000;
-	} else if ((wpa_s->wnm_mode & WNM_BSS_TM_REQ_DISASSOC_IMMINENT)
-		   || (wpa_s->wnm_mode & WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT)) {
-		// number of tbtts to milliseconds
-		duration_ms = wpa_s->wnm_dissoc_timer * beacon_int * 128 / 125;
-#ifdef CONFIG_MBO
-		if (wpa_s->wnm_mbo_assoc_retry_delay_present) {
-			// number of seconds to milliseconds
-			duration_ms = wpa_s->wnm_mbo_assoc_retry_delay_sec * 1000;
-		}
-#endif
 	}
+#ifdef CONFIG_MBO
+	if (wpa_s->wnm_mbo_assoc_retry_delay_present) {
+		// number of seconds to milliseconds
+		duration_ms = wpa_s->wnm_mbo_assoc_retry_delay_sec * 1000;
+	}
+#endif
 
 	return duration_ms;
 }
