@@ -220,7 +220,6 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		struct wowlan_triggers *triggs;
 
 		iface->drv_flags = capa.flags;
-		iface->smps_modes = capa.smps_modes;
 		iface->probe_resp_offloads = capa.probe_resp_offloads;
 		/*
 		 * Use default extended capa values from per-radio information
@@ -262,7 +261,7 @@ hostapd_interface_init(struct hapd_interfaces *interfaces, const char *if_name,
 	struct hostapd_iface *iface;
 	int k;
 
-	wpa_printf(MSG_ERROR, "Configuration file: %s", config_fname);
+	wpa_printf(MSG_DEBUG, "Configuration file: %s", config_fname);
 	iface = hostapd_init(interfaces, config_fname);
 	if (!iface)
 		return NULL;
@@ -453,11 +452,12 @@ static int hostapd_global_run(struct hapd_interfaces *ifaces, int daemonize,
 static void show_version(void)
 {
 	fprintf(stderr,
-		"hostapd v" VERSION_STR "\n"
+		"hostapd v%s\n"
 		"User space daemon for IEEE 802.11 AP management,\n"
 		"IEEE 802.1X/WPA/WPA2/EAP/RADIUS Authenticator\n"
 		"Copyright (c) 2002-2019, Jouni Malinen <j@w1.fi> "
-		"and contributors\n");
+		"and contributors\n",
+		VERSION_STR);
 }
 
 
@@ -772,7 +772,7 @@ int main(int argc, char *argv[])
 
 	if (log_file)
 		wpa_debug_open_file(log_file);
-	else
+	if (!log_file && !wpa_debug_syslog)
 		wpa_debug_setup_stdout();
 #ifdef CONFIG_DEBUG_SYSLOG
 	if (wpa_debug_syslog)

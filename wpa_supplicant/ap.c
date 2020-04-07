@@ -44,7 +44,6 @@ static void wpas_wps_ap_pin_timeout(void *eloop_data, void *user_ctx);
 #endif /* CONFIG_WPS */
 
 
-#ifdef CONFIG_IEEE80211N
 static void wpas_conf_ap_vht(struct wpa_supplicant *wpa_s,
 			     struct wpa_ssid *ssid,
 			     struct hostapd_config *conf,
@@ -130,7 +129,6 @@ no_vht:
 		conf->channel + conf->secondary_channel * 2;
 	conf->vht_oper_chwidth = CHANWIDTH_USE_HT;
 }
-#endif /* CONFIG_IEEE80211N */
 
 
 int wpa_supplicant_conf_ap_ht(struct wpa_supplicant *wpa_s,
@@ -149,7 +147,6 @@ int wpa_supplicant_conf_ap_ht(struct wpa_supplicant *wpa_s,
 	/* TODO: enable HT40 if driver supports it;
 	 * drop to 11b if driver does not support 11g */
 
-#ifdef CONFIG_IEEE80211N
 	/*
 	 * Enable HT20 if the driver supports it, by setting conf->ieee80211n
 	 * and a mask of allowed capabilities within conf->ht_capab.
@@ -269,7 +266,6 @@ int wpa_supplicant_conf_ap_ht(struct wpa_supplicant *wpa_s,
 			conf->no_pri_sec_switch = 1;
 		}
 	}
-#endif /* CONFIG_IEEE80211N */
 
 	return 0;
 }
@@ -348,7 +344,9 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_IEEE80211AX */
 
 	bss->isolate = !wpa_s->conf->p2p_intra_bss;
+	bss->extended_key_id = wpa_s->conf->extended_key_id;
 	bss->force_per_enrollee_psk = wpa_s->global->p2p_per_sta_psk;
+	bss->wpa_deny_ptk0_rekey = ssid->wpa_deny_ptk0_rekey;
 
 	if (ssid->p2p_group) {
 		os_memcpy(bss->ip_addr_go, wpa_s->p2pdev->conf->ip_addr_go, 4);
@@ -393,6 +391,7 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 		bss->ssid.wpa_psk_set = 1;
 	} else if (ssid->passphrase) {
 		bss->ssid.wpa_passphrase = os_strdup(ssid->passphrase);
+#ifdef CONFIG_WEP
 	} else if (ssid->wep_key_len[0] || ssid->wep_key_len[1] ||
 		   ssid->wep_key_len[2] || ssid->wep_key_len[3]) {
 		struct hostapd_wep_keys *wep = &bss->ssid.wep;
@@ -408,6 +407,7 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 		}
 		wep->idx = ssid->wep_tx_keyidx;
 		wep->keys_set = 1;
+#endif /* CONFIG_WEP */
 	}
 #ifdef CONFIG_SAE
 	if (ssid->sae_password) {
@@ -489,11 +489,12 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 	bss->wpa_group = wpa_select_ap_group_cipher(bss->wpa, bss->wpa_pairwise,
 						    bss->rsn_pairwise);
 
-	if (bss->wpa && bss->ieee802_1x)
+	if (bss->wpa && bss->ieee802_1x) {
 		bss->ssid.security_policy = SECURITY_WPA;
-	else if (bss->wpa)
+	} else if (bss->wpa) {
 		bss->ssid.security_policy = SECURITY_WPA_PSK;
-	else if (bss->ieee802_1x) {
+#ifdef CONFIG_WEP
+	} else if (bss->ieee802_1x) {
 		int cipher = WPA_CIPHER_NONE;
 		bss->ssid.security_policy = SECURITY_IEEE_802_1X;
 		bss->ssid.wep.default_len = bss->default_wep_key_len;
@@ -511,6 +512,7 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 		bss->wpa_group = cipher;
 		bss->wpa_pairwise = cipher;
 		bss->rsn_pairwise = cipher;
+#endif /* CONFIG_WEP */
 	} else {
 		bss->ssid.security_policy = SECURITY_PLAINTEXT;
 		bss->wpa_group = WPA_CIPHER_NONE;
@@ -604,6 +606,8 @@ no_wps:
 
 	bss->ftm_responder = wpa_s->conf->ftm_responder;
 	bss->ftm_initiator = wpa_s->conf->ftm_initiator;
+
+	bss->transition_disable = ssid->transition_disable;
 
 	return 0;
 }
@@ -839,7 +843,6 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 		return -1;
 	hapd_iface->owner = wpa_s;
 	hapd_iface->drv_flags = wpa_s->drv_flags;
-	hapd_iface->smps_modes = wpa_s->drv_smps_modes;
 	hapd_iface->probe_resp_offloads = wpa_s->probe_resp_offloads;
 	hapd_iface->extended_capa = wpa_s->extended_capa;
 	hapd_iface->extended_capa_mask = wpa_s->extended_capa_mask;

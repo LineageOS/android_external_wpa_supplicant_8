@@ -78,6 +78,7 @@ struct wiphy_info_data {
 	unsigned int wmm_ac_supported:1;
 	unsigned int mac_addr_rand_scan_supported:1;
 	unsigned int mac_addr_rand_sched_scan_supported:1;
+	unsigned int update_ft_ies_supported:1;
 };
 
 
@@ -242,6 +243,9 @@ static void wiphy_info_supp_cmds(struct wiphy_info_data *info,
 			break;
 		case NL80211_CMD_SET_QOS_MAP:
 			info->set_qos_map_supported = 1;
+			break;
+		case NL80211_CMD_UPDATE_FT_IES:
+			info->update_ft_ies_supported = 1;
 			break;
 		}
 	}
@@ -433,6 +437,26 @@ static void wiphy_info_ext_feature_flags(struct wiphy_info_data *info,
 	if (ext_feature_isset(ext_features, len,
 			      NL80211_EXT_FEATURE_ENABLE_FTM_RESPONDER))
 		capa->flags |= WPA_DRIVER_FLAGS_FTM_RESPONDER;
+
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_CONTROL_PORT_OVER_NL80211))
+		capa->flags |= WPA_DRIVER_FLAGS_CONTROL_PORT;
+
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_VLAN_OFFLOAD))
+		capa->flags |= WPA_DRIVER_FLAGS_VLAN_OFFLOAD;
+
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_CAN_REPLACE_PTK0))
+		capa->flags |= WPA_DRIVER_FLAGS_SAFE_PTK0_REKEYS;
+
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_BEACON_PROTECTION))
+		capa->flags |= WPA_DRIVER_FLAGS_BEACON_PROTECTION;
+
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_EXT_KEY_ID))
+		capa->flags |= WPA_DRIVER_FLAGS_EXTENDED_KEY_ID;
 }
 
 
@@ -478,12 +502,6 @@ static void wiphy_info_feature_flags(struct wiphy_info_data *info,
 
 	if (flags & NL80211_FEATURE_SCHED_SCAN_RANDOM_MAC_ADDR)
 		info->mac_addr_rand_sched_scan_supported = 1;
-
-	if (flags & NL80211_FEATURE_STATIC_SMPS)
-		capa->smps_modes |= WPA_DRIVER_SMPS_MODE_STATIC;
-
-	if (flags & NL80211_FEATURE_DYNAMIC_SMPS)
-		capa->smps_modes |= WPA_DRIVER_SMPS_MODE_DYNAMIC;
 
 	if (flags & NL80211_FEATURE_SUPPORTS_WMM_ADMISSION)
 		info->wmm_ac_supported = 1;
@@ -904,6 +922,9 @@ static int wpa_driver_nl80211_get_info(struct wpa_driver_nl80211_data *drv,
 		drv->capa.max_sched_scan_plan_iterations = 0;
 	}
 
+	if (info->update_ft_ies_supported)
+		drv->capa.flags |= WPA_DRIVER_FLAGS_UPDATE_FT_IES;
+
 	return 0;
 }
 
@@ -1294,6 +1315,12 @@ int wpa_driver_nl80211_capa(struct wpa_driver_nl80211_data *drv)
 		drv->capa.flags &= ~WPA_DRIVER_FLAGS_OFFCHANNEL_SIMULTANEOUS;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: key_mgmt=0x%x enc=0x%x auth=0x%x flags=0x%llx rrm_flags=0x%x probe_resp_offloads=0x%x max_stations=%u max_remain_on_chan=%u max_scan_ssids=%d",
+		   drv->capa.key_mgmt, drv->capa.enc, drv->capa.auth,
+		   (unsigned long long) drv->capa.flags, drv->capa.rrm_flags,
+		   drv->capa.probe_resp_offloads, drv->capa.max_stations,
+		   drv->capa.max_remain_on_chan, drv->capa.max_scan_ssids);
 	return 0;
 }
 
@@ -1357,6 +1384,20 @@ static int phy_info_edmg_capa(struct hostapd_hw_modes *mode,
 		return NL_STOP;
 
 	return NL_OK;
+}
+
+
+static int cw2ecw(unsigned int cw)
+{
+	int bit;
+
+	if (cw == 0)
+		return 0;
+
+	for (bit = 1; cw != 1; bit++)
+		cw >>= 1;
+
+	return bit;
 }
 
 
@@ -1432,6 +1473,12 @@ static void phy_info_freq(struct hostapd_hw_modes *mode,
 			[NL80211_WMMR_AIFSN] = { .type = NLA_U8 },
 			[NL80211_WMMR_TXOP] = { .type = NLA_U16 },
 		};
+		static const u8 wmm_map[4] = {
+			[NL80211_AC_BE] = WMM_AC_BE,
+			[NL80211_AC_BK] = WMM_AC_BK,
+			[NL80211_AC_VI] = WMM_AC_VI,
+			[NL80211_AC_VO] = WMM_AC_VO,
+		};
 		struct nlattr *nl_wmm;
 		struct nlattr *tb_wmm[NL80211_WMMR_MAX + 1];
 		int rem_wmm, ac, count = 0;
@@ -1453,16 +1500,19 @@ static void phy_info_freq(struct hostapd_hw_modes *mode,
 				return;
 			}
 			ac = nl_wmm->nla_type;
-			if (ac < 0 || ac >= WMM_AC_NUM) {
+			if ((unsigned int) ac >= ARRAY_SIZE(wmm_map)) {
 				wpa_printf(MSG_DEBUG,
 					   "nl80211: Invalid AC value %d", ac);
 				return;
 			}
 
+			ac = wmm_map[ac];
 			chan->wmm_rules[ac].min_cwmin =
-				nla_get_u16(tb_wmm[NL80211_WMMR_CW_MIN]);
+				cw2ecw(nla_get_u16(
+					       tb_wmm[NL80211_WMMR_CW_MIN]));
 			chan->wmm_rules[ac].min_cwmax =
-				nla_get_u16(tb_wmm[NL80211_WMMR_CW_MAX]);
+				cw2ecw(nla_get_u16(
+					       tb_wmm[NL80211_WMMR_CW_MAX]));
 			chan->wmm_rules[ac].min_aifs =
 				nla_get_u8(tb_wmm[NL80211_WMMR_AIFSN]);
 			chan->wmm_rules[ac].max_txop =

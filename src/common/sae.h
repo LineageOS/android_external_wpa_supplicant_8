@@ -70,6 +70,7 @@ struct sae_data {
 	u8 pmk[SAE_PMK_LEN];
 	u8 pmkid[SAE_PMKID_LEN];
 	struct crypto_bignum *peer_commit_scalar;
+	struct crypto_bignum *peer_commit_scalar_accepted;
 	int group;
 	unsigned int sync; /* protocol instance variable: Sync */
 	u16 rc; /* protocol instance variable: Rc (received send-confirm) */
@@ -87,8 +88,8 @@ int sae_prepare_commit_pt(struct sae_data *sae, const struct sae_pt *pt,
 			  const u8 *addr1, const u8 *addr2,
 			  int *rejected_groups);
 int sae_process_commit(struct sae_data *sae);
-void sae_write_commit(struct sae_data *sae, struct wpabuf *buf,
-		      const struct wpabuf *token, const char *identifier);
+int sae_write_commit(struct sae_data *sae, struct wpabuf *buf,
+		     const struct wpabuf *token, const char *identifier);
 u16 sae_parse_commit(struct sae_data *sae, const u8 *data, size_t len,
 		     const u8 **token, size_t *token_len, int *allowed_groups,
 		     int h2e);

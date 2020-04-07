@@ -991,20 +991,25 @@ dbus_bool_t wpas_dbus_getter_global_capabilities(
 	const struct wpa_dbus_property_desc *property_desc,
 	DBusMessageIter *iter, DBusError *error, void *user_data)
 {
-	const char *capabilities[11];
+	const char *capabilities[12];
 	size_t num_items = 0;
-#ifdef CONFIG_FILS
 	struct wpa_global *global = user_data;
 	struct wpa_supplicant *wpa_s;
+#ifdef CONFIG_FILS
 	int fils_supported = 0, fils_sk_pfs_supported = 0;
+#endif /* CONFIG_FILS */
+	int ext_key_id_supported = 0;
 
 	for (wpa_s = global->ifaces; wpa_s; wpa_s = wpa_s->next) {
+#ifdef CONFIG_FILS
 		if (wpa_is_fils_supported(wpa_s))
 			fils_supported = 1;
 		if (wpa_is_fils_sk_pfs_supported(wpa_s))
 			fils_sk_pfs_supported = 1;
-	}
 #endif /* CONFIG_FILS */
+		if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_EXTENDED_KEY_ID)
+			ext_key_id_supported = 1;
+	}
 
 #ifdef CONFIG_AP
 	capabilities[num_items++] = "ap";
@@ -1037,6 +1042,8 @@ dbus_bool_t wpas_dbus_getter_global_capabilities(
 #ifdef CONFIG_OWE
 	capabilities[num_items++] = "owe";
 #endif /* CONFIG_OWE */
+	if (ext_key_id_supported)
+		capabilities[num_items++] = "extended_key_id";
 
 	return wpas_dbus_simple_array_property_getter(iter,
 						      DBUS_TYPE_STRING,
@@ -1146,7 +1153,7 @@ static int wpas_dbus_get_scan_ies(DBusMessage *message, DBusMessageIter *var,
 				  DBusMessage **reply)
 {
 	u8 *ies = NULL, *nies;
-	int ies_len = 0;
+	size_t ies_len = 0;
 	DBusMessageIter array_iter, sub_array_iter;
 	char *val;
 	int len;
@@ -1177,7 +1184,7 @@ static int wpas_dbus_get_scan_ies(DBusMessage *message, DBusMessageIter *var,
 		dbus_message_iter_recurse(&array_iter, &sub_array_iter);
 
 		dbus_message_iter_get_fixed_array(&sub_array_iter, &val, &len);
-		if (len == 0) {
+		if (len <= 0) {
 			dbus_message_iter_next(&array_iter);
 			continue;
 		}
@@ -1208,7 +1215,7 @@ static int wpas_dbus_get_scan_channels(DBusMessage *message,
 {
 	DBusMessageIter array_iter, sub_array_iter;
 	int *freqs = NULL, *nfreqs;
-	int freqs_num = 0;
+	size_t freqs_num = 0;
 
 	if (dbus_message_iter_get_arg_type(var) != DBUS_TYPE_ARRAY) {
 		wpa_printf(MSG_DEBUG,
@@ -2664,7 +2671,10 @@ dbus_bool_t wpas_dbus_getter_capabilities(
 	/***** group cipher */
 	if (res < 0) {
 		const char *args[] = {
-			"ccmp", "tkip", "wep104", "wep40"
+			"ccmp", "tkip",
+#ifdef CONFIG_WEP
+			"wep104", "wep40"
+#endif /* CONFIG_WEP */
 		};
 
 		if (!wpa_dbus_dict_append_string_array(
@@ -2691,12 +2701,14 @@ dbus_bool_t wpas_dbus_getter_capabilities(
 		    ((capa.enc & WPA_DRIVER_CAPA_ENC_TKIP) &&
 		     !wpa_dbus_dict_string_array_add_element(
 			     &iter_array, "tkip")) ||
+#ifdef CONFIG_WEP
 		    ((capa.enc & WPA_DRIVER_CAPA_ENC_WEP104) &&
 		     !wpa_dbus_dict_string_array_add_element(
 			     &iter_array, "wep104")) ||
 		    ((capa.enc & WPA_DRIVER_CAPA_ENC_WEP40) &&
 		     !wpa_dbus_dict_string_array_add_element(
 			     &iter_array, "wep40")) ||
+#endif /* CONFIG_WEP */
 		    !wpa_dbus_dict_end_string_array(&iter_dict,
 						    &iter_dict_entry,
 						    &iter_dict_val,
@@ -2792,6 +2804,12 @@ dbus_bool_t wpas_dbus_getter_capabilities(
 							    "wps"))
 			goto nomem;
 #endif /* CONFIG_WPS */
+
+#ifdef CONFIG_SAE
+		if ((capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SAE) &&
+		    !wpa_dbus_dict_string_array_add_element(&iter_array, "sae"))
+			goto nomem;
+#endif /* CONFIG_SAE */
 
 		if (!wpa_dbus_dict_end_string_array(&iter_dict,
 						    &iter_dict_entry,
@@ -4733,9 +4751,14 @@ static dbus_bool_t wpas_dbus_get_bss_security_prop(
 
 	/* Group */
 	switch (ie_data->group_cipher) {
+#ifdef CONFIG_WEP
 	case WPA_CIPHER_WEP40:
 		group = "wep40";
 		break;
+	case WPA_CIPHER_WEP104:
+		group = "wep104";
+		break;
+#endif /* CONFIG_WEP */
 	case WPA_CIPHER_TKIP:
 		group = "tkip";
 		break;
@@ -4744,9 +4767,6 @@ static dbus_bool_t wpas_dbus_get_bss_security_prop(
 		break;
 	case WPA_CIPHER_GCMP:
 		group = "gcmp";
-		break;
-	case WPA_CIPHER_WEP104:
-		group = "wep104";
 		break;
 	case WPA_CIPHER_CCMP_256:
 		group = "ccmp-256";

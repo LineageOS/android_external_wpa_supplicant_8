@@ -492,14 +492,18 @@ atheros_del_key(void *priv, const u8 *addr, int key_idx)
 }
 
 static int
-atheros_set_key(const char *ifname, void *priv, enum wpa_alg alg,
-		const u8 *addr, int key_idx, int set_tx, const u8 *seq,
-		size_t seq_len, const u8 *key, size_t key_len)
+atheros_set_key(void *priv, struct wpa_driver_set_key_params *params)
 {
 	struct atheros_driver_data *drv = priv;
 	struct ieee80211req_key wk;
 	u_int8_t cipher;
 	int ret;
+	enum wpa_alg alg = params->alg;
+	const u8 *addr = params->addr;
+	int key_idx = params->key_idx;
+	int set_tx = params->set_tx;
+	const u8 *key = params->key;
+	size_t key_len = params->key_len;
 
 	if (alg == WPA_ALG_NONE)
 		return atheros_del_key(drv, addr, key_idx);
@@ -1960,7 +1964,8 @@ static int atheros_set_ap(void *priv, struct wpa_driver_ap_params *params)
 
 static int atheros_send_mgmt(void *priv, const u8 *frm, size_t data_len,
 			     int noack, unsigned int freq,
-			     const u16 *csa_offs, size_t csa_offs_len)
+			     const u16 *csa_offs, size_t csa_offs_len,
+			     int no_encrypt, unsigned int wait)
 {
 	struct atheros_driver_data *drv = priv;
 	u8 buf[1510];

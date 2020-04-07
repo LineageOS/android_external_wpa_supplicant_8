@@ -54,8 +54,6 @@ struct macsec_drv_data {
 	struct nl_sock *sk;
 	struct macsec_genl_ctx ctx;
 
-	struct netlink_data *netlink;
-	struct nl_handle *nl;
 	char ifname[IFNAMSIZ + 1];
 	int ifi;
 	int parent_ifi;
@@ -321,14 +319,14 @@ static int macsec_drv_macsec_init(void *priv, struct macsec_init_params *params)
 	if (err < 0) {
 		wpa_printf(MSG_ERROR, DRV_PREFIX
 			   "Unable to connect NETLINK_ROUTE socket: %s",
-			   strerror(errno));
+			   nl_geterror(err));
 		goto sock;
 	}
 
 	err = rtnl_link_alloc_cache(drv->sk, AF_UNSPEC, &drv->link_cache);
 	if (err < 0) {
 		wpa_printf(MSG_ERROR, DRV_PREFIX "Unable to get link cache: %s",
-			   strerror(errno));
+			   nl_geterror(err));
 		goto sock;
 	}
 

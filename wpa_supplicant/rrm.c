@@ -609,7 +609,8 @@ static int * wpas_channel_report_freqs(struct wpa_supplicant *wpa_s, int active,
 		pos++;
 		left--;
 
-		mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, op->mode);
+		mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, op->mode,
+				is_6ghz_op_class(op->op_class));
 		if (!mode)
 			continue;
 
@@ -661,7 +662,8 @@ static int * wpas_beacon_request_freqs(struct wpa_supplicant *wpa_s,
 		return NULL;
 	}
 
-	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, op->mode);
+	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, op->mode,
+			is_6ghz_op_class(op->op_class));
 	if (!mode)
 		return NULL;
 
@@ -693,8 +695,8 @@ static int * wpas_beacon_request_freqs(struct wpa_supplicant *wpa_s,
 }
 
 
-static int wpas_get_op_chan_phy(int freq, const u8 *ies, size_t ies_len,
-				u8 *op_class, u8 *chan, u8 *phy_type)
+int wpas_get_op_chan_phy(int freq, const u8 *ies, size_t ies_len,
+			 u8 *op_class, u8 *chan, u8 *phy_type)
 {
 	const u8 *ie;
 	int sec_chan = 0, vht = 0;

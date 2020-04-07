@@ -1856,6 +1856,8 @@ static char * wpa_config_write_machine_password(const struct parse_data *data,
 #endif /* IEEE8021X_EAPOL */
 
 
+#ifdef CONFIG_WEP
+
 static int wpa_config_parse_wep_key(u8 *key, size_t *len, int line,
 				    const char *value, int idx)
 {
@@ -1965,6 +1967,8 @@ static char * wpa_config_write_wep_key3(const struct parse_data *data,
 	return wpa_config_write_wep_key(ssid, 3);
 }
 #endif /* NO_CONFIG_WRITE */
+
+#endif /* CONFIG_WEP */
 
 
 #ifdef CONFIG_P2P
@@ -2451,11 +2455,13 @@ static const struct parse_data ssid_fields[] = {
 	{ STRe(openssl_ciphers, openssl_ciphers) },
 	{ INTe(erp, erp) },
 #endif /* IEEE8021X_EAPOL */
+#ifdef CONFIG_WEP
 	{ FUNC_KEY(wep_key0) },
 	{ FUNC_KEY(wep_key1) },
 	{ FUNC_KEY(wep_key2) },
 	{ FUNC_KEY(wep_key3) },
 	{ INT(wep_tx_keyidx) },
+#endif /* CONFIG_WEP */
 	{ INT(priority) },
 #ifdef IEEE8021X_EAPOL
 	{ INT(eap_workaround) },
@@ -2495,6 +2501,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT(dot11MeshHoldingTimeout) },
 #endif /* CONFIG_MESH */
 	{ INT(wpa_ptk_rekey) },
+	{ INT_RANGE(wpa_deny_ptk0_rekey, 0, 2) },
 	{ INT(group_rekey) },
 	{ STR(bgscan) },
 	{ INT_RANGE(ignore_broadcast_ssid, 0, 2) },
@@ -2537,6 +2544,9 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(vht_tx_mcs_nss_7, -1, 3) },
 	{ INT_RANGE(vht_tx_mcs_nss_8, -1, 3) },
 #endif /* CONFIG_VHT_OVERRIDES */
+#ifdef CONFIG_HE_OVERRIDES
+	{ INT_RANGE(disable_he, 0, 1)},
+#endif /* CONFIG_HE_OVERRIDES */
 	{ INT(ap_max_inactivity) },
 	{ INT(dtim_period) },
 	{ INT(beacon_int) },
@@ -2563,11 +2573,15 @@ static const struct parse_data ssid_fields[] = {
 	{ STR_LEN(dpp_netaccesskey) },
 	{ INT(dpp_netaccesskey_expiry) },
 	{ STR_LEN(dpp_csign) },
+	{ INT_RANGE(dpp_pfs, 0, 2) },
 #endif /* CONFIG_DPP */
 	{ INT_RANGE(owe_group, 0, 65535) },
 	{ INT_RANGE(owe_only, 0, 1) },
+	{ INT_RANGE(owe_ptk_workaround, 0, 1) },
 	{ INT_RANGE(multi_ap_backhaul_sta, 0, 1) },
 	{ INT_RANGE(ft_eap_pmksa_caching, 0, 1) },
+	{ INT_RANGE(beacon_prot, 0, 1) },
+	{ INT_RANGE(transition_disable, 0, 255) },
 };
 
 #undef OFFSET
@@ -2603,7 +2617,7 @@ static const struct parse_data ssid_fields[] = {
 int wpa_config_add_prio_network(struct wpa_config *config,
 				struct wpa_ssid *ssid)
 {
-	int prio;
+	size_t prio;
 	struct wpa_ssid *prev, **nlist;
 
 	/*
@@ -3018,6 +3032,7 @@ void wpa_config_set_network_defaults(struct wpa_ssid *ssid)
 	ssid->pairwise_cipher = DEFAULT_PAIRWISE;
 	ssid->group_cipher = DEFAULT_GROUP;
 	ssid->key_mgmt = DEFAULT_KEY_MGMT;
+	ssid->wpa_deny_ptk0_rekey = PTK0_REKEY_ALLOW_ALWAYS;
 	ssid->bg_scan_period = DEFAULT_BG_SCAN_PERIOD;
 	ssid->ht = 1;
 #ifdef IEEE8021X_EAPOL
@@ -4283,6 +4298,7 @@ struct wpa_config * wpa_config_alloc_empty(const char *ctrl_interface,
 	config->key_mgmt_offload = DEFAULT_KEY_MGMT_OFFLOAD;
 	config->cert_in_cb = DEFAULT_CERT_IN_CB;
 	config->wpa_rsc_relaxation = DEFAULT_WPA_RSC_RELAXATION;
+	config->extended_key_id = DEFAULT_EXTENDED_KEY_ID;
 
 #ifdef CONFIG_MBO
 	config->mbo_cell_capa = DEFAULT_MBO_CELL_CAPA;
@@ -4308,7 +4324,7 @@ struct wpa_config * wpa_config_alloc_empty(const char *ctrl_interface,
  */
 void wpa_config_debug_dump_networks(struct wpa_config *config)
 {
-	int prio;
+	size_t prio;
 	struct wpa_ssid *ssid;
 
 	for (prio = 0; prio < config->num_prio; prio++) {
@@ -4639,7 +4655,7 @@ static int wpa_config_process_p2p_pref_chan(
 	struct wpa_config *config, int line, const char *pos)
 {
 	struct p2p_channel *pref = NULL, *n;
-	unsigned int num = 0;
+	size_t num = 0;
 	const char *pos2;
 	u8 op_class, chan;
 
@@ -4997,7 +5013,7 @@ static const struct global_parse_data global_fields[] = {
 	{ INT(okc), 0 },
 	{ INT(pmf), 0 },
 	{ FUNC(sae_groups), 0 },
-	{ INT_RANGE(sae_pwe, 0, 2), 0 },
+	{ INT_RANGE(sae_pwe, 0, 3), 0 },
 	{ INT_RANGE(sae_pmkid_in_assoc, 0, 1), 0 },
 	{ INT(dtim_period), 0 },
 	{ INT(beacon_int), 0 },
@@ -5047,6 +5063,7 @@ static const struct global_parse_data global_fields[] = {
 	{ INT_RANGE(bss_no_flush_when_down, 0, 1), 0 },
 #ifdef CONFIG_WNM
 	{ INT_RANGE(disable_btm, 0, 1), CFG_CHANGED_DISABLE_BTM },
+	{ INT_RANGE(extended_key_id, 0, 1), 0 },
 #endif /* CONFIG_WNM */
 };
 

@@ -109,7 +109,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			const u8 *req_ies, size_t req_ies_len, int reassoc)
 {
 	struct sta_info *sta;
-	int new_assoc, res;
+	int new_assoc;
+	enum wpa_validate_result res;
 	struct ieee802_11_elems elems;
 	const u8 *ie;
 	size_t ielen;
@@ -220,7 +221,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 	}
 #endif /* CONFIG_P2P */
 
-#ifdef CONFIG_IEEE80211N
 #ifdef NEED_AP_MLME
 	if (elems.ht_capabilities &&
 	    (hapd->iface->conf->ht_capab &
@@ -234,7 +234,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			ht40_intolerant_add(hapd->iface, sta);
 	}
 #endif /* NEED_AP_MLME */
-#endif /* CONFIG_IEEE80211N */
 
 #ifdef CONFIG_INTERWORKING
 	if (elems.ext_capab && elems.ext_capab_len > 4) {
@@ -325,33 +324,67 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 					  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
 					  elems.mdie, elems.mdie_len,
 					  elems.owe_dh, elems.owe_dh_len);
-		if (res != WPA_IE_OK) {
+		reason = WLAN_REASON_INVALID_IE;
+		status = WLAN_STATUS_INVALID_IE;
+		switch (res) {
+		case WPA_IE_OK:
+			reason = WLAN_REASON_UNSPECIFIED;
+			status = WLAN_STATUS_SUCCESS;
+			break;
+		case WPA_INVALID_IE:
+			reason = WLAN_REASON_INVALID_IE;
+			status = WLAN_STATUS_INVALID_IE;
+			break;
+		case WPA_INVALID_GROUP:
+			reason = WLAN_REASON_GROUP_CIPHER_NOT_VALID;
+			status = WLAN_STATUS_GROUP_CIPHER_NOT_VALID;
+			break;
+		case WPA_INVALID_PAIRWISE:
+			reason = WLAN_REASON_PAIRWISE_CIPHER_NOT_VALID;
+			status = WLAN_STATUS_PAIRWISE_CIPHER_NOT_VALID;
+			break;
+		case WPA_INVALID_AKMP:
+			reason = WLAN_REASON_AKMP_NOT_VALID;
+			status = WLAN_STATUS_AKMP_NOT_VALID;
+			break;
+		case WPA_NOT_ENABLED:
+			reason = WLAN_REASON_INVALID_IE;
+			status = WLAN_STATUS_INVALID_IE;
+			break;
+		case WPA_ALLOC_FAIL:
+			reason = WLAN_REASON_UNSPECIFIED;
+			status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			break;
+		case WPA_MGMT_FRAME_PROTECTION_VIOLATION:
+			reason = WLAN_REASON_INVALID_IE;
+			status = WLAN_STATUS_INVALID_IE;
+			break;
+		case WPA_INVALID_MGMT_GROUP_CIPHER:
+			reason = WLAN_REASON_CIPHER_SUITE_REJECTED;
+			status = WLAN_STATUS_CIPHER_REJECTED_PER_POLICY;
+			break;
+		case WPA_INVALID_MDIE:
+			reason = WLAN_REASON_INVALID_MDE;
+			status = WLAN_STATUS_INVALID_MDIE;
+			break;
+		case WPA_INVALID_PROTO:
+			reason = WLAN_REASON_INVALID_IE;
+			status = WLAN_STATUS_INVALID_IE;
+			break;
+		case WPA_INVALID_PMKID:
+			reason = WLAN_REASON_INVALID_PMKID;
+			status = WLAN_STATUS_INVALID_PMKID;
+			break;
+		case WPA_DENIED_OTHER_REASON:
+			reason = WLAN_REASON_UNSPECIFIED;
+			status = WLAN_STATUS_ASSOC_DENIED_UNSPEC;
+			break;
+		}
+		if (status != WLAN_STATUS_SUCCESS) {
 			wpa_printf(MSG_DEBUG,
 				   "WPA/RSN information element rejected? (res %u)",
 				   res);
 			wpa_hexdump(MSG_DEBUG, "IE", ie, ielen);
-			if (res == WPA_INVALID_GROUP) {
-				reason = WLAN_REASON_GROUP_CIPHER_NOT_VALID;
-				status = WLAN_STATUS_GROUP_CIPHER_NOT_VALID;
-			} else if (res == WPA_INVALID_PAIRWISE) {
-				reason = WLAN_REASON_PAIRWISE_CIPHER_NOT_VALID;
-				status = WLAN_STATUS_PAIRWISE_CIPHER_NOT_VALID;
-			} else if (res == WPA_INVALID_AKMP) {
-				reason = WLAN_REASON_AKMP_NOT_VALID;
-				status = WLAN_STATUS_AKMP_NOT_VALID;
-			} else if (res == WPA_MGMT_FRAME_PROTECTION_VIOLATION) {
-				reason = WLAN_REASON_INVALID_IE;
-				status = WLAN_STATUS_INVALID_IE;
-			} else if (res == WPA_INVALID_MGMT_GROUP_CIPHER) {
-				reason = WLAN_REASON_CIPHER_SUITE_REJECTED;
-				status = WLAN_STATUS_CIPHER_REJECTED_PER_POLICY;
-			} else if (res == WPA_INVALID_PMKID) {
-				reason = WLAN_REASON_INVALID_PMKID;
-				status = WLAN_STATUS_INVALID_PMKID;
-			} else {
-				reason = WLAN_REASON_INVALID_IE;
-				status = WLAN_STATUS_INVALID_IE;
-			}
 			goto fail;
 		}
 
@@ -469,6 +502,9 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			return WLAN_STATUS_INVALID_IE;
 #endif /* CONFIG_HS20 */
 	}
+#ifdef CONFIG_WPS
+skip_wpa_check:
+#endif /* CONFIG_WPS */
 
 #ifdef CONFIG_MBO
 	if (hapd->conf->mbo_enabled && (hapd->conf->wpa & 2) &&
@@ -480,13 +516,10 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 	}
 #endif /* CONFIG_MBO */
 
-#ifdef CONFIG_WPS
-skip_wpa_check:
-#endif /* CONFIG_WPS */
-
 #ifdef CONFIG_IEEE80211R_AP
 	p = wpa_sm_write_assoc_resp_ies(sta->wpa_sm, buf, sizeof(buf),
-					sta->auth_alg, req_ies, req_ies_len);
+					sta->auth_alg, req_ies, req_ies_len,
+					!elems.rsnxe);
 	if (!p) {
 		wpa_printf(MSG_DEBUG, "FT: Failed to write AssocResp IEs");
 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
@@ -577,18 +610,18 @@ skip_wpa_check:
 		npos = owe_assoc_req_process(hapd, sta,
 					     elems.owe_dh, elems.owe_dh_len,
 					     p, sizeof(buf) - (p - buf),
-					     &reason);
+					     &status);
 		if (npos)
 			p = npos;
+
 		if (!npos &&
-		    reason == WLAN_STATUS_FINITE_CYCLIC_GROUP_NOT_SUPPORTED) {
-			status = WLAN_STATUS_FINITE_CYCLIC_GROUP_NOT_SUPPORTED;
+		    status == WLAN_STATUS_FINITE_CYCLIC_GROUP_NOT_SUPPORTED) {
 			hostapd_sta_assoc(hapd, addr, reassoc, status, buf,
 					  p - buf);
 			return 0;
 		}
 
-		if (!npos || reason != WLAN_STATUS_SUCCESS)
+		if (!npos || status != WLAN_STATUS_SUCCESS)
 			goto fail;
 	}
 #endif /* CONFIG_OWE */
@@ -624,6 +657,11 @@ skip_wpa_check:
 				   sta->dpp_pfs->secret : NULL);
 	pfs_fail:
 #endif /* CONFIG_DPP2 */
+
+	if (elems.rrm_enabled &&
+	    elems.rrm_enabled_len >= sizeof(sta->rrm_enabled_capa))
+	    os_memcpy(sta->rrm_enabled_capa, elems.rrm_enabled,
+		      sizeof(sta->rrm_enabled_capa));
 
 #if defined(CONFIG_IEEE80211R_AP) || defined(CONFIG_FILS) || defined(CONFIG_OWE)
 	hostapd_sta_assoc(hapd, addr, reassoc, status, buf, p - buf);
@@ -709,6 +747,7 @@ void hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr)
 
 	ap_sta_set_authorized(hapd, sta, 0);
 	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC);
+	hostapd_set_sta_flags(hapd, sta);
 	wpa_auth_sm_event(sta->wpa_sm, WPA_DISASSOC);
 	sta->acct_terminate_cause = RADIUS_ACCT_TERMINATE_CAUSE_USER_REQUEST;
 	ieee802_1x_notify_port_enabled(sta->eapol_sm, 0);
@@ -906,6 +945,12 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 	} else if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) {
 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_CSA_FINISHED
 			"freq=%d dfs=%d", freq, is_dfs);
+	} else if (is_dfs &&
+		   hostapd_is_dfs_required(hapd->iface) &&
+		   !hostapd_is_dfs_chan_available(hapd->iface) &&
+		   !hapd->iface->cac_started) {
+		hostapd_disable_iface(hapd->iface);
+		hostapd_enable_iface(hapd->iface);
 	}
 
 	for (i = 0; i < hapd->iface->num_bss; i++)
@@ -1005,32 +1050,35 @@ void hostapd_acs_channel_selected(struct hostapd_data *hapd,
 		goto out;
 	}
 
+	hapd->iconf->edmg_channel = acs_res->edmg_channel;
+
 	if (hapd->iface->conf->ieee80211ac || hapd->iface->conf->ieee80211ax) {
 		/* set defaults for backwards compatibility */
 		hostapd_set_oper_centr_freq_seg1_idx(hapd->iconf, 0);
 		hostapd_set_oper_centr_freq_seg0_idx(hapd->iconf, 0);
 		hostapd_set_oper_chwidth(hapd->iconf, CHANWIDTH_USE_HT);
-		if (acs_res->ch_width == 80) {
+		if (acs_res->ch_width == 40) {
+			if (is_6ghz_freq(acs_res->pri_freq))
+				hostapd_set_oper_centr_freq_seg0_idx(
+					hapd->iconf,
+					acs_res->vht_seg0_center_ch);
+		} else if (acs_res->ch_width == 80) {
 			hostapd_set_oper_centr_freq_seg0_idx(
 				hapd->iconf, acs_res->vht_seg0_center_ch);
-			hostapd_set_oper_chwidth(hapd->iconf, CHANWIDTH_80MHZ);
-		} else if (acs_res->ch_width == 160) {
 			if (acs_res->vht_seg1_center_ch == 0) {
-				hostapd_set_oper_centr_freq_seg0_idx(
-					hapd->iconf,
-					acs_res->vht_seg0_center_ch);
 				hostapd_set_oper_chwidth(hapd->iconf,
-							 CHANWIDTH_160MHZ);
+							 CHANWIDTH_80MHZ);
 			} else {
-				hostapd_set_oper_centr_freq_seg0_idx(
-					hapd->iconf,
-					acs_res->vht_seg0_center_ch);
+				hostapd_set_oper_chwidth(hapd->iconf,
+							 CHANWIDTH_80P80MHZ);
 				hostapd_set_oper_centr_freq_seg1_idx(
 					hapd->iconf,
 					acs_res->vht_seg1_center_ch);
-				hostapd_set_oper_chwidth(hapd->iconf,
-							 CHANWIDTH_80P80MHZ);
 			}
+		} else if (acs_res->ch_width == 160) {
+			hostapd_set_oper_chwidth(hapd->iconf, CHANWIDTH_160MHZ);
+			hostapd_set_oper_centr_freq_seg0_idx(
+				hapd->iconf, acs_res->vht_seg1_center_ch);
 		}
 	}
 
@@ -1426,15 +1474,33 @@ static void hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
 #endif /* HOSTAPD */
 
 
+static struct hostapd_channel_data *
+hostapd_get_mode_chan(struct hostapd_hw_modes *mode, unsigned int freq)
+{
+	int i;
+	struct hostapd_channel_data *chan;
+
+	for (i = 0; i < mode->num_channels; i++) {
+		chan = &mode->channels[i];
+		if ((unsigned int) chan->freq == freq)
+			return chan;
+	}
+
+	return NULL;
+}
+
+
 static struct hostapd_channel_data * hostapd_get_mode_channel(
 	struct hostapd_iface *iface, unsigned int freq)
 {
 	int i;
 	struct hostapd_channel_data *chan;
 
-	for (i = 0; i < iface->current_mode->num_channels; i++) {
-		chan = &iface->current_mode->channels[i];
-		if ((unsigned int) chan->freq == freq)
+	for (i = 0; i < iface->num_hw_features; i++) {
+		if (hostapd_hw_skip_mode(iface, &iface->hw_features[i]))
+			continue;
+		chan = hostapd_get_mode_chan(&iface->hw_features[i], freq);
+		if (chan)
 			return chan;
 	}
 

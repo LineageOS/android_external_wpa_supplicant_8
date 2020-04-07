@@ -95,6 +95,8 @@ extern "C" {
 /** SAE authentication failed due to unknown password identifier */
 #define WPA_EVENT_SAE_UNKNOWN_PASSWORD_IDENTIFIER \
 	"CTRL-EVENT-SAE-UNKNOWN-PASSWORD-IDENTIFIER "
+/** Unprotected Beacon frame dropped */
+#define WPA_EVENT_UNPROT_BEACON "CTRL-EVENT-UNPROT-BEACON "
 
 /** IP subnet status change notification
  *
@@ -179,6 +181,7 @@ extern "C" {
 #define DPP_EVENT_NET_ACCESS_KEY "DPP-NET-ACCESS-KEY "
 #define DPP_EVENT_MISSING_CONNECTOR "DPP-MISSING-CONNECTOR "
 #define DPP_EVENT_NETWORK_ID "DPP-NETWORK-ID "
+#define DPP_EVENT_CONFIGURATOR_ID "DPP-CONFIGURATOR-ID "
 #define DPP_EVENT_RX "DPP-RX "
 #define DPP_EVENT_TX "DPP-TX "
 #define DPP_EVENT_TX_STATUS "DPP-TX-STATUS "
@@ -186,6 +189,7 @@ extern "C" {
 #define DPP_EVENT_PKEX_T_LIMIT "DPP-PKEX-T-LIMIT "
 #define DPP_EVENT_INTRO "DPP-INTRO "
 #define DPP_EVENT_CONF_REQ_RX "DPP-CONF-REQ-RX "
+#define DPP_EVENT_CHIRP_STOPPED "DPP-CHIRP-STOPPED "
 
 /* MESH events */
 #define MESH_GROUP_STARTED "MESH-GROUP-STARTED "
@@ -378,6 +382,13 @@ extern "C" {
 /* New interface addition or removal for 4addr WDS SDA */
 #define WDS_STA_INTERFACE_ADDED "WDS-STA-INTERFACE-ADDED "
 #define WDS_STA_INTERFACE_REMOVED "WDS-STA-INTERFACE-REMOVED "
+
+/* Transition mode disabled indication - followed by bitmap */
+#define TRANSITION_DISABLE "TRANSITION-DISABLE "
+
+#ifndef BIT
+#define BIT(x) (1U << (x))
+#endif
 
 /* BSS command information masks */
 

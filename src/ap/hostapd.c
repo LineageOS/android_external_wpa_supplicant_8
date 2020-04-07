@@ -13,6 +13,7 @@
 
 #include "utils/common.h"
 #include "utils/eloop.h"
+#include "utils/crc32.h"
 #include "common/ieee802_11_defs.h"
 #include "common/wpa_ctrl.h"
 #include "common/hw_features_common.h"
@@ -57,8 +58,10 @@
 
 
 static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason);
+#ifdef CONFIG_WEP
 static int hostapd_setup_encryption(char *iface, struct hostapd_data *hapd);
 static int hostapd_broadcast_wep_clear(struct hostapd_data *hapd);
+#endif /* CONFIG_WEP */
 static int setup_interface2(struct hostapd_iface *iface);
 static void channel_list_update_timeout(void *eloop_ctx, void *timeout_ctx);
 static void hostapd_interface_setup_failure_handler(void *eloop_ctx,
@@ -88,7 +91,9 @@ void hostapd_reconfig_encryption(struct hostapd_data *hapd)
 		return;
 
 	hostapd_set_privacy(hapd, 0);
+#ifdef CONFIG_WEP
 	hostapd_setup_encryption(hapd->conf->iface, hapd);
+#endif /* CONFIG_WEP */
 }
 
 
@@ -141,7 +146,9 @@ static void hostapd_reload_bss(struct hostapd_data *hapd)
 		wpa_deinit(hapd->wpa_auth);
 		hapd->wpa_auth = NULL;
 		hostapd_set_privacy(hapd, 0);
+#ifdef CONFIG_WEP
 		hostapd_setup_encryption(hapd->conf->iface, hapd);
+#endif /* CONFIG_WEP */
 		hostapd_set_generic_elem(hapd, (u8 *) "", 0);
 	}
 
@@ -169,7 +176,9 @@ static void hostapd_clear_old(struct hostapd_iface *iface)
 	for (j = 0; j < iface->num_bss; j++) {
 		hostapd_flush_old_stations(iface->bss[j],
 					   WLAN_REASON_PREV_AUTH_NOT_VALID);
+#ifdef CONFIG_WEP
 		hostapd_broadcast_wep_clear(iface->bss[j]);
+#endif /* CONFIG_WEP */
 
 #ifndef CONFIG_NO_RADIUS
 		/* TODO: update dynamic data based on changed configuration
@@ -283,6 +292,8 @@ int hostapd_reload_config(struct hostapd_iface *iface)
 }
 
 
+#ifdef CONFIG_WEP
+
 static void hostapd_broadcast_key_clear_iface(struct hostapd_data *hapd,
 					      const char *ifname)
 {
@@ -291,8 +302,8 @@ static void hostapd_broadcast_key_clear_iface(struct hostapd_data *hapd,
 	if (!ifname || !hapd->drv_priv)
 		return;
 	for (i = 0; i < NUM_WEP_KEYS; i++) {
-		if (hostapd_drv_set_key(ifname, hapd, WPA_ALG_NONE, NULL, i,
-					0, NULL, 0, NULL, 0)) {
+		if (hostapd_drv_set_key(ifname, hapd, WPA_ALG_NONE, NULL, i, 0,
+					0, NULL, 0, NULL, 0, KEY_FLAG_GROUP)) {
 			wpa_printf(MSG_DEBUG, "Failed to clear default "
 				   "encryption keys (ifname=%s keyidx=%d)",
 				   ifname, i);
@@ -301,8 +312,8 @@ static void hostapd_broadcast_key_clear_iface(struct hostapd_data *hapd,
 	if (hapd->conf->ieee80211w) {
 		for (i = NUM_WEP_KEYS; i < NUM_WEP_KEYS + 2; i++) {
 			if (hostapd_drv_set_key(ifname, hapd, WPA_ALG_NONE,
-						NULL, i, 0, NULL,
-						0, NULL, 0)) {
+						NULL, i, 0, 0, NULL,
+						0, NULL, 0, KEY_FLAG_GROUP)) {
 				wpa_printf(MSG_DEBUG, "Failed to clear "
 					   "default mgmt encryption keys "
 					   "(ifname=%s keyidx=%d)", ifname, i);
@@ -325,17 +336,20 @@ static int hostapd_broadcast_wep_set(struct hostapd_data *hapd)
 	struct hostapd_ssid *ssid = &hapd->conf->ssid;
 
 	idx = ssid->wep.idx;
-	if (ssid->wep.default_len &&
+	if (ssid->wep.default_len && ssid->wep.key[idx] &&
 	    hostapd_drv_set_key(hapd->conf->iface,
-				hapd, WPA_ALG_WEP, broadcast_ether_addr, idx,
+				hapd, WPA_ALG_WEP, broadcast_ether_addr, idx, 0,
 				1, NULL, 0, ssid->wep.key[idx],
-				ssid->wep.len[idx])) {
+				ssid->wep.len[idx],
+				KEY_FLAG_GROUP_RX_TX_DEFAULT)) {
 		wpa_printf(MSG_WARNING, "Could not set WEP encryption.");
 		errors++;
 	}
 
 	return errors;
 }
+
+#endif /* CONFIG_WEP */
 
 
 static void hostapd_free_hapd_data(struct hostapd_data *hapd)
@@ -479,11 +493,9 @@ static void sta_track_deinit(struct hostapd_iface *iface)
 static void hostapd_cleanup_iface_partial(struct hostapd_iface *iface)
 {
 	wpa_printf(MSG_DEBUG, "%s(%p)", __func__, iface);
-#ifdef CONFIG_IEEE80211N
 #ifdef NEED_AP_MLME
 	hostapd_stop_setup_timers(iface);
 #endif /* NEED_AP_MLME */
-#endif /* CONFIG_IEEE80211N */
 	if (iface->current_mode)
 		acs_cleanup(iface);
 	hostapd_free_hw_features(iface->hw_features, iface->num_hw_features);
@@ -524,6 +536,8 @@ static void hostapd_cleanup_iface(struct hostapd_iface *iface)
 }
 
 
+#ifdef CONFIG_WEP
+
 static void hostapd_clear_wep(struct hostapd_data *hapd)
 {
 	if (hapd->drv_priv && !hapd->iface->driver_ap_teardown && hapd->conf) {
@@ -552,10 +566,13 @@ static int hostapd_setup_encryption(char *iface, struct hostapd_data *hapd)
 
 	for (i = 0; i < 4; i++) {
 		if (hapd->conf->ssid.wep.key[i] &&
-		    hostapd_drv_set_key(iface, hapd, WPA_ALG_WEP, NULL, i,
+		    hostapd_drv_set_key(iface, hapd, WPA_ALG_WEP, NULL, i, 0,
 					i == hapd->conf->ssid.wep.idx, NULL, 0,
 					hapd->conf->ssid.wep.key[i],
-					hapd->conf->ssid.wep.len[i])) {
+					hapd->conf->ssid.wep.len[i],
+					i == hapd->conf->ssid.wep.idx ?
+					KEY_FLAG_GROUP_RX_TX_DEFAULT :
+					KEY_FLAG_GROUP_RX_TX)) {
 			wpa_printf(MSG_WARNING, "Could not set WEP "
 				   "encryption.");
 			return -1;
@@ -567,6 +584,8 @@ static int hostapd_setup_encryption(char *iface, struct hostapd_data *hapd)
 
 	return 0;
 }
+
+#endif /* CONFIG_WEP */
 
 
 static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason)
@@ -603,7 +622,9 @@ static void hostapd_bss_deinit_no_free(struct hostapd_data *hapd)
 {
 	hostapd_free_stas(hapd);
 	hostapd_flush_old_stations(hapd, WLAN_REASON_DEAUTH_LEAVING);
+#ifdef CONFIG_WEP
 	hostapd_clear_wep(hapd);
+#endif /* CONFIG_WEP */
 }
 
 
@@ -1158,9 +1179,11 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 					   WLAN_REASON_PREV_AUTH_NOT_VALID);
 	hostapd_set_privacy(hapd, 0);
 
+#ifdef CONFIG_WEP
 	hostapd_broadcast_wep_clear(hapd);
 	if (hostapd_setup_encryption(conf->iface, hapd))
 		return -1;
+#endif /* CONFIG_WEP */
 
 	/*
 	 * Fetch the SSID from the system and use it or,
@@ -1190,8 +1213,14 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 		os_memcpy(conf->ssid.ssid, ssid, conf->ssid.ssid_len);
 	}
 
+	/*
+	 * Short SSID calculation is identical to FCS and it is defined in
+	 * IEEE P802.11-REVmd/D3.0, 9.4.2.170.3 (Calculating the Short-SSID).
+	 */
+	conf->ssid.short_ssid = crc32(conf->ssid.ssid, conf->ssid.ssid_len);
+
 	if (!hostapd_drv_none(hapd)) {
-		wpa_printf(MSG_ERROR, "Using interface %s with hwaddr " MACSTR
+		wpa_printf(MSG_DEBUG, "Using interface %s with hwaddr " MACSTR
 			   " and ssid \"%s\"",
 			   conf->iface, MAC2STR(hapd->own_addr),
 			   wpa_ssid_txt(conf->ssid.ssid, conf->ssid.ssid_len));
@@ -2338,12 +2367,10 @@ void hostapd_interface_deinit(struct hostapd_iface *iface)
 		hostapd_bss_deinit(iface->bss[j]);
 	}
 
-#ifdef CONFIG_IEEE80211N
 #ifdef NEED_AP_MLME
 	hostapd_stop_setup_timers(iface);
 	eloop_cancel_timeout(ap_ht2040_timeout, iface, NULL);
 #endif /* NEED_AP_MLME */
-#endif /* CONFIG_IEEE80211N */
 }
 
 

@@ -345,7 +345,6 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 	}
 #endif /* CONFIG_IEEE80211AC */
 
-#ifdef CONFIG_IEEE80211N
 	if ((sta->flags & WLAN_STA_HT) && sta->ht_capabilities) {
 		res = os_snprintf(buf + len, buflen - len,
 				  "ht_caps_info=0x%04x\n",
@@ -354,7 +353,6 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 		if (!os_snprintf_error(buflen - len, res))
 			len += res;
 	}
-#endif /* CONFIG_IEEE80211N */
 
 	if (sta->ext_capability &&
 	    buflen - len > (unsigned) (11 + 2 * sta->ext_capability[0])) {
@@ -462,9 +460,6 @@ static int p2p_manager_disconnect(struct hostapd_data *hapd, u16 stype,
 	int ret;
 	u8 *pos;
 
-	if (!hapd->drv_priv || !hapd->driver->send_frame)
-		return -1;
-
 	mgmt = os_zalloc(sizeof(*mgmt) + 100);
 	if (mgmt == NULL)
 		return -1;
@@ -498,8 +493,8 @@ static int p2p_manager_disconnect(struct hostapd_data *hapd, u16 stype,
 	pos += 2;
 	*pos++ = minor_reason_code;
 
-	ret = hapd->driver->send_frame(hapd->drv_priv, (u8 *) mgmt,
-				       pos - (u8 *) mgmt, 1);
+	ret = hostapd_drv_send_mlme(hapd, mgmt, pos - (u8 *) mgmt, 0, NULL, 0,
+				    0);
 	os_free(mgmt);
 
 	return ret < 0 ? -1 : 0;
@@ -529,8 +524,7 @@ int hostapd_ctrl_iface_deauthenticate(struct hostapd_data *hapd,
 	if (pos) {
 		struct ieee80211_mgmt mgmt;
 		int encrypt;
-		if (!hapd->drv_priv || !hapd->driver->send_frame)
-			return -1;
+
 		pos += 6;
 		encrypt = atoi(pos);
 		os_memset(&mgmt, 0, sizeof(mgmt));
@@ -540,10 +534,10 @@ int hostapd_ctrl_iface_deauthenticate(struct hostapd_data *hapd,
 		os_memcpy(mgmt.sa, hapd->own_addr, ETH_ALEN);
 		os_memcpy(mgmt.bssid, hapd->own_addr, ETH_ALEN);
 		mgmt.u.deauth.reason_code = host_to_le16(reason);
-		if (hapd->driver->send_frame(hapd->drv_priv, (u8 *) &mgmt,
-					     IEEE80211_HDRLEN +
-					     sizeof(mgmt.u.deauth),
-					     encrypt) < 0)
+		if (hostapd_drv_send_mlme(hapd, (u8 *) &mgmt,
+					  IEEE80211_HDRLEN +
+					  sizeof(mgmt.u.deauth),
+					  0, NULL, 0, !encrypt) < 0)
 			return -1;
 		return 0;
 	}
@@ -592,8 +586,7 @@ int hostapd_ctrl_iface_disassociate(struct hostapd_data *hapd,
 	if (pos) {
 		struct ieee80211_mgmt mgmt;
 		int encrypt;
-		if (!hapd->drv_priv || !hapd->driver->send_frame)
-			return -1;
+
 		pos += 6;
 		encrypt = atoi(pos);
 		os_memset(&mgmt, 0, sizeof(mgmt));
@@ -603,10 +596,10 @@ int hostapd_ctrl_iface_disassociate(struct hostapd_data *hapd,
 		os_memcpy(mgmt.sa, hapd->own_addr, ETH_ALEN);
 		os_memcpy(mgmt.bssid, hapd->own_addr, ETH_ALEN);
 		mgmt.u.disassoc.reason_code = host_to_le16(reason);
-		if (hapd->driver->send_frame(hapd->drv_priv, (u8 *) &mgmt,
-					     IEEE80211_HDRLEN +
-					     sizeof(mgmt.u.deauth),
-					     encrypt) < 0)
+		if (hostapd_drv_send_mlme(hapd, (u8 *) &mgmt,
+					  IEEE80211_HDRLEN +
+					  sizeof(mgmt.u.deauth),
+					  0, NULL, 0, !encrypt) < 0)
 			return -1;
 		return 0;
 	}

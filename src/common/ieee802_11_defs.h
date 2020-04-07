@@ -458,7 +458,7 @@
 #define WLAN_EID_EXT_FILS_HLP_CONTAINER 5
 #define WLAN_EID_EXT_FILS_IP_ADDR_ASSIGN 6
 #define WLAN_EID_EXT_KEY_DELIVERY 7
-#define WLAN_EID_EXT_FILS_WRAPPED_DATA 8
+#define WLAN_EID_EXT_WRAPPED_DATA 8
 #define WLAN_EID_EXT_FTM_SYNC_INFO 9
 #define WLAN_EID_EXT_EXTENDED_REQUEST 10
 #define WLAN_EID_EXT_ESTIMATED_SERVICE_PARAMS 11
@@ -472,9 +472,11 @@
 #define WLAN_EID_EXT_HE_MU_EDCA_PARAMS 38
 #define WLAN_EID_EXT_SPATIAL_REUSE 39
 #define WLAN_EID_EXT_OCV_OCI 54
+#define WLAN_EID_EXT_SHORT_SSID_LIST 58
 #define WLAN_EID_EXT_EDMG_CAPABILITIES 61
 #define WLAN_EID_EXT_EDMG_OPERATION 62
 #define WLAN_EID_EXT_REJECTED_GROUPS 92
+#define WLAN_EID_EXT_ANTI_CLOGGING_TOKEN 93
 
 /* Extended Capabilities field */
 #define WLAN_EXT_CAPAB_20_40_COEX 0
@@ -556,6 +558,7 @@
 #define WLAN_EXT_CAPAB_COMPLETE_NON_TX_BSSID_PROFILE 80
 #define WLAN_EXT_CAPAB_SAE_PW_ID 81
 #define WLAN_EXT_CAPAB_SAE_PW_ID_EXCLUSIVELY 82
+#define WLAN_EXT_CAPAB_BEACON_PROTECTION 84
 
 /* Extended RSN Capabilities */
 /* bits 0-3: Field length (n-1) */
@@ -1319,6 +1322,8 @@ struct ieee80211_ampe_ie {
 #define OWE_IE_VENDOR_TYPE 0x506f9a1c
 #define OWE_OUI_TYPE 28
 #define MULTI_AP_OUI_TYPE 0x1B
+#define DPP_CC_IE_VENDOR_TYPE 0x506f9a1e
+#define DPP_CC_OUI_TYPE 0x1e
 
 #define MULTI_AP_SUB_ELEM_TYPE 0x06
 #define MULTI_AP_TEAR_DOWN BIT(4)
@@ -1878,7 +1883,15 @@ enum wnm_sleep_mode_response_status {
 /* WNM-Sleep Mode subelement IDs */
 enum wnm_sleep_mode_subelement_id {
 	WNM_SLEEP_SUBELEM_GTK = 0,
-	WNM_SLEEP_SUBELEM_IGTK = 1
+	WNM_SLEEP_SUBELEM_IGTK = 1,
+	WNM_SLEEP_SUBELEM_BIGTK = 2,
+};
+
+/* WNM notification type (IEEE P802.11-REVmd/D3.0, Table 9-430) */
+enum wnm_notification_Type {
+	WNM_NOTIF_TYPE_FIRMWARE_UPDATE = 0,
+	WNM_NOTIF_TYPE_BEACON_PROTECTION_FAILURE = 2,
+	WNM_NOTIF_TYPE_VENDOR_SPECIFIC = 221,
 };
 
 /* Channel Switch modes (802.11h) */
@@ -2094,7 +2107,7 @@ enum phy_type {
 	PHY_TYPE_VHT = 9,
 };
 
-/* IEEE P802.11-REVmc/D5.0, 9.4.2.37 - Neighbor Report element */
+/* IEEE P802.11-REVmd/D3.0, 9.4.2.36 - Neighbor Report element */
 /* BSSID Information Field */
 #define NEI_REP_BSSID_INFO_AP_NOT_REACH BIT(0)
 #define NEI_REP_BSSID_INFO_AP_UNKNOWN_REACH BIT(1)
@@ -2111,6 +2124,7 @@ enum phy_type {
 #define NEI_REP_BSSID_INFO_HT BIT(11)
 #define NEI_REP_BSSID_INFO_VHT BIT(12)
 #define NEI_REP_BSSID_INFO_FTM BIT(13)
+#define NEI_REP_BSSID_INFO_HE BIT(14)
 
 /*
  * IEEE P802.11-REVmc/D5.0 Table 9-152 - HT/VHT Operation Information
@@ -2173,6 +2187,7 @@ struct ieee80211_6ghz_operation_info {
 #define HE_CAPABILITIES_IE_MIN_LEN 21
 
 /* HE Capabilities Information defines */
+#define HE_MACCAP_TWT_RESPONDER			((u8) BIT(2))
 #define HE_PHYCAP_CHANNEL_WIDTH_SET_IDX		0
 #define HE_PHYCAP_CHANNEL_WIDTH_MASK		((u8) (BIT(1) | BIT(2) | \
 						      BIT(3) | BIT(4)))
@@ -2215,7 +2230,7 @@ struct ieee80211_6ghz_operation_info {
 #define HE_OPERATION_BSS_COLOR_MASK		((u32) (BIT(24) | BIT(25) | \
 							BIT(26) | BIT(27) | \
 							BIT(28) | BIT(29)))
-#define HE_OPERATION_PARTIAL_BSS_COLOR		((u32) BIT(30))
+#define HE_OPERATION_BSS_COLOR_PARTIAL		((u32) BIT(30))
 #define HE_OPERATION_BSS_COLOR_DISABLED		((u32) BIT(31))
 #define HE_OPERATION_BSS_COLOR_OFFSET		24
 

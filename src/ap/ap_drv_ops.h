@@ -89,14 +89,13 @@ int hostapd_driver_set_noa(struct hostapd_data *hapd, u8 count, int start,
 int hostapd_drv_set_key(const char *ifname,
 			struct hostapd_data *hapd,
 			enum wpa_alg alg, const u8 *addr,
-			int key_idx, int set_tx,
+			int key_idx, int vlan_id, int set_tx,
 			const u8 *seq, size_t seq_len,
-			const u8 *key, size_t key_len);
+			const u8 *key, size_t key_len, enum key_flag key_flag);
 int hostapd_drv_send_mlme(struct hostapd_data *hapd,
-			  const void *msg, size_t len, int noack);
-int hostapd_drv_send_mlme_csa(struct hostapd_data *hapd,
-			      const void *msg, size_t len, int noack,
-			      const u16 *csa_offs, size_t csa_offs_len);
+			  const void *msg, size_t len, int noack,
+			  const u16 *csa_offs, size_t csa_offs_len,
+			  int no_encrypt);
 int hostapd_drv_sta_deauth(struct hostapd_data *hapd,
 			   const u8 *addr, int reason);
 int hostapd_drv_sta_disassoc(struct hostapd_data *hapd,

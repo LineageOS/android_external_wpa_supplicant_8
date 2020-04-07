@@ -1,7 +1,7 @@
 /*
  * DPP functionality shared between hostapd and wpa_supplicant
  * Copyright (c) 2017, Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2019, The Linux Foundation
+ * Copyright (c) 2018-2020, The Linux Foundation
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -36,6 +36,11 @@ enum dpp_public_action_frame_type {
 	DPP_PA_PKEX_COMMIT_REVEAL_RESP = 10,
 	DPP_PA_CONFIGURATION_RESULT = 11,
 	DPP_PA_CONNECTION_STATUS_RESULT = 12,
+	DPP_PA_PRESENCE_ANNOUNCEMENT = 13,
+	DPP_PA_RECONFIG_ANNOUNCEMENT = 14,
+	DPP_PA_RECONFIG_AUTH_REQ = 15,
+	DPP_PA_RECONFIG_AUTH_RESP = 16,
+	DPP_PA_RECONFIG_AUTH_CONF = 17,
 };
 
 enum dpp_attribute_id {
@@ -67,6 +72,9 @@ enum dpp_attribute_id {
 	DPP_ATTR_ENVELOPED_DATA = 0x101A,
 	DPP_ATTR_SEND_CONN_STATUS = 0x101B,
 	DPP_ATTR_CONN_STATUS = 0x101C,
+	DPP_ATTR_RECONFIG_FLAGS = 0x101D,
+	DPP_ATTR_C_SIGN_KEY_HASH = 0x101E,
+	DPP_ATTR_CSR_ATTR_REQ = 0x101F,
 };
 
 enum dpp_status_error {
@@ -81,6 +89,9 @@ enum dpp_status_error {
 	DPP_STATUS_NO_MATCH = 8,
 	DPP_STATUS_CONFIG_REJECTED = 9,
 	DPP_STATUS_NO_AP = 10,
+	DPP_STATUS_CONFIGURE_PENDING = 11,
+	DPP_STATUS_CSR_NEEDED = 12,
+	DPP_STATUS_CSR_BAD = 13,
 };
 
 #define DPP_CAPAB_ENROLLEE BIT(0)
@@ -115,15 +126,19 @@ struct dpp_bootstrap_info {
 	enum dpp_bootstrap_type type;
 	char *uri;
 	u8 mac_addr[ETH_ALEN];
+	char *chan;
 	char *info;
+	char *pk;
 	unsigned int freq[DPP_BOOTSTRAP_MAX_FREQ];
 	unsigned int num_freq;
 	int own;
 	EVP_PKEY *pubkey;
 	u8 pubkey_hash[SHA256_MAC_LEN];
+	u8 pubkey_hash_chirp[SHA256_MAC_LEN];
 	const struct dpp_curve_params *curve;
 	unsigned int pkex_t; /* number of failures before dpp_pkex
 			      * instantiation */
+	char *configurator_params;
 };
 
 #define PKEX_COUNTER_T_LIMIT 5
@@ -187,10 +202,18 @@ struct dpp_configuration {
 	int psk_set;
 };
 
+struct dpp_asymmetric_key {
+	struct dpp_asymmetric_key *next;
+	EVP_PKEY *csign;
+	char *config_template;
+	char *connector_template;
+};
+
 #define DPP_MAX_CONF_OBJ 10
 #define DPP_MAX_CHANNELS 32
 
 struct dpp_authentication {
+	struct dpp_global *global;
 	void *msg_ctx;
 	u8 peer_version;
 	const struct dpp_curve_params *curve;
@@ -246,6 +269,7 @@ struct dpp_authentication {
 	struct dpp_configuration *conf2_ap;
 	struct dpp_configuration *conf_sta;
 	struct dpp_configuration *conf2_sta;
+	int provision_configurator;
 	struct dpp_configurator *conf;
 	struct dpp_config_obj {
 		char *connector; /* received signedConnector */
@@ -259,11 +283,13 @@ struct dpp_authentication {
 		struct wpabuf *c_sign_key;
 	} conf_obj[DPP_MAX_CONF_OBJ];
 	unsigned int num_conf_obj;
+	struct dpp_asymmetric_key *conf_key_pkg;
 	struct wpabuf *net_access_key;
 	os_time_t net_access_key_expiry;
 	int send_conn_status;
 	int conn_status_requested;
 	int akm_use_selector;
+	int configurator_set;
 #ifdef CONFIG_TESTING_OPTIONS
 	char *config_obj_override;
 	char *discovery_override;
@@ -414,15 +440,16 @@ extern size_t dpp_nonce_override_len;
 
 void dpp_bootstrap_info_free(struct dpp_bootstrap_info *info);
 const char * dpp_bootstrap_type_txt(enum dpp_bootstrap_type type);
-int dpp_bootstrap_key_hash(struct dpp_bootstrap_info *bi);
 int dpp_parse_uri_chan_list(struct dpp_bootstrap_info *bi,
 			    const char *chan_list);
 int dpp_parse_uri_mac(struct dpp_bootstrap_info *bi, const char *mac);
 int dpp_parse_uri_info(struct dpp_bootstrap_info *bi, const char *info);
-char * dpp_keygen(struct dpp_bootstrap_info *bi, const char *curve,
-		  const u8 *privkey, size_t privkey_len);
+int dpp_nfc_update_bi(struct dpp_bootstrap_info *own_bi,
+		      struct dpp_bootstrap_info *peer_bi);
+struct dpp_authentication *
+dpp_alloc_auth(struct dpp_global *dpp, void *msg_ctx);
 struct hostapd_hw_modes;
-struct dpp_authentication * dpp_auth_init(void *msg_ctx,
+struct dpp_authentication * dpp_auth_init(struct dpp_global *dpp, void *msg_ctx,
 					  struct dpp_bootstrap_info *peer_bi,
 					  struct dpp_bootstrap_info *own_bi,
 					  u8 dpp_allowed_roles,
@@ -430,8 +457,8 @@ struct dpp_authentication * dpp_auth_init(void *msg_ctx,
 					  struct hostapd_hw_modes *own_modes,
 					  u16 num_modes);
 struct dpp_authentication *
-dpp_auth_req_rx(void *msg_ctx, u8 dpp_allowed_roles, int qr_mutual,
-		struct dpp_bootstrap_info *peer_bi,
+dpp_auth_req_rx(struct dpp_global *dpp, void *msg_ctx, u8 dpp_allowed_roles,
+			int qr_mutual, struct dpp_bootstrap_info *peer_bi,
 		struct dpp_bootstrap_info *own_bi,
 		unsigned int freq, const u8 *hdr, const u8 *attr_start,
 		size_t attr_len);
@@ -456,9 +483,7 @@ int dpp_akm_dpp(enum dpp_akm akm);
 int dpp_akm_ver2(enum dpp_akm akm);
 int dpp_configuration_valid(const struct dpp_configuration *conf);
 void dpp_configuration_free(struct dpp_configuration *conf);
-int dpp_set_configurator(struct dpp_global *dpp, void *msg_ctx,
-			 struct dpp_authentication *auth,
-			 const char *cmd);
+int dpp_set_configurator(struct dpp_authentication *auth, const char *cmd);
 void dpp_auth_deinit(struct dpp_authentication *auth);
 struct wpabuf *
 dpp_conf_req_rx(struct dpp_authentication *auth, const u8 *attr_start,
@@ -551,14 +576,19 @@ dpp_pkex_finish(struct dpp_global *dpp, struct dpp_pkex *pkex, const u8 *peer,
 const char * dpp_bootstrap_get_uri(struct dpp_global *dpp, unsigned int id);
 int dpp_bootstrap_info(struct dpp_global *dpp, int id,
 		       char *reply, int reply_size);
+int dpp_bootstrap_set(struct dpp_global *dpp, int id, const char *params);
 void dpp_bootstrap_find_pair(struct dpp_global *dpp, const u8 *i_bootstrap,
 			     const u8 *r_bootstrap,
 			     struct dpp_bootstrap_info **own_bi,
 			     struct dpp_bootstrap_info **peer_bi);
+struct dpp_bootstrap_info * dpp_bootstrap_find_chirp(struct dpp_global *dpp,
+						     const u8 *hash);
 int dpp_configurator_add(struct dpp_global *dpp, const char *cmd);
 int dpp_configurator_remove(struct dpp_global *dpp, const char *id);
 int dpp_configurator_get_key_id(struct dpp_global *dpp, unsigned int id,
 				char *buf, size_t buflen);
+int dpp_configurator_from_backup(struct dpp_global *dpp,
+				 struct dpp_asymmetric_key *key);
 int dpp_relay_add_controller(struct dpp_global *dpp,
 			     struct dpp_relay_config *config);
 int dpp_relay_rx_action(struct dpp_global *dpp, const u8 *src, const u8 *hdr,
@@ -571,11 +601,13 @@ int dpp_controller_start(struct dpp_global *dpp,
 void dpp_controller_stop(struct dpp_global *dpp);
 int dpp_tcp_init(struct dpp_global *dpp, struct dpp_authentication *auth,
 		 const struct hostapd_ip_addr *addr, int port);
+struct wpabuf * dpp_build_presence_announcement(struct dpp_bootstrap_info *bi);
 
 struct dpp_global_config {
 	void *msg_ctx;
 	void *cb_ctx;
 	int (*process_conf_obj)(void *ctx, struct dpp_authentication *auth);
+	void (*remove_bi)(void *ctx, struct dpp_bootstrap_info *bi);
 };
 
 struct dpp_global * dpp_global_init(struct dpp_global_config *config);

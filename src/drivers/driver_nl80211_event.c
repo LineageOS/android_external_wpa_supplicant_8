@@ -683,28 +683,41 @@ static void mlme_event_mgmt_tx_status(struct wpa_driver_nl80211_data *drv,
 				      size_t len, struct nlattr *ack)
 {
 	union wpa_event_data event;
-	const struct ieee80211_hdr *hdr;
-	u16 fc;
+	const struct ieee80211_hdr *hdr = (const struct ieee80211_hdr *) frame;
+	u16 fc = le_to_host16(hdr->frame_control);
+	u64 cookie_val = 0;
 
-	wpa_printf(MSG_DEBUG, "nl80211: Frame TX status event");
-	if (!is_ap_interface(drv->nlmode)) {
-		u64 cookie_val;
+	if (cookie)
+		cookie_val = nla_get_u64(cookie);
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: Frame TX status event A1=" MACSTR
+		   " %sstype=%d cookie=0x%llx%s ack=%d",
+		   MAC2STR(hdr->addr1),
+		   WLAN_FC_GET_TYPE(fc) != WLAN_FC_TYPE_MGMT ? "not-mgmt " : "",
+		   WLAN_FC_GET_STYPE(fc), (long long unsigned int) cookie_val,
+		   cookie ? "" : "(N/A)", ack != NULL);
 
+	if (WLAN_FC_GET_TYPE(fc) != WLAN_FC_TYPE_MGMT)
+		return;
+
+	if (!is_ap_interface(drv->nlmode) &&
+	    WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_ACTION) {
 		if (!cookie)
 			return;
 
-		cookie_val = nla_get_u64(cookie);
-		wpa_printf(MSG_DEBUG, "nl80211: Action TX status:"
-			   " cookie=0x%llx%s (ack=%d)",
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Frame TX status: cookie=0x%llx%s (ack=%d)",
 			   (long long unsigned int) cookie_val,
-			   cookie_val == drv->send_action_cookie ?
+			   cookie_val == drv->send_frame_cookie ?
 			   " (match)" : " (unknown)", ack != NULL);
-		if (cookie_val != drv->send_action_cookie)
+		if (cookie_val != drv->send_frame_cookie)
 			return;
+	} else if (!is_ap_interface(drv->nlmode) &&
+		   WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_AUTH) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Authentication frame TX status: ack=%d",
+			   !!ack);
 	}
-
-	hdr = (const struct ieee80211_hdr *) frame;
-	fc = le_to_host16(hdr->frame_control);
 
 	os_memset(&event, 0, sizeof(event));
 	event.tx_status.type = WLAN_FC_GET_TYPE(fc);
@@ -1740,8 +1753,41 @@ static enum hostapd_hw_mode get_qca_hw_mode(u8 hw_mode)
 }
 
 
-static unsigned int chan_2ghz_or_5ghz_to_freq(u8 chan)
+static unsigned int chan_to_freq(struct wpa_driver_nl80211_data *drv,
+				 u8 chan, enum hostapd_hw_mode hw_mode)
 {
+	if (hw_mode == NUM_HOSTAPD_MODES) {
+		/* For drivers that do not report ACS_HW_MODE */
+		u16 num_modes, flags;
+		struct hostapd_hw_modes *modes;
+		u8 dfs_domain;
+		int i;
+
+		modes = nl80211_get_hw_feature_data(drv->first_bss, &num_modes,
+						    &flags, &dfs_domain);
+		if (!modes) {
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: Fetching hardware mode failed");
+			goto try_2_4_or_5;
+		}
+		if (num_modes == 1)
+			hw_mode = modes[0].mode;
+
+		for (i = 0; i < num_modes; i++) {
+			os_free(modes[i].channels);
+			os_free(modes[i].rates);
+		}
+
+		os_free(modes);
+	}
+
+	if (hw_mode == HOSTAPD_MODE_IEEE80211AD) {
+		if (chan >= 1 && chan <= 6)
+			return 56160 + (2160 * chan);
+		return 0;
+	}
+
+try_2_4_or_5:
 	if (chan >= 1 && chan <= 13)
 		return 2407 + 5 * chan;
 	if (chan == 14)
@@ -1772,34 +1818,8 @@ static void qca_nl80211_acs_select_ch(struct wpa_driver_nl80211_data *drv,
 		return;
 
 	os_memset(&event, 0, sizeof(event));
-	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_PRIMARY_FREQUENCY]) {
-		event.acs_selected_channels.pri_freq = nla_get_u32(
-			tb[QCA_WLAN_VENDOR_ATTR_ACS_PRIMARY_FREQUENCY]);
-	} else {
-		chan = nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_PRIMARY_CHANNEL]);
-		event.acs_selected_channels.pri_freq =
-			chan_2ghz_or_5ghz_to_freq(chan);
-	}
+	event.acs_selected_channels.hw_mode = NUM_HOSTAPD_MODES;
 
-	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_SECONDARY_FREQUENCY]) {
-		event.acs_selected_channels.sec_freq = nla_get_u32(
-			tb[QCA_WLAN_VENDOR_ATTR_ACS_SECONDARY_FREQUENCY]);
-	} else {
-		chan = nla_get_u8(
-			tb[QCA_WLAN_VENDOR_ATTR_ACS_SECONDARY_CHANNEL]);
-		event.acs_selected_channels.sec_freq =
-			chan_2ghz_or_5ghz_to_freq(chan);
-	}
-
-	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL])
-		event.acs_selected_channels.vht_seg0_center_ch =
-			nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL]);
-	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL])
-		event.acs_selected_channels.vht_seg1_center_ch =
-			nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_VHT_SEG1_CENTER_CHANNEL]);
-	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_CHWIDTH])
-		event.acs_selected_channels.ch_width =
-			nla_get_u16(tb[QCA_WLAN_VENDOR_ATTR_ACS_CHWIDTH]);
 	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_HW_MODE]) {
 		u8 hw_mode = nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_HW_MODE]);
 
@@ -1814,14 +1834,48 @@ static void qca_nl80211_acs_select_ch(struct wpa_driver_nl80211_data *drv,
 		}
 	}
 
+	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_PRIMARY_FREQUENCY]) {
+		event.acs_selected_channels.pri_freq = nla_get_u32(
+			tb[QCA_WLAN_VENDOR_ATTR_ACS_PRIMARY_FREQUENCY]);
+	} else {
+		chan = nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_PRIMARY_CHANNEL]);
+		event.acs_selected_channels.pri_freq =
+			chan_to_freq(drv, chan,
+				     event.acs_selected_channels.hw_mode);
+	}
+
+	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_SECONDARY_FREQUENCY]) {
+		event.acs_selected_channels.sec_freq = nla_get_u32(
+			tb[QCA_WLAN_VENDOR_ATTR_ACS_SECONDARY_FREQUENCY]);
+	} else {
+		chan = nla_get_u8(
+			tb[QCA_WLAN_VENDOR_ATTR_ACS_SECONDARY_CHANNEL]);
+		event.acs_selected_channels.sec_freq =
+			chan_to_freq(drv, chan,
+				     event.acs_selected_channels.hw_mode);
+	}
+
+	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_EDMG_CHANNEL])
+		event.acs_selected_channels.edmg_channel =
+			nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_EDMG_CHANNEL]);
+	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL])
+		event.acs_selected_channels.vht_seg0_center_ch =
+			nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL]);
+	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_VHT_SEG1_CENTER_CHANNEL])
+		event.acs_selected_channels.vht_seg1_center_ch =
+			nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_VHT_SEG1_CENTER_CHANNEL]);
+	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_CHWIDTH])
+		event.acs_selected_channels.ch_width =
+			nla_get_u16(tb[QCA_WLAN_VENDOR_ATTR_ACS_CHWIDTH]);
 	wpa_printf(MSG_INFO,
-		   "nl80211: ACS Results: PFreq: %d SFreq: %d BW: %d VHT0: %d VHT1: %d HW_MODE: %d",
+		   "nl80211: ACS Results: PFreq: %d SFreq: %d BW: %d VHT0: %d VHT1: %d HW_MODE: %d EDMGCH: %d",
 		   event.acs_selected_channels.pri_freq,
 		   event.acs_selected_channels.sec_freq,
 		   event.acs_selected_channels.ch_width,
 		   event.acs_selected_channels.vht_seg0_center_ch,
 		   event.acs_selected_channels.vht_seg1_center_ch,
-		   event.acs_selected_channels.hw_mode);
+		   event.acs_selected_channels.hw_mode,
+		   event.acs_selected_channels.edmg_channel);
 
 	/* Ignore ACS channel list check for backwards compatibility */
 
@@ -2448,6 +2502,18 @@ static void nl80211_sta_opmode_change_event(struct wpa_driver_nl80211_data *drv,
 }
 
 
+static void nl80211_control_port_frame(struct wpa_driver_nl80211_data *drv,
+				       struct nlattr **tb)
+{
+	if (!tb[NL80211_ATTR_MAC] || !tb[NL80211_ATTR_FRAME])
+		return;
+
+	drv_event_eapol_rx(drv->ctx, nla_data(tb[NL80211_ATTR_MAC]),
+			   nla_data(tb[NL80211_ATTR_FRAME]),
+			   nla_len(tb[NL80211_ATTR_FRAME]));
+}
+
+
 static void do_process_drv_event(struct i802_bss *bss, int cmd,
 				 struct nlattr **tb)
 {
@@ -2662,6 +2728,9 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 		break;
 	case NL80211_CMD_UPDATE_OWE_INFO:
 		mlme_event_dh_event(drv, bss, tb);
+		break;
+	case NL80211_CMD_CONTROL_PORT_FRAME:
+		nl80211_control_port_frame(drv, tb);
 		break;
 	default:
 		wpa_dbg(drv->ctx, MSG_DEBUG, "nl80211: Ignored unknown event "

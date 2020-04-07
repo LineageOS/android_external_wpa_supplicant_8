@@ -158,6 +158,7 @@ OBJS_c += ../src/utils/wpa_debug.o
 OBJS += ../src/utils/wpabuf.o
 OBJS += ../src/utils/os_$(CONFIG_OS).o
 OBJS += ../src/utils/ip_addr.o
+OBJS += ../src/utils/crc32.o
 
 OBJS += ../src/common/ieee802_11_common.o
 OBJS += ../src/common/wpa_common.o
@@ -332,10 +333,6 @@ endif
 ifdef CONFIG_WNM
 CFLAGS += -DCONFIG_WNM -DCONFIG_WNM_AP
 OBJS += ../src/ap/wnm_ap.o
-endif
-
-ifdef CONFIG_IEEE80211N
-CFLAGS += -DCONFIG_IEEE80211N
 endif
 
 ifdef CONFIG_IEEE80211AC
@@ -586,6 +583,7 @@ NEED_ECC=y
 NEED_JSON=y
 NEED_GAS=y
 NEED_BASE64=y
+NEED_ASN1=y
 ifdef CONFIG_DPP2
 CFLAGS += -DCONFIG_DPP2
 endif
@@ -759,12 +757,12 @@ OBJS += ../src/tls/tlsv1_cred.o
 OBJS += ../src/tls/tlsv1_server.o
 OBJS += ../src/tls/tlsv1_server_write.o
 OBJS += ../src/tls/tlsv1_server_read.o
-OBJS += ../src/tls/asn1.o
 OBJS += ../src/tls/rsa.o
 OBJS += ../src/tls/x509v3.o
 OBJS += ../src/tls/pkcs1.o
 OBJS += ../src/tls/pkcs5.o
 OBJS += ../src/tls/pkcs8.o
+NEED_ASN1=y
 NEED_BASE64=y
 NEED_TLS_PRF=y
 ifdef CONFIG_TLSV12
@@ -835,12 +833,12 @@ OBJS += ../src/tls/tlsv1_cred.o
 OBJS += ../src/tls/tlsv1_server.o
 OBJS += ../src/tls/tlsv1_server_write.o
 OBJS += ../src/tls/tlsv1_server_read.o
-OBJS += ../src/tls/asn1.o
 OBJS += ../src/tls/rsa.o
 OBJS += ../src/tls/x509v3.o
 OBJS += ../src/tls/pkcs1.o
 OBJS += ../src/tls/pkcs5.o
 OBJS += ../src/tls/pkcs8.o
+NEED_ASN1=y
 NEED_BASE64=y
 NEED_TLS_PRF=y
 ifdef CONFIG_TLSV12
@@ -1088,6 +1086,10 @@ CFLAGS += -DCONFIG_INTERNAL_SHA512
 OBJS += ../src/crypto/sha512-internal.o
 endif
 
+ifdef NEED_ASN1
+OBJS += ../src/tls/asn1.o
+endif
+
 ifdef NEED_DH_GROUPS
 OBJS += ../src/crypto/dh_groups.o
 endif
@@ -1153,9 +1155,7 @@ OBJS += ../src/ap/hw_features.o
 OBJS += ../src/ap/dfs.o
 CFLAGS += -DNEED_AP_MLME
 endif
-ifdef CONFIG_IEEE80211N
 OBJS += ../src/ap/ieee802_11_ht.o
-endif
 
 ifdef CONFIG_IEEE80211AC
 OBJS += ../src/ap/ieee802_11_vht.o
@@ -1240,6 +1240,10 @@ endif
 ifndef CONFIG_NO_CTRL_IFACE
 OBJS += ../src/fst/fst_ctrl_iface.o
 endif
+endif
+
+ifdef CONFIG_WEP
+CFLAGS += -DCONFIG_WEP
 endif
 
 ALL=hostapd hostapd_cli

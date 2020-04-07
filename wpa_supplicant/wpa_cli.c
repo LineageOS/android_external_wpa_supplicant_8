@@ -502,6 +502,7 @@ static char ** wpa_cli_complete_set(const char *str, int pos)
 		"ignore_auth_resp",
 #endif /* CONFIG_TESTING_OPTIONS */
 		"relative_rssi", "relative_band_adjust",
+		"extended_key_id",
 	};
 	int i, num_fields = ARRAY_SIZE(fields);
 
@@ -593,7 +594,7 @@ static char ** wpa_cli_complete_get(const char *str, int pos)
 		"tdls_external_control", "osu_dir", "wowlan_triggers",
 		"p2p_search_delay", "mac_addr", "rand_addr_lifetime",
 		"preassoc_mac_addr", "key_mgmt_offload", "passive_scan",
-		"reassoc_same_bss_optim"
+		"reassoc_same_bss_optim", "extended_key_id"
 	};
 	int i, num_fields = ARRAY_SIZE(fields);
 
@@ -1302,7 +1303,7 @@ static int wpa_cli_cmd_log_level(struct wpa_ctrl *ctrl, int argc, char *argv[])
 static int wpa_cli_cmd_list_networks(struct wpa_ctrl *ctrl, int argc,
 				     char *argv[])
 {
-	return wpa_ctrl_command(ctrl, "LIST_NETWORKS");
+	return wpa_cli_cmd(ctrl, "LIST_NETWORKS", 0, argc, argv);
 }
 
 
@@ -1441,6 +1442,7 @@ static const char *network_fields[] = {
 	"dot11MeshHoldingTimeout",
 #endif /* CONFIG_MESH */
 	"wpa_ptk_rekey", "bgscan", "ignore_broadcast_ssid",
+	"wpa_deny_ptk0_rekey",
 	"enable_edmg", "edmg_channel",
 #ifdef CONFIG_P2P
 	"go_p2p_dev_addr", "p2p_client_list", "psk_list",
@@ -1458,6 +1460,9 @@ static const char *network_fields[] = {
 	"vht_tx_mcs_nss_3", "vht_tx_mcs_nss_4", "vht_tx_mcs_nss_5",
 	"vht_tx_mcs_nss_6", "vht_tx_mcs_nss_7", "vht_tx_mcs_nss_8",
 #endif /* CONFIG_VHT_OVERRIDES */
+#ifdef CONFIG_HE_OVERRIDES
+	"disable_he",
+#endif /* CONFIG_HE_OVERRIDES */
 	"ap_max_inactivity", "dtim_period", "beacon_int",
 #ifdef CONFIG_MACSEC
 	"macsec_policy",
@@ -1782,7 +1787,7 @@ static int wpa_cli_cmd_interface(struct wpa_ctrl *ctrl, int argc, char *argv[])
 	}
 
 	if (wpa_cli_open_connection(ctrl_ifname, 1) == 0) {
-		printf("Connected to interface '%s.\n", ctrl_ifname);
+		printf("Connected to interface '%s'.\n", ctrl_ifname);
 	} else {
 		printf("Could not connect to interface '%s' - re-trying\n",
 		       ctrl_ifname);
@@ -4003,6 +4008,10 @@ static void wpa_cli_action_process(const char *msg)
 	} else if (str_starts(pos, WPS_EVENT_SUCCESS)) {
 		wpa_cli_exec(action_file, ifname, pos);
 	} else if (str_starts(pos, WPS_EVENT_ACTIVE)) {
+		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, WPS_EVENT_PIN_ACTIVE)) {
+		wpa_cli_exec(action_file, ifname, pos);
+	} else if (str_starts(pos, WPS_EVENT_CANCEL)) {
 		wpa_cli_exec(action_file, ifname, pos);
 	} else if (str_starts(pos, WPS_EVENT_TIMEOUT)) {
 		wpa_cli_exec(action_file, ifname, pos);

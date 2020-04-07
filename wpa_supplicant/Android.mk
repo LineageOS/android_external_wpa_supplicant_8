@@ -124,6 +124,7 @@ OBJS += src/utils/wpa_debug.c
 OBJS += src/utils/wpabuf.c
 OBJS += src/utils/bitfield.c
 OBJS += src/utils/ip_addr.c
+OBJS += src/utils/crc32.c
 OBJS += wmm_ac.c
 OBJS += op_classes.c
 OBJS += rrm.c
@@ -193,6 +194,10 @@ endif
 
 ifdef CONFIG_VHT_OVERRIDES
 L_CFLAGS += -DCONFIG_VHT_OVERRIDES
+endif
+
+ifdef CONFIG_HE_OVERRIDES
+L_CFLAGS += -DCONFIG_HE_OVERRIDES
 endif
 
 ifndef CONFIG_BACKEND
@@ -282,6 +287,7 @@ NEED_ECC=y
 NEED_JSON=y
 NEED_GAS_SERVER=y
 NEED_BASE64=y
+NEED_ASN1=y
 ifdef CONFIG_DPP2
 L_CFLAGS += -DCONFIG_DPP2
 endif
@@ -408,6 +414,10 @@ endif
 ifdef CONFIG_CTRL_IFACE
 OBJS += src/fst/fst_ctrl_iface.c
 endif
+endif
+
+ifdef CONFIG_WEP
+L_CFLAGS += -DCONFIG_WEP
 endif
 
 
@@ -890,14 +900,12 @@ OBJS += src/ap/bss_load.c
 OBJS += src/ap/eap_user_db.c
 OBJS += src/ap/neighbor_db.c
 OBJS += src/ap/rrm.c
-ifdef CONFIG_IEEE80211N
 OBJS += src/ap/ieee802_11_ht.c
 ifdef CONFIG_IEEE80211AC
 OBJS += src/ap/ieee802_11_vht.c
 endif
 ifdef CONFIG_IEEE80211AX
 OBJS += src/ap/ieee802_11_he.c
-endif
 endif
 ifdef CONFIG_WNM_AP
 L_CFLAGS += -DCONFIG_WNM_AP
@@ -918,14 +926,11 @@ OBJS += src/eap_server/eap_server.c
 OBJS += src/eap_server/eap_server_identity.c
 OBJS += src/eap_server/eap_server_methods.c
 
-ifdef CONFIG_IEEE80211N
-L_CFLAGS += -DCONFIG_IEEE80211N
 ifdef CONFIG_IEEE80211AC
 L_CFLAGS += -DCONFIG_IEEE80211AC
 endif
 ifdef CONFIG_IEEE80211AX
 L_CFLAGS += -DCONFIG_IEEE80211AX
-endif
 endif
 
 ifdef NEED_AP_MLME
@@ -1123,7 +1128,7 @@ OBJS += src/tls/tlsv1_client.c
 OBJS += src/tls/tlsv1_client_write.c
 OBJS += src/tls/tlsv1_client_read.c
 OBJS += src/tls/tlsv1_client_ocsp.c
-OBJS += src/tls/asn1.c
+NEED_ASN1=y
 OBJS += src/tls/rsa.c
 OBJS += src/tls/x509v3.c
 OBJS += src/tls/pkcs1.c
@@ -1411,6 +1416,10 @@ OBJS += src/crypto/sha512.c
 endif
 endif
 OBJS += src/crypto/sha512-prf.c
+endif
+
+ifdef NEED_ASN1
+OBJS += src/tls/asn1.c
 endif
 
 ifdef NEED_DH_GROUPS

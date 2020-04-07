@@ -64,10 +64,16 @@ static int supp_ether_send(void *ctx, const u8 *dest, u16 proto, const u8 *buf,
 {
 	struct ibss_rsn_peer *peer = ctx;
 	struct wpa_supplicant *wpa_s = peer->ibss_rsn->wpa_s;
+	int encrypt = peer->authentication_status & IBSS_RSN_REPORTED_PTK;
 
-	wpa_printf(MSG_DEBUG, "SUPP: %s(dest=" MACSTR " proto=0x%04x "
-		   "len=%lu)",
-		   __func__, MAC2STR(dest), proto, (unsigned long) len);
+	wpa_printf(MSG_DEBUG, "SUPP: %s(dest=" MACSTR
+		   " proto=0x%04x len=%lu no_encrypt=%d)",
+		   __func__, MAC2STR(dest), proto, (unsigned long) len,
+		   !encrypt);
+
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_CONTROL_PORT)
+		return wpa_drv_tx_control_port(wpa_s, dest, proto, buf, len,
+					       !encrypt);
 
 	if (wpa_s->l2)
 		return l2_packet_send(wpa_s->l2, dest, proto, buf, len);
@@ -140,7 +146,7 @@ static void ibss_check_rsn_completed(struct ibss_rsn_peer *peer)
 static int supp_set_key(void *ctx, enum wpa_alg alg,
 			const u8 *addr, int key_idx, int set_tx,
 			const u8 *seq, size_t seq_len,
-			const u8 *key, size_t key_len)
+			const u8 *key, size_t key_len, enum key_flag key_flag)
 {
 	struct ibss_rsn_peer *peer = ctx;
 
@@ -167,7 +173,7 @@ static int supp_set_key(void *ctx, enum wpa_alg alg,
 	if (is_broadcast_ether_addr(addr))
 		addr = peer->addr;
 	return wpa_drv_set_key(peer->ibss_rsn->wpa_s, alg, addr, key_idx,
-			       set_tx, seq, seq_len, key, key_len);
+			       set_tx, seq, seq_len, key, key_len, key_flag);
 }
 
 
@@ -194,7 +200,13 @@ static void supp_cancel_auth_timeout(void *ctx)
 }
 
 
-static void supp_deauthenticate(void * ctx, u16 reason_code)
+static void supp_deauthenticate(void *ctx, u16 reason_code)
+{
+	wpa_printf(MSG_DEBUG, "SUPP: %s (TODO)", __func__);
+}
+
+
+static void supp_reconnect(void *ctx)
 {
 	wpa_printf(MSG_DEBUG, "SUPP: %s (TODO)", __func__);
 }
@@ -219,6 +231,7 @@ static int ibss_rsn_supp_init(struct ibss_rsn_peer *peer, const u8 *own_addr,
 	ctx->mlme_setprotection = supp_mlme_setprotection;
 	ctx->cancel_auth_timeout = supp_cancel_auth_timeout;
 	ctx->deauthenticate = supp_deauthenticate;
+	ctx->reconnect = supp_reconnect;
 	peer->supp = wpa_sm_init(ctx);
 	if (peer->supp == NULL) {
 		wpa_printf(MSG_DEBUG, "SUPP: wpa_sm_init() failed");
@@ -287,6 +300,10 @@ static int auth_send_eapol(void *ctx, const u8 *addr, const u8 *data,
 		   "encrypt=%d)",
 		   __func__, MAC2STR(addr), (unsigned long) data_len, encrypt);
 
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_CONTROL_PORT)
+		return wpa_drv_tx_control_port(wpa_s, addr, ETH_P_EAPOL,
+					       data, data_len, !encrypt);
+
 	if (wpa_s->l2)
 		return l2_packet_send(wpa_s->l2, addr, ETH_P_EAPOL, data,
 				      data_len);
@@ -296,7 +313,8 @@ static int auth_send_eapol(void *ctx, const u8 *addr, const u8 *data,
 
 
 static int auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
-			const u8 *addr, int idx, u8 *key, size_t key_len)
+			const u8 *addr, int idx, u8 *key, size_t key_len,
+			enum key_flag key_flag)
 {
 	struct ibss_rsn *ibss_rsn = ctx;
 	u8 seq[6];
@@ -335,7 +353,7 @@ static int auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
 	}
 
 	return wpa_drv_set_key(ibss_rsn->wpa_s, alg, addr, idx,
-			       1, seq, 6, key, key_len);
+			       1, seq, 6, key, key_len, key_flag);
 }
 
 
@@ -487,9 +505,6 @@ static int ibss_rsn_send_auth(struct ibss_rsn *ibss_rsn, const u8 *da, int seq)
 	const size_t auth_length = IEEE80211_HDRLEN + sizeof(auth.u.auth);
 	struct wpa_supplicant *wpa_s = ibss_rsn->wpa_s;
 
-	if (wpa_s->driver->send_frame == NULL)
-		return -1;
-
 	os_memset(&auth, 0, sizeof(auth));
 
 	auth.frame_control = IEEE80211_FC(WLAN_FC_TYPE_MGMT,
@@ -505,8 +520,7 @@ static int ibss_rsn_send_auth(struct ibss_rsn *ibss_rsn, const u8 *da, int seq)
 	wpa_printf(MSG_DEBUG, "RSN: IBSS TX Auth frame (SEQ %d) to " MACSTR,
 		   seq, MAC2STR(da));
 
-	return wpa_s->driver->send_frame(wpa_s->drv_priv, (u8 *) &auth,
-					 auth_length, 0);
+	return wpa_drv_send_mlme(wpa_s, (u8 *) &auth, auth_length, 0, 0, 0);
 }
 
 
@@ -852,7 +866,7 @@ static void ibss_rsn_handle_auth_1_of_2(struct ibss_rsn *ibss_rsn,
 		wpa_printf(MSG_DEBUG, "RSN: Clear pairwise key for peer "
 			   MACSTR, MAC2STR(addr));
 		wpa_drv_set_key(ibss_rsn->wpa_s, WPA_ALG_NONE, addr, 0, 0,
-				NULL, 0, NULL, 0);
+				NULL, 0, NULL, 0, KEY_FLAG_PAIRWISE);
 	}
 
 	if (peer &&

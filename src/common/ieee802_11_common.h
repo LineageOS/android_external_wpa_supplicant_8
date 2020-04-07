@@ -21,6 +21,7 @@ struct element {
 struct hostapd_hw_modes;
 
 #define MAX_NOF_MB_IES_SUPPORTED 5
+#define MAX_NUM_FRAG_IES_SUPPORTED 3
 
 struct mb_ies_info {
 	struct {
@@ -28,6 +29,21 @@ struct mb_ies_info {
 		u8 ie_len;
 	} ies[MAX_NOF_MB_IES_SUPPORTED];
 	u8 nof_ies;
+};
+
+struct frag_ies_info {
+	struct {
+		u8 eid;
+		u8 eid_ext;
+		const u8 *ie;
+		u8 ie_len;
+	} frags[MAX_NUM_FRAG_IES_SUPPORTED];
+
+	u8 n_frags;
+
+	/* the last parsed element ID and element extension ID */
+	u8 last_eid;
+	u8 last_eid_ext;
 };
 
 /* Parsed Information Elements */
@@ -85,7 +101,7 @@ struct ieee802_11_elems {
 	const u8 *fils_hlp;
 	const u8 *fils_ip_addr_assign;
 	const u8 *key_delivery;
-	const u8 *fils_wrapped_data;
+	const u8 *wrapped_data;
 	const u8 *fils_pk;
 	const u8 *fils_nonce;
 	const u8 *owe_dh;
@@ -96,6 +112,7 @@ struct ieee802_11_elems {
 	const u8 *multi_ap;
 	const u8 *he_capabilities;
 	const u8 *he_operation;
+	const u8 *short_ssid_list;
 
 	u8 ssid_len;
 	u8 supp_rates_len;
@@ -137,7 +154,7 @@ struct ieee802_11_elems {
 	u8 fils_hlp_len;
 	u8 fils_ip_addr_assign_len;
 	u8 key_delivery_len;
-	u8 fils_wrapped_data_len;
+	u8 wrapped_data_len;
 	u8 fils_pk_len;
 	u8 owe_dh_len;
 	u8 power_capab_len;
@@ -147,8 +164,10 @@ struct ieee802_11_elems {
 	u8 multi_ap_len;
 	u8 he_capabilities_len;
 	u8 he_operation_len;
+	u8 short_ssid_list_len;
 
 	struct mb_ies_info mb_ies;
+	struct frag_ies_info frag_ies;
 };
 
 typedef enum { ParseOK = 0, ParseUnknown = 1, ParseFailed = -1 } ParseRes;
@@ -290,6 +309,12 @@ void hostapd_encode_edmg_chan(int edmg_enable, u8 edmg_channel,
 
 int ieee802_edmg_is_allowed(struct ieee80211_edmg_config allowed,
 			    struct ieee80211_edmg_config requested);
+
+struct wpabuf * ieee802_11_defrag_data(struct ieee802_11_elems *elems,
+				       u8 eid, u8 eid_ext,
+				       const u8 *data, u8 len);
+struct wpabuf * ieee802_11_defrag(struct ieee802_11_elems *elems,
+				  u8 eid, u8 eid_ext);
 
 int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx);
 

@@ -200,6 +200,15 @@ static void eapol_port_timers_tick(void *eloop_ctx, void *timeout_ctx)
 }
 
 
+static int eapol_sm_confirm_auth(struct eapol_sm *sm)
+{
+	if (!sm->ctx->confirm_auth_cb)
+		return 0;
+
+	return sm->ctx->confirm_auth_cb(sm->ctx->ctx);
+}
+
+
 static void eapol_enable_timer_tick(struct eapol_sm *sm)
 {
 	if (sm->timer_tick_enabled)
@@ -316,6 +325,11 @@ SM_STATE(SUPP_PAE, AUTHENTICATED)
 
 SM_STATE(SUPP_PAE, RESTART)
 {
+	if (eapol_sm_confirm_auth(sm)) {
+		/* Don't process restart, we are already reconnecting */
+		return;
+	}
+
 	SM_ENTRY(SUPP_PAE, RESTART);
 	sm->eapRestart = TRUE;
 	if (sm->altAccept) {
@@ -678,6 +692,7 @@ struct eap_key_data {
 
 static void eapol_sm_processKey(struct eapol_sm *sm)
 {
+#ifdef CONFIG_WEP
 #ifndef CONFIG_FIPS
 	struct ieee802_1x_hdr *hdr;
 	struct ieee802_1x_eapol_key *key;
@@ -828,7 +843,7 @@ static void eapol_sm_processKey(struct eapol_sm *sm)
 
 	if (sm->ctx->set_wep_key &&
 	    sm->ctx->set_wep_key(sm->ctx->ctx,
-				 key->key_index & IEEE8021X_KEY_INDEX_FLAG,
+				 !!(key->key_index & IEEE8021X_KEY_INDEX_FLAG),
 				 key->key_index & IEEE8021X_KEY_INDEX_MASK,
 				 datakey, key_len) < 0) {
 		wpa_printf(MSG_WARNING, "EAPOL: Failed to set WEP key to the "
@@ -852,6 +867,7 @@ static void eapol_sm_processKey(struct eapol_sm *sm)
 		}
 	}
 #endif /* CONFIG_FIPS */
+#endif /* CONFIG_WEP */
 }
 
 

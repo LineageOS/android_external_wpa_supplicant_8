@@ -1912,7 +1912,7 @@ static int wpas_p2p_freq_to_edmg_channel(struct wpa_supplicant *wpa_s,
 		return -1;
 
 	hwmode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes,
-			  HOSTAPD_MODE_IEEE80211AD);
+			  HOSTAPD_MODE_IEEE80211AD, 0);
 	if (!hwmode) {
 		wpa_printf(MSG_ERROR,
 			   "Unsupported AP mode: HOSTAPD_MODE_IEEE80211AD");
@@ -2422,7 +2422,7 @@ static void wpas_go_neg_completed(void *ctx, struct p2p_go_neg_results *res)
 		wpas_start_wps_enrollee(group_wpa_s, res);
 	}
 
-	wpa_s->p2p_long_listen = 0;
+	wpa_s->global->p2p_long_listen = 0;
 	eloop_cancel_timeout(wpas_p2p_long_listen_timeout, wpa_s, NULL);
 
 	eloop_cancel_timeout(wpas_p2p_group_formation_timeout, wpa_s, NULL);
@@ -2701,7 +2701,7 @@ static int wpas_send_probe_resp(void *ctx, const struct wpabuf *buf,
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	return wpa_drv_send_mlme(wpa_s, wpabuf_head(buf), wpabuf_len(buf), 1,
-				 freq);
+				 freq, 0);
 }
 
 
@@ -3735,7 +3735,8 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 		if (o->p2p == NO_P2P_SUPP)
 			continue;
 
-		mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, o->mode);
+		mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, o->mode,
+				is_6ghz_op_class(o->op_class));
 		if (mode == NULL)
 			continue;
 		if (mode->mode == HOSTAPD_MODE_IEEE80211G)
@@ -3745,23 +3746,32 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 			res = wpas_p2p_verify_channel(wpa_s, mode, ch, o->bw);
 			if (res == ALLOWED) {
 				if (reg == NULL) {
+					if (cla == P2P_MAX_REG_CLASSES)
+						continue;
 					wpa_printf(MSG_DEBUG, "P2P: Add operating class %u",
 						   o->op_class);
 					reg = &chan->reg_class[cla];
 					cla++;
 					reg->reg_class = o->op_class;
 				}
+				if (reg->channels == P2P_MAX_REG_CLASS_CHANNELS)
+					continue;
 				reg->channel[reg->channels] = ch;
 				reg->channels++;
 			} else if (res == NO_IR &&
 				   wpa_s->conf->p2p_add_cli_chan) {
 				if (cli_reg == NULL) {
+					if (cli_cla == P2P_MAX_REG_CLASSES)
+						continue;
 					wpa_printf(MSG_DEBUG, "P2P: Add operating class %u (client only)",
 						   o->op_class);
 					cli_reg = &cli_chan->reg_class[cli_cla];
 					cli_cla++;
 					cli_reg->reg_class = o->op_class;
 				}
+				if (cli_reg->channels ==
+				    P2P_MAX_REG_CLASS_CHANNELS)
+					continue;
 				cli_reg->channel[cli_reg->channels] = ch;
 				cli_reg->channels++;
 			}
@@ -4758,7 +4768,7 @@ void wpas_p2p_deinit(struct wpa_supplicant *wpa_s)
 	eloop_cancel_timeout(wpas_p2p_psk_failure_removal, wpa_s, NULL);
 	eloop_cancel_timeout(wpas_p2p_group_formation_timeout, wpa_s, NULL);
 	eloop_cancel_timeout(wpas_p2p_join_scan, wpa_s, NULL);
-	wpa_s->p2p_long_listen = 0;
+	wpa_s->global->p2p_long_listen = 0;
 	eloop_cancel_timeout(wpas_p2p_long_listen_timeout, wpa_s, NULL);
 	eloop_cancel_timeout(wpas_p2p_group_idle_timeout, wpa_s, NULL);
 	wpas_p2p_remove_pending_group_interface(wpa_s);
@@ -5643,7 +5653,7 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		go_intent = wpa_s->conf->p2p_go_intent;
 
 	if (!auth)
-		wpa_s->p2p_long_listen = 0;
+		wpa_s->global->p2p_long_listen = 0;
 
 	wpa_s->p2p_wps_method = wps_method;
 	wpa_s->p2p_persistent_group = !!persistent_group;
@@ -5813,19 +5823,20 @@ void wpas_p2p_cancel_remain_on_channel_cb(struct wpa_supplicant *wpa_s,
 {
 	wpa_printf(MSG_DEBUG, "P2P: Cancel remain-on-channel callback "
 		   "(p2p_long_listen=%d ms pending_action_tx=%p)",
-		   wpa_s->p2p_long_listen, offchannel_pending_action_tx(wpa_s));
+		   wpa_s->global->p2p_long_listen,
+		   offchannel_pending_action_tx(wpa_s));
 	wpas_p2p_listen_work_done(wpa_s);
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
 		return;
-	if (wpa_s->p2p_long_listen > 0)
-		wpa_s->p2p_long_listen -= wpa_s->max_remain_on_chan;
+	if (wpa_s->global->p2p_long_listen > 0)
+		wpa_s->global->p2p_long_listen -= wpa_s->max_remain_on_chan;
 	if (p2p_listen_end(wpa_s->global->p2p, freq) > 0)
 		return; /* P2P module started a new operation */
 	if (offchannel_pending_action_tx(wpa_s))
 		return;
-	if (wpa_s->p2p_long_listen > 0) {
+	if (wpa_s->global->p2p_long_listen > 0) {
 		wpa_printf(MSG_DEBUG, "P2P: Continuing long Listen state");
-		wpas_p2p_listen_start(wpa_s, wpa_s->p2p_long_listen);
+		wpas_p2p_listen_start(wpa_s, wpa_s->global->p2p_long_listen);
 	} else {
 		/*
 		 * When listen duration is over, stop listen & update p2p_state
@@ -6298,7 +6309,7 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 			cand = wpa_s->p2p_group_common_freqs[i];
 			mode = ieee80211_freq_to_chan(cand, &chan);
 			hwmode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes,
-					  mode);
+					  mode, is_6ghz_freq(cand));
 			if (!hwmode ||
 			    wpas_p2p_verify_channel(wpa_s, hwmode, chan,
 						    BW80) != ALLOWED)
@@ -6325,7 +6336,7 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 			cand = wpa_s->p2p_group_common_freqs[i];
 			mode = ieee80211_freq_to_chan(cand, &chan);
 			hwmode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes,
-					  mode);
+					  mode, is_6ghz_freq(cand));
 			if (!wpas_same_band(wpa_s->current_ssid->frequency,
 					    cand) ||
 			    !hwmode ||
@@ -6960,7 +6971,7 @@ int wpas_p2p_find(struct wpa_supplicant *wpa_s, unsigned int timeout,
 		  u8 seek_cnt, const char **seek_string, int freq)
 {
 	wpas_p2p_clear_pending_action_tx(wpa_s);
-	wpa_s->p2p_long_listen = 0;
+	wpa_s->global->p2p_long_listen = 0;
 
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL ||
 	    wpa_s->p2p_in_provisioning) {
@@ -7005,7 +7016,7 @@ static void wpas_p2p_scan_res_ignore_search(struct wpa_supplicant *wpa_s,
 static void wpas_p2p_stop_find_oper(struct wpa_supplicant *wpa_s)
 {
 	wpas_p2p_clear_pending_action_tx(wpa_s);
-	wpa_s->p2p_long_listen = 0;
+	wpa_s->global->p2p_long_listen = 0;
 	eloop_cancel_timeout(wpas_p2p_long_listen_timeout, wpa_s, NULL);
 	eloop_cancel_timeout(wpas_p2p_join_scan, wpa_s, NULL);
 
@@ -7031,7 +7042,7 @@ void wpas_p2p_stop_find(struct wpa_supplicant *wpa_s)
 static void wpas_p2p_long_listen_timeout(void *eloop_ctx, void *timeout_ctx)
 {
 	struct wpa_supplicant *wpa_s = eloop_ctx;
-	wpa_s->p2p_long_listen = 0;
+	wpa_s->global->p2p_long_listen = 0;
 }
 
 
@@ -7060,7 +7071,7 @@ int wpas_p2p_listen(struct wpa_supplicant *wpa_s, unsigned int timeout)
 		timeout = 3600;
 	}
 	eloop_cancel_timeout(wpas_p2p_long_listen_timeout, wpa_s, NULL);
-	wpa_s->p2p_long_listen = 0;
+	wpa_s->global->p2p_long_listen = 0;
 
 	/*
 	 * Stop previous find/listen operation to avoid trying to request a new
@@ -7072,7 +7083,7 @@ int wpas_p2p_listen(struct wpa_supplicant *wpa_s, unsigned int timeout)
 
 	res = wpas_p2p_listen_start(wpa_s, timeout * 1000);
 	if (res == 0 && timeout * 1000 > wpa_s->max_remain_on_chan) {
-		wpa_s->p2p_long_listen = timeout * 1000;
+		wpa_s->global->p2p_long_listen = timeout * 1000;
 		eloop_register_timeout(timeout, 0,
 				       wpas_p2p_long_listen_timeout,
 				       wpa_s, NULL);
@@ -7179,7 +7190,7 @@ static void wpas_p2p_group_deinit(struct wpa_supplicant *wpa_s)
 
 int wpas_p2p_reject(struct wpa_supplicant *wpa_s, const u8 *addr)
 {
-	wpa_s->p2p_long_listen = 0;
+	wpa_s->global->p2p_long_listen = 0;
 
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
 		return -1;

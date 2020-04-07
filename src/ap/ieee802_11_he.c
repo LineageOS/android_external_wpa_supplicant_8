@@ -192,9 +192,12 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
 		params |= (hapd->iface->conf->he_op.he_rts_threshold <<
 			   HE_OPERATION_RTS_THRESHOLD_OFFSET);
 
-	if (hapd->iface->conf->he_op.he_bss_color)
-		params |= (hapd->iface->conf->he_op.he_bss_color <<
-			   HE_OPERATION_BSS_COLOR_OFFSET);
+	if (hapd->iface->conf->he_op.he_bss_color_disabled)
+		params |= HE_OPERATION_BSS_COLOR_DISABLED;
+	if (hapd->iface->conf->he_op.he_bss_color_partial)
+		params |= HE_OPERATION_BSS_COLOR_PARTIAL;
+	params |= hapd->iface->conf->he_op.he_bss_color <<
+		HE_OPERATION_BSS_COLOR_OFFSET;
 
 	/* HE minimum required basic MCS and NSS for STAs */
 	oper->he_mcs_nss_set =
@@ -206,17 +209,25 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
 
 	if (is_6ghz_op_class(hapd->iconf->op_class)) {
 		u8 seg0 = hostapd_get_oper_centr_freq_seg0_idx(hapd->iconf);
+		u8 seg1 = hostapd_get_oper_centr_freq_seg1_idx(hapd->iconf);
 
 		if (!seg0)
 			seg0 = hapd->iconf->channel;
 
 		params |= HE_OPERATION_6GHZ_OPER_INFO;
+
+		/* 6 GHz Operation Information field */
 		*pos++ = hapd->iconf->channel; /* Primary Channel */
-		*pos++ = center_idx_to_bw_6ghz(seg0); /* Control: Channel Width
-						       */
-		/* Channel Center Freq Seg0/Seg0 */
+
+		/* Control: Channel Width */
+		if (seg1)
+			*pos++ = 3;
+		else
+			*pos++ = center_idx_to_bw_6ghz(seg0);
+
+		/* Channel Center Freq Seg0/Seg1 */
 		*pos++ = seg0;
-		*pos++ = hostapd_get_oper_centr_freq_seg1_idx(hapd->iconf);
+		*pos++ = seg1;
 		/* Minimum Rate */
 		*pos++ = 6; /* TODO: what should be set here? */
 	}
@@ -401,4 +412,19 @@ u16 copy_sta_he_capab(struct hostapd_data *hapd, struct sta_info *sta,
 	sta->he_capab_len = he_capab_len;
 
 	return WLAN_STATUS_SUCCESS;
+}
+
+
+int hostapd_get_he_twt_responder(struct hostapd_data *hapd,
+				 enum ieee80211_op_mode mode)
+{
+	u8 *mac_cap;
+
+	if (!hapd->iface->current_mode ||
+	    !hapd->iface->current_mode->he_capab[mode].he_supported)
+		return 0;
+
+	mac_cap = hapd->iface->current_mode->he_capab[mode].mac_cap;
+
+	return !!(mac_cap[HE_MAC_CAPAB_0] & HE_MACCAP_TWT_RESPONDER);
 }

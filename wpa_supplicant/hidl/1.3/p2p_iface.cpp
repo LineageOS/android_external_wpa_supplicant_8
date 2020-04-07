@@ -100,7 +100,7 @@ void setBandScanFreqsList(
 	struct hostapd_hw_modes *mode;
 	int count, i;
 
-	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, band);
+	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, band, 0);
 	if (mode == NULL) {
 		/* No channels supported in this band. */
 		return;

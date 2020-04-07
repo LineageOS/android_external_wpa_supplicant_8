@@ -188,6 +188,16 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s)
 			      drv_ssid_len) == 0)
 			return 0; /* current profile still in use */
 
+#ifdef CONFIG_OWE
+		if ((wpa_s->current_ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
+		    wpa_s->current_bss &&
+		    (wpa_s->current_bss->flags & WPA_BSS_OWE_TRANSITION) &&
+		    drv_ssid_len == wpa_s->current_bss->ssid_len &&
+		    os_memcmp(drv_ssid, wpa_s->current_bss->ssid,
+			      drv_ssid_len) == 0)
+			return 0; /* current profile still in use */
+#endif /* CONFIG_OWE */
+
 		wpa_msg(wpa_s, MSG_DEBUG,
 			"Driver-initiated BSS selection changed the SSID to %s",
 			wpa_ssid_txt(drv_ssid, drv_ssid_len));
@@ -479,6 +489,7 @@ int wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
 
 #ifndef CONFIG_NO_SCAN_PROCESSING
 
+#ifdef CONFIG_WEP
 static int has_wep_key(struct wpa_ssid *ssid)
 {
 	int i;
@@ -490,6 +501,7 @@ static int has_wep_key(struct wpa_ssid *ssid)
 
 	return 0;
 }
+#endif /* CONFIG_WEP */
 
 
 static int wpa_supplicant_match_privacy(struct wpa_bss *bss,
@@ -510,8 +522,10 @@ static int wpa_supplicant_match_privacy(struct wpa_bss *bss,
 		return 1;
 #endif /* CONFIG_OWE */
 
+#ifdef CONFIG_WEP
 	if (has_wep_key(ssid))
 		privacy = 1;
+#endif /* CONFIG_WEP */
 
 #ifdef IEEE8021X_EAPOL
 	if ((ssid->key_mgmt & WPA_KEY_MGMT_IEEE8021X_NO_WPA) &&
@@ -540,17 +554,21 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 	int proto_match = 0;
 	const u8 *rsn_ie, *wpa_ie;
 	int ret;
+#ifdef CONFIG_WEP
 	int wep_ok;
+#endif /* CONFIG_WEP */
 
 	ret = wpas_wps_ssid_bss_match(wpa_s, ssid, bss);
 	if (ret >= 0)
 		return ret;
 
+#ifdef CONFIG_WEP
 	/* Allow TSN if local configuration accepts WEP use without WPA/WPA2 */
 	wep_ok = !wpa_key_mgmt_wpa(ssid->key_mgmt) &&
 		(((ssid->key_mgmt & WPA_KEY_MGMT_NONE) &&
 		  ssid->wep_key_len[ssid->wep_tx_keyidx] > 0) ||
 		 (ssid->key_mgmt & WPA_KEY_MGMT_IEEE8021X_NO_WPA));
+#endif /* CONFIG_WEP */
 
 	rsn_ie = wpa_bss_get_ie(bss, WLAN_EID_RSN);
 	while ((ssid->proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)) && rsn_ie) {
@@ -567,6 +585,7 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 		if (!ie.has_group)
 			ie.group_cipher = wpa_default_rsn_cipher(bss->freq);
 
+#ifdef CONFIG_WEP
 		if (wep_ok &&
 		    (ie.group_cipher & (WPA_CIPHER_WEP40 | WPA_CIPHER_WEP104)))
 		{
@@ -575,6 +594,7 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 					"   selected based on TSN in RSN IE");
 			return 1;
 		}
+#endif /* CONFIG_WEP */
 
 		if (!(ie.proto & ssid->proto) &&
 		    !(ssid->proto & WPA_PROTO_OSEN)) {
@@ -655,6 +675,7 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 			break;
 		}
 
+#ifdef CONFIG_WEP
 		if (wep_ok &&
 		    (ie.group_cipher & (WPA_CIPHER_WEP40 | WPA_CIPHER_WEP104)))
 		{
@@ -663,6 +684,7 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 					"   selected based on TSN in WPA IE");
 			return 1;
 		}
+#endif /* CONFIG_WEP */
 
 		if (!(ie.proto & ssid->proto)) {
 			if (debug_print)
@@ -772,8 +794,8 @@ static int freq_allowed(int *freqs, int freq)
 }
 
 
-static int rate_match(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
-		      int debug_print)
+static int rate_match(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+		      struct wpa_bss *bss, int debug_print)
 {
 	const struct hostapd_hw_modes *mode = NULL, *modes;
 	const u8 scan_ie[2] = { WLAN_EID_SUPP_RATES, WLAN_EID_EXT_SUPP_RATES };
@@ -853,7 +875,9 @@ static int rate_match(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 #ifdef CONFIG_SAE
 			if (flagged && ((rate_ie[j] & 0x7f) ==
 					BSS_MEMBERSHIP_SELECTOR_SAE_H2E_ONLY)) {
-				if (wpa_s->conf->sae_pwe == 0) {
+				if (wpa_s->conf->sae_pwe == 0 &&
+				    !ssid->sae_password_id &&
+				    wpa_key_mgmt_sae(ssid->key_mgmt)) {
 					if (debug_print)
 						wpa_dbg(wpa_s, MSG_DEBUG,
 							"   SAE H2E disabled");
@@ -971,6 +995,24 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 	*ret_ssid = pos;
 	*ret_ssid_len = ssid_len;
 
+	if (!(bss->flags & WPA_BSS_OWE_TRANSITION)) {
+		struct wpa_ssid *ssid;
+
+		for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
+			if (wpas_network_disabled(wpa_s, ssid))
+				continue;
+			if (ssid->ssid_len == ssid_len &&
+			    os_memcmp(ssid->ssid, pos, ssid_len) == 0) {
+				/* OWE BSS in transition mode for a currently
+				 * enabled OWE network. */
+				wpa_dbg(wpa_s, MSG_DEBUG,
+					"OWE: transition mode OWE SSID for active OWE profile");
+				bss->flags |= WPA_BSS_OWE_TRANSITION;
+				break;
+			}
+		}
+	}
+
 	if (bss->ssid_len > 0)
 		return;
 
@@ -1011,7 +1053,30 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 		wpa_ssid_txt(pos, ssid_len));
 	os_memcpy(bss->ssid, pos, ssid_len);
 	bss->ssid_len = ssid_len;
+	bss->flags |= WPA_BSS_OWE_TRANSITION;
 #endif /* CONFIG_OWE */
+}
+
+
+static int disabled_freq(struct wpa_supplicant *wpa_s, int freq)
+{
+	int i, j;
+
+	if (!wpa_s->hw.modes || !wpa_s->hw.num_modes)
+		return 0;
+
+	for (j = 0; j < wpa_s->hw.num_modes; j++) {
+		struct hostapd_hw_modes *mode = &wpa_s->hw.modes[j];
+
+		for (i = 0; i < mode->num_channels; i++) {
+			struct hostapd_channel_data *chan = &mode->channels[i];
+
+			if (chan->freq == freq)
+				return !!(chan->flag & HOSTAPD_CHAN_DISABLED);
+		}
+	}
+
+	return 1;
 }
 
 
@@ -1103,6 +1168,12 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 	if (disallowed_ssid(wpa_s, match_ssid, match_ssid_len)) {
 		if (debug_print)
 			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - SSID disallowed");
+		return NULL;
+	}
+
+	if (disabled_freq(wpa_s, bss->freq)) {
+		if (debug_print)
+			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - channel disabled");
 		return NULL;
 	}
 
@@ -1206,6 +1277,7 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 			continue;
 		}
 
+#ifdef CONFIG_WEP
 		if (wpa && !wpa_key_mgmt_wpa(ssid->key_mgmt) &&
 		    has_wep_key(ssid)) {
 			if (debug_print)
@@ -1213,6 +1285,7 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 					"   skip - ignore WPA/WPA2 AP for WEP network block");
 			continue;
 		}
+#endif /* CONFIG_WEP */
 
 		if ((ssid->key_mgmt & WPA_KEY_MGMT_OSEN) && !osen &&
 		    !rsn_osen) {
@@ -1262,7 +1335,7 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 		}
 #endif /* CONFIG_MESH */
 
-		if (!rate_match(wpa_s, bss, debug_print)) {
+		if (!rate_match(wpa_s, ssid, bss, debug_print)) {
 			if (debug_print)
 				wpa_dbg(wpa_s, MSG_DEBUG,
 					"   skip - rate sets do not match");
@@ -1270,7 +1343,8 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 		}
 
 #ifdef CONFIG_SAE
-		if (wpa_s->conf->sae_pwe == 1 &&
+		if ((wpa_s->conf->sae_pwe == 1 || ssid->sae_password_id) &&
+		    wpa_s->conf->sae_pwe != 3 &&
 		    wpa_key_mgmt_sae(ssid->key_mgmt) &&
 		    (!(ie = wpa_bss_get_ie(bss, WLAN_EID_RSNX)) ||
 		     ie[1] < 1 ||
@@ -1446,8 +1520,9 @@ wpa_supplicant_select_bss(struct wpa_supplicant *wpa_s,
 		wpa_s->owe_transition_select = 0;
 		if (!*selected_ssid)
 			continue;
-		wpa_dbg(wpa_s, MSG_DEBUG, "   selected BSS " MACSTR
+		wpa_dbg(wpa_s, MSG_DEBUG, "   selected %sBSS " MACSTR
 			" ssid='%s'",
+			bss == wpa_s->current_bss ? "current ": "",
 			MAC2STR(bss->bssid),
 			wpa_ssid_txt(bss->ssid, bss->ssid_len));
 		return bss;
@@ -1461,7 +1536,7 @@ struct wpa_bss * wpa_supplicant_pick_network(struct wpa_supplicant *wpa_s,
 					     struct wpa_ssid **selected_ssid)
 {
 	struct wpa_bss *selected = NULL;
-	int prio;
+	size_t prio;
 	struct wpa_ssid *next_ssid = NULL;
 	struct wpa_ssid *ssid;
 
@@ -1616,7 +1691,7 @@ int wpa_supplicant_connect(struct wpa_supplicant *wpa_s,
 static struct wpa_ssid *
 wpa_supplicant_pick_new_network(struct wpa_supplicant *wpa_s)
 {
-	int prio;
+	size_t prio;
 	struct wpa_ssid *ssid;
 
 	for (prio = 0; prio < wpa_s->conf->num_prio; prio++) {
@@ -1672,6 +1747,31 @@ static void wpa_supplicant_rsn_preauth_scan_results(
 }
 
 
+#ifndef CONFIG_NO_ROAMING
+
+static int wpas_get_snr_signal_info(u32 frequency, int avg_signal, int noise)
+{
+	if (noise == WPA_INVALID_NOISE)
+		noise = IS_5GHZ(frequency) ? DEFAULT_NOISE_FLOOR_5GHZ :
+			DEFAULT_NOISE_FLOOR_2GHZ;
+	return avg_signal - noise;
+}
+
+
+static unsigned int
+wpas_get_est_throughput_from_bss_snr(const struct wpa_supplicant *wpa_s,
+				     const struct wpa_bss *bss, int snr)
+{
+	int rate = wpa_bss_get_max_rate(bss);
+	const u8 *ies = (const void *) (bss + 1);
+	size_t ie_len = bss->ie_len ? bss->ie_len : bss->beacon_ie_len;
+
+	return wpas_get_est_tpt(wpa_s, ies, ie_len, rate, snr);
+}
+
+#endif /* CONFIG_NO_ROAMING */
+
+
 static int wpa_supplicant_need_to_roam(struct wpa_supplicant *wpa_s,
 				       struct wpa_bss *selected,
 				       struct wpa_ssid *ssid)
@@ -1680,7 +1780,10 @@ static int wpa_supplicant_need_to_roam(struct wpa_supplicant *wpa_s,
 #ifndef CONFIG_NO_ROAMING
 	int min_diff, diff;
 	int to_5ghz;
-	int cur_est, sel_est;
+	int cur_level;
+	unsigned int cur_est, sel_est;
+	struct wpa_signal_info si;
+	int cur_snr = 0;
 #endif /* CONFIG_NO_ROAMING */
 
 	if (wpa_s->reassociate)
@@ -1731,7 +1834,41 @@ static int wpa_supplicant_need_to_roam(struct wpa_supplicant *wpa_s,
 		return 1;
 	}
 
-	if (selected->est_throughput > current_bss->est_throughput + 5000) {
+	cur_level = current_bss->level;
+	cur_est = current_bss->est_throughput;
+	sel_est = selected->est_throughput;
+
+	/*
+	 * Try to poll the signal from the driver since this will allow to get
+	 * more accurate values. In some cases, there can be big differences
+	 * between the RSSI of the Probe Response frames of the AP we are
+	 * associated with and the Beacon frames we hear from the same AP after
+	 * association. This can happen, e.g., when there are two antennas that
+	 * hear the AP very differently. If the driver chooses to hear the
+	 * Probe Response frames during the scan on the "bad" antenna because
+	 * it wants to save power, but knows to choose the other antenna after
+	 * association, we will hear our AP with a low RSSI as part of the
+	 * scan even when we can hear it decently on the other antenna. To cope
+	 * with this, ask the driver to teach us how it hears the AP. Also, the
+	 * scan results may be a bit old, since we can very quickly get fresh
+	 * information about our currently associated AP.
+	 */
+	if (wpa_drv_signal_poll(wpa_s, &si) == 0 &&
+	    (si.avg_beacon_signal || si.avg_signal)) {
+		cur_level = si.avg_beacon_signal ? si.avg_beacon_signal :
+			si.avg_signal;
+		cur_snr = wpas_get_snr_signal_info(si.frequency, cur_level,
+						   si.current_noise);
+
+		cur_est = wpas_get_est_throughput_from_bss_snr(wpa_s,
+							       current_bss,
+							       cur_snr);
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Using signal poll values for the current BSS: level=%d snr=%d est_throughput=%u",
+			cur_level, cur_snr, cur_est);
+	}
+
+	if (sel_est > cur_est + 5000) {
 		wpa_dbg(wpa_s, MSG_DEBUG,
 			"Allow reassociation - selected BSS has better estimated throughput");
 		return 1;
@@ -1739,59 +1876,59 @@ static int wpa_supplicant_need_to_roam(struct wpa_supplicant *wpa_s,
 
 	to_5ghz = selected->freq > 4000 && current_bss->freq < 4000;
 
-	if (current_bss->level < 0 &&
-	    current_bss->level > selected->level + to_5ghz * 2) {
+	if (cur_level < 0 && cur_level > selected->level + to_5ghz * 2 &&
+	    sel_est < cur_est * 1.2) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Skip roam - Current BSS has better "
 			"signal level");
 		return 0;
 	}
 
-	if (current_bss->est_throughput > selected->est_throughput + 5000) {
+	if (cur_est > sel_est + 5000) {
 		wpa_dbg(wpa_s, MSG_DEBUG,
 			"Skip roam - Current BSS has better estimated throughput");
 		return 0;
 	}
 
-	cur_est = current_bss->est_throughput;
-	sel_est = selected->est_throughput;
-	min_diff = 2;
-	if (current_bss->level < 0) {
-		if (current_bss->level < -85)
-			min_diff = 1;
-		else if (current_bss->level < -80)
-			min_diff = 2;
-		else if (current_bss->level < -75)
-			min_diff = 3;
-		else if (current_bss->level < -70)
-			min_diff = 4;
-		else
-			min_diff = 5;
-		if (cur_est > sel_est * 1.5)
-			min_diff += 10;
-		else if (cur_est > sel_est * 1.2)
-			min_diff += 5;
-		else if (cur_est > sel_est * 1.1)
-			min_diff += 2;
-		else if (cur_est > sel_est)
-			min_diff++;
+	if (cur_snr > GREAT_SNR) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Skip roam - Current BSS has good SNR (%u > %u)",
+			cur_snr, GREAT_SNR);
+		return 0;
 	}
-	if (to_5ghz) {
-		int reduce = 2;
 
-		/* Make it easier to move to 5 GHz band */
-		if (sel_est > cur_est * 1.5)
-			reduce = 5;
-		else if (sel_est > cur_est * 1.2)
-			reduce = 4;
-		else if (sel_est > cur_est * 1.1)
-			reduce = 3;
+	if (cur_level < -85) /* ..-86 dBm */
+		min_diff = 1;
+	else if (cur_level < -80) /* -85..-81 dBm */
+		min_diff = 2;
+	else if (cur_level < -75) /* -80..-76 dBm */
+		min_diff = 3;
+	else if (cur_level < -70) /* -75..-71 dBm */
+		min_diff = 4;
+	else if (cur_level < 0) /* -70..-1 dBm */
+		min_diff = 5;
+	else /* unspecified units (not in dBm) */
+		min_diff = 2;
 
-		if (min_diff > reduce)
-			min_diff -= reduce;
-		else
-			min_diff = 0;
-	}
-	diff = abs(current_bss->level - selected->level);
+	if (cur_est > sel_est * 1.5)
+		min_diff += 10;
+	else if (cur_est > sel_est * 1.2)
+		min_diff += 5;
+	else if (cur_est > sel_est * 1.1)
+		min_diff += 2;
+	else if (cur_est > sel_est)
+		min_diff++;
+	else if (sel_est > cur_est * 1.5)
+		min_diff -= 10;
+	else if (sel_est > cur_est * 1.2)
+		min_diff -= 5;
+	else if (sel_est > cur_est * 1.1)
+		min_diff -= 2;
+	else if (sel_est > cur_est)
+		min_diff--;
+
+	if (to_5ghz)
+		min_diff -= 2;
+	diff = selected->level - cur_level;
 	if (diff < min_diff) {
 		wpa_dbg(wpa_s, MSG_DEBUG,
 			"Skip roam - too small difference in signal level (%d < %d)",
@@ -1887,15 +2024,6 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 		goto scan_work_done;
 	}
 
-	if (ap) {
-		wpa_dbg(wpa_s, MSG_DEBUG, "Ignore scan results in AP mode");
-#ifdef CONFIG_AP
-		if (wpa_s->ap_iface->scan_cb)
-			wpa_s->ap_iface->scan_cb(wpa_s->ap_iface);
-#endif /* CONFIG_AP */
-		goto scan_work_done;
-	}
-
 	wpa_dbg(wpa_s, MSG_DEBUG, "New scan results available (own=%u ext=%u)",
 		wpa_s->own_scan_running,
 		data ? data->scan_info.external_scan : 0);
@@ -1911,6 +2039,15 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	wpas_notify_scan_results(wpa_s);
 
 	wpas_notify_scan_done(wpa_s, 1);
+
+	if (ap) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Ignore scan results in AP mode");
+#ifdef CONFIG_AP
+		if (wpa_s->ap_iface->scan_cb)
+			wpa_s->ap_iface->scan_cb(wpa_s->ap_iface);
+#endif /* CONFIG_AP */
+		goto scan_work_done;
+	}
 
 	if (data && data->scan_info.external_scan) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Do not use results from externally requested scan operation for network selection");
@@ -2194,7 +2331,8 @@ int wpa_supplicant_fast_associate(struct wpa_supplicant *wpa_s)
 		return -1;
 
 	os_get_reltime(&now);
-	if (os_reltime_expired(&now, &wpa_s->last_scan, 5)) {
+	if (os_reltime_expired(&now, &wpa_s->last_scan,
+			       SCAN_RES_VALID_FOR_CONNECT)) {
 		wpa_printf(MSG_DEBUG, "Fast associate: Old scan results");
 		return -1;
 	}
@@ -2327,28 +2465,41 @@ static void multi_ap_process_assoc_resp(struct wpa_supplicant *wpa_s,
 	const u8 *map_sub_elem, *pos;
 	size_t len;
 
-	if (!wpa_s->current_ssid ||
-	    !wpa_s->current_ssid->multi_ap_backhaul_sta ||
-	    !ies ||
-	    ieee802_11_parse_elems(ies, ies_len, &elems, 1) == ParseFailed)
-		return;
+	wpa_s->multi_ap_ie = 0;
 
-	if (!elems.multi_ap || elems.multi_ap_len < 7) {
-		wpa_printf(MSG_INFO, "AP doesn't support Multi-AP protocol");
-		goto fail;
-	}
+	if (!ies ||
+	    ieee802_11_parse_elems(ies, ies_len, &elems, 1) == ParseFailed ||
+	    !elems.multi_ap || elems.multi_ap_len < 7)
+		return;
 
 	pos = elems.multi_ap + 4;
 	len = elems.multi_ap_len - 4;
 
 	map_sub_elem = get_ie(pos, len, MULTI_AP_SUB_ELEM_TYPE);
-	if (!map_sub_elem || map_sub_elem[1] < 1) {
-		wpa_printf(MSG_INFO, "invalid Multi-AP sub elem type");
+	if (!map_sub_elem || map_sub_elem[1] < 1)
+		return;
+
+	wpa_s->multi_ap_backhaul = !!(map_sub_elem[2] & MULTI_AP_BACKHAUL_BSS);
+	wpa_s->multi_ap_fronthaul = !!(map_sub_elem[2] &
+				       MULTI_AP_FRONTHAUL_BSS);
+	wpa_s->multi_ap_ie = 1;
+}
+
+
+static void multi_ap_set_4addr_mode(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s->current_ssid ||
+	    !wpa_s->current_ssid->multi_ap_backhaul_sta)
+		return;
+
+	if (!wpa_s->multi_ap_ie) {
+		wpa_printf(MSG_INFO,
+			   "AP does not include valid Multi-AP element");
 		goto fail;
 	}
 
-	if (!(map_sub_elem[2] & MULTI_AP_BACKHAUL_BSS)) {
-		if ((map_sub_elem[2] & MULTI_AP_FRONTHAUL_BSS) &&
+	if (!wpa_s->multi_ap_backhaul) {
+		if (wpa_s->multi_ap_fronthaul &&
 		    wpa_s->current_ssid->key_mgmt & WPA_KEY_MGMT_WPS) {
 			wpa_printf(MSG_INFO,
 				   "WPS active, accepting fronthaul-only BSS");
@@ -2472,8 +2623,14 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 			wpa_s->connection_set = 1;
 			wpa_s->connection_ht = req_elems.ht_capabilities &&
 				resp_elems.ht_capabilities;
+			/* Do not include subset of VHT on 2.4 GHz vendor
+			 * extension in consideration for reporting VHT
+			 * association. */
 			wpa_s->connection_vht = req_elems.vht_capabilities &&
-				resp_elems.vht_capabilities;
+				resp_elems.vht_capabilities &&
+				(!data->assoc_info.freq ||
+				 wpas_freq_to_band(data->assoc_info.freq) !=
+				 BAND_2_4_GHZ);
 			wpa_s->connection_he = req_elems.he_capabilities &&
 				resp_elems.he_capabilities;
 
@@ -2818,6 +2975,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_AP */
 
 	eloop_cancel_timeout(wpas_network_reenabled, wpa_s, NULL);
+	wpa_s->own_reconnect_req = 0;
 
 	ft_completed = wpa_ft_is_completed(wpa_s->wpa);
 	if (data && wpa_supplicant_event_associnfo(wpa_s, data) < 0)
@@ -2866,6 +3024,8 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 			return;
 		}
 	}
+
+	multi_ap_set_4addr_mode(wpa_s);
 
 	if (wpa_s->conf->ap_scan == 1 &&
 	    wpa_s->drv_flags & WPA_DRIVER_FLAGS_BSS_SELECTION) {
@@ -2971,6 +3131,13 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 	wpa_s->last_eapol_matches_bssid = 0;
 
 #ifdef CONFIG_TESTING_OPTIONS
+	if (wpa_s->rsne_override_eapol) {
+		wpa_printf(MSG_DEBUG,
+			   "TESTING: RSNE EAPOL-Key msg 2/4 override");
+		wpa_sm_set_assoc_wpa_ie(wpa_s->wpa,
+					wpabuf_head(wpa_s->rsne_override_eapol),
+					wpabuf_len(wpa_s->rsne_override_eapol));
+	}
 	if (wpa_s->rsnxe_override_eapol) {
 		wpa_printf(MSG_DEBUG,
 			   "TESTING: RSNXE EAPOL-Key msg 2/4 override");
@@ -2999,6 +3166,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		wpa_s->pending_eapol_rx = NULL;
 	}
 
+#ifdef CONFIG_WEP
 	if ((wpa_s->key_mgmt == WPA_KEY_MGMT_NONE ||
 	     wpa_s->key_mgmt == WPA_KEY_MGMT_IEEE8021X_NO_WPA) &&
 	    wpa_s->current_ssid &&
@@ -3006,6 +3174,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		/* Set static WEP keys again */
 		wpa_set_wep_keys(wpa_s, wpa_s->current_ssid);
 	}
+#endif /* CONFIG_WEP */
 
 #ifdef CONFIG_IBSS_RSN
 	if (wpa_s->current_ssid &&
@@ -3051,6 +3220,10 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_MBO
 	wpas_mbo_check_pmf(wpa_s, bss, wpa_s->current_ssid);
 #endif /* CONFIG_MBO */
+
+#ifdef CONFIG_DPP2
+	wpa_s->dpp_pfs_fallback = 0;
+#endif /* CONFIG_DPP2 */
 }
 
 
@@ -3178,21 +3351,25 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 		if (wpa_s->wpa_state == WPA_COMPLETED &&
 		    wpa_s->current_ssid &&
 		    wpa_s->current_ssid->mode == WPAS_MODE_INFRA &&
-		    !locally_generated &&
-		    disconnect_reason_recoverable(reason_code)) {
+		    (wpa_s->own_reconnect_req ||
+		     (!locally_generated &&
+		      disconnect_reason_recoverable(reason_code)))) {
 			/*
 			 * It looks like the AP has dropped association with
-			 * us, but could allow us to get back in. Try to
-			 * reconnect to the same BSS without full scan to save
-			 * time for some common cases.
+			 * us, but could allow us to get back in. This is also
+			 * triggered for cases where local reconnection request
+			 * is used to force reassociation with the same BSS.
+			 * Try to reconnect to the same BSS without a full scan
+			 * to save time for some common cases.
 			 */
 			fast_reconnect = wpa_s->current_bss;
 			fast_reconnect_ssid = wpa_s->current_ssid;
-		} else if (wpa_s->wpa_state >= WPA_ASSOCIATING)
+		} else if (wpa_s->wpa_state >= WPA_ASSOCIATING) {
 			wpa_supplicant_req_scan(wpa_s, 0, 100000);
-		else
+		} else {
 			wpa_dbg(wpa_s, MSG_DEBUG, "Do not request new "
 				"immediate scan");
+		}
 	} else {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Auto connect disabled: do not "
 			"try to re-connect");
@@ -4216,6 +4393,39 @@ static void wpas_event_assoc_reject(struct wpa_supplicant *wpa_s,
 	}
 #endif /* CONFIG_OWE */
 
+#ifdef CONFIG_DPP2
+	/* Try to follow AP's PFS policy. WLAN_STATUS_ASSOC_DENIED_UNSPEC is
+	 * the status code defined in the DPP R2 tech spec.
+	 * WLAN_STATUS_AKMP_NOT_VALID is addressed in the same manner as an
+	 * interoperability workaround with older hostapd implementation. */
+	if (wpa_s->current_ssid &&
+	    wpa_s->current_ssid->key_mgmt == WPA_KEY_MGMT_DPP &&
+	    wpa_s->current_ssid->dpp_pfs == 0 &&
+	    (data->assoc_reject.status_code ==
+	     WLAN_STATUS_ASSOC_DENIED_UNSPEC ||
+	     data->assoc_reject.status_code == WLAN_STATUS_AKMP_NOT_VALID)) {
+		struct wpa_ssid *ssid = wpa_s->current_ssid;
+		struct wpa_bss *bss = wpa_s->current_bss;
+
+		wpa_s->current_ssid->dpp_pfs_fallback ^= 1;
+		if (!bss)
+			bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
+		if (!bss || wpa_s->dpp_pfs_fallback) {
+			wpa_printf(MSG_DEBUG,
+				   "DPP: Updated PFS policy for next try");
+			wpas_connection_failed(wpa_s, bssid);
+			wpa_supplicant_mark_disassoc(wpa_s);
+			return;
+		}
+		wpa_printf(MSG_DEBUG, "DPP: Try again with updated PFS policy");
+		wpa_s->dpp_pfs_fallback = 1;
+		wpas_connect_work_done(wpa_s);
+		wpa_supplicant_mark_disassoc(wpa_s);
+		wpa_supplicant_connect(wpa_s, bss, ssid);
+		return;
+	}
+#endif /* CONFIG_DPP2 */
+
 #ifdef CONFIG_MBO
 	if (data->assoc_reject.status_code ==
 	    WLAN_STATUS_DENIED_POOR_CHANNEL_CONDITIONS &&
@@ -4282,11 +4492,44 @@ static void wpas_event_assoc_reject(struct wpa_supplicant *wpa_s,
 }
 
 
+static void wpas_event_unprot_beacon(struct wpa_supplicant *wpa_s,
+				     struct unprot_beacon *data)
+{
+	struct wpabuf *buf;
+	int res;
+
+	if (!data || wpa_s->wpa_state != WPA_COMPLETED ||
+	    os_memcmp(data->sa, wpa_s->bssid, ETH_ALEN) != 0)
+		return;
+	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_UNPROT_BEACON MACSTR,
+		MAC2STR(data->sa));
+
+	buf = wpabuf_alloc(4);
+	if (!buf)
+		return;
+
+	wpabuf_put_u8(buf, WLAN_ACTION_WNM);
+	wpabuf_put_u8(buf, WNM_NOTIFICATION_REQ);
+	wpabuf_put_u8(buf, 1); /* Dialog Token */
+	wpabuf_put_u8(buf, WNM_NOTIF_TYPE_BEACON_PROTECTION_FAILURE);
+
+	res = wpa_drv_send_action(wpa_s, wpa_s->assoc_freq, 0, wpa_s->bssid,
+				  wpa_s->own_addr, wpa_s->bssid,
+				  wpabuf_head(buf), wpabuf_len(buf), 0);
+	if (res < 0)
+		wpa_printf(MSG_DEBUG,
+			   "Failed to send WNM-Notification Request frame");
+
+	wpabuf_free(buf);
+}
+
+
 void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	int resched;
+	struct os_reltime age, clear_at;
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 #endif /* CONFIG_NO_STDOUT_DEBUG */
@@ -4589,6 +4832,20 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		wpa_s->assoc_freq = data->ch_switch.freq;
 		wpa_s->current_ssid->frequency = data->ch_switch.freq;
 
+#ifdef CONFIG_SME
+		switch (data->ch_switch.ch_offset) {
+		case 1:
+			wpa_s->sme.ht_sec_chan = HT_SEC_CHAN_ABOVE;
+			break;
+		case -1:
+			wpa_s->sme.ht_sec_chan = HT_SEC_CHAN_BELOW;
+			break;
+		default:
+			wpa_s->sme.ht_sec_chan = HT_SEC_CHAN_UNKNOWN;
+			break;
+		}
+#endif /* CONFIG_SME */
+
 #ifdef CONFIG_AP
 		if (wpa_s->current_ssid->mode == WPAS_MODE_AP ||
 		    wpa_s->current_ssid->mode == WPAS_MODE_P2P_GO ||
@@ -4811,6 +5068,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 	case EVENT_INTERFACE_ENABLED:
 		wpa_dbg(wpa_s, MSG_DEBUG, "Interface was enabled");
 		if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED) {
+			eloop_cancel_timeout(wpas_clear_disabled_interface,
+					     wpa_s, NULL);
 			wpa_supplicant_update_mac_addr(wpa_s);
 			wpa_supplicant_set_default_scan_ies(wpa_s);
 			if (wpa_s->p2p_mgmt) {
@@ -4879,8 +5138,20 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 				wpa_s, WLAN_REASON_DEAUTH_LEAVING, 1);
 		}
 		wpa_supplicant_mark_disassoc(wpa_s);
-		if (!wpa_s->conf->bss_no_flush_when_down)
-			wpa_bss_flush(wpa_s);
+		os_reltime_age(&wpa_s->last_scan, &age);
+		if (age.sec >= SCAN_RES_VALID_FOR_CONNECT) {
+			clear_at.sec = SCAN_RES_VALID_FOR_CONNECT;
+			clear_at.usec = 0;
+		} else {
+			struct os_reltime tmp;
+
+			tmp.sec = SCAN_RES_VALID_FOR_CONNECT;
+			tmp.usec = 0;
+			os_reltime_sub(&tmp, &age, &clear_at);
+		}
+		eloop_register_timeout(clear_at.sec, clear_at.usec,
+				       wpas_clear_disabled_interface,
+				       wpa_s, NULL);
 		radio_remove_works(wpa_s, NULL, 0);
 
 		wpa_supplicant_set_state(wpa_s, WPA_INTERFACE_DISABLED);
@@ -5056,6 +5327,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 						 data->sta_opmode.chan_width,
 						 data->sta_opmode.rx_nss);
 #endif /* CONFIG_AP */
+		break;
+	case EVENT_UNPROT_BEACON:
+		wpas_event_unprot_beacon(wpa_s, &data->unprot_beacon);
 		break;
 	default:
 		wpa_msg(wpa_s, MSG_INFO, "Unknown event %d", event);
