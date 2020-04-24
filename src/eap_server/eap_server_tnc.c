@@ -320,8 +320,8 @@ static struct wpabuf * eap_tnc_buildReq(struct eap_sm *sm, void *priv, u8 id)
 }
 
 
-static bool eap_tnc_check(struct eap_sm *sm, void *priv,
-			  struct wpabuf *respData)
+static Boolean eap_tnc_check(struct eap_sm *sm, void *priv,
+			     struct wpabuf *respData)
 {
 	struct eap_tnc_data *data = priv;
 	const u8 *pos;
@@ -331,29 +331,29 @@ static bool eap_tnc_check(struct eap_sm *sm, void *priv,
 			       &len);
 	if (pos == NULL) {
 		wpa_printf(MSG_INFO, "EAP-TNC: Invalid frame");
-		return true;
+		return TRUE;
 	}
 
 	if (len == 0 && data->state != WAIT_FRAG_ACK) {
 		wpa_printf(MSG_INFO, "EAP-TNC: Invalid frame (empty)");
-		return true;
+		return TRUE;
 	}
 
 	if (len == 0)
-		return false; /* Fragment ACK does not include flags */
+		return FALSE; /* Fragment ACK does not include flags */
 
 	if ((*pos & EAP_TNC_VERSION_MASK) != EAP_TNC_VERSION) {
 		wpa_printf(MSG_DEBUG, "EAP-TNC: Unsupported version %d",
 			   *pos & EAP_TNC_VERSION_MASK);
-		return true;
+		return TRUE;
 	}
 
 	if (*pos & EAP_TNC_FLAGS_START) {
 		wpa_printf(MSG_DEBUG, "EAP-TNC: Peer used Start flag");
-		return true;
+		return TRUE;
 	}
 
-	return false;
+	return FALSE;
 }
 
 
@@ -537,14 +537,14 @@ static void eap_tnc_process(struct eap_sm *sm, void *priv,
 }
 
 
-static bool eap_tnc_isDone(struct eap_sm *sm, void *priv)
+static Boolean eap_tnc_isDone(struct eap_sm *sm, void *priv)
 {
 	struct eap_tnc_data *data = priv;
 	return data->state == DONE || data->state == FAIL;
 }
 
 
-static bool eap_tnc_isSuccess(struct eap_sm *sm, void *priv)
+static Boolean eap_tnc_isSuccess(struct eap_sm *sm, void *priv)
 {
 	struct eap_tnc_data *data = priv;
 	return data->state == DONE;

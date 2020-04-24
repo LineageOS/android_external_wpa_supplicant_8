@@ -2526,10 +2526,32 @@ static void handle_auth(struct hostapd_data *hapd,
 	    (!(sta->flags & WLAN_STA_MFP) || !ap_sta_is_authorized(sta)) &&
 	    !(hapd->conf->mesh & MESH_ENABLED) &&
 	    !(sta->added_unassoc)) {
-		if (ap_sta_re_add(hapd, sta) < 0) {
+		/*
+		 * If a station that is already associated to the AP, is trying
+		 * to authenticate again, remove the STA entry, in order to make
+		 * sure the STA PS state gets cleared and configuration gets
+		 * updated. To handle this, station's added_unassoc flag is
+		 * cleared once the station has completed association.
+		 */
+		ap_sta_set_authorized(hapd, sta, 0);
+		hostapd_drv_sta_remove(hapd, sta->addr);
+		sta->flags &= ~(WLAN_STA_ASSOC | WLAN_STA_AUTH |
+				WLAN_STA_AUTHORIZED);
+
+		if (hostapd_sta_add(hapd, sta->addr, 0, 0,
+				    sta->supported_rates,
+				    sta->supported_rates_len,
+				    0, NULL, NULL, NULL, 0,
+				    sta->flags, 0, 0, 0, 0)) {
+			hostapd_logger(hapd, sta->addr,
+				       HOSTAPD_MODULE_IEEE80211,
+				       HOSTAPD_LEVEL_NOTICE,
+				       "Could not add STA to kernel driver");
 			resp = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
 			goto fail;
 		}
+
+		sta->added_unassoc = 1;
 	}
 
 	switch (auth_alg) {
@@ -3104,11 +3126,11 @@ end:
 #endif /* CONFIG_OWE */
 
 
-static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+static u16 check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 			   const u8 *ies, size_t ies_len, int reassoc)
 {
 	struct ieee802_11_elems elems;
-	int resp;
+	u16 resp;
 	const u8 *wpa_ie;
 	size_t wpa_ie_len;
 	const u8 *p2p_dev_addr = NULL;
@@ -4075,8 +4097,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 			 int reassoc, int rssi)
 {
 	u16 capab_info, listen_interval, seq_ctrl, fc;
-	int resp = WLAN_STATUS_SUCCESS;
-	u16 reply_res;
+	u16 resp = WLAN_STATUS_SUCCESS, reply_res;
 	const u8 *pos;
 	int left, i;
 	struct sta_info *sta;
@@ -4450,9 +4471,8 @@ static void handle_assoc(struct hostapd_data *hapd,
 	}
 #endif /* CONFIG_FILS */
 
-	if (resp >= 0)
-		reply_res = send_assoc_resp(hapd, sta, mgmt->sa, resp, reassoc,
-					    pos, left, rssi, omit_rsnxe);
+	reply_res = send_assoc_resp(hapd, sta, mgmt->sa, resp, reassoc, pos,
+				    left, rssi, omit_rsnxe);
 	os_free(tmp);
 
 	/*

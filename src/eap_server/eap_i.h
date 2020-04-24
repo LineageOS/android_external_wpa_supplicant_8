@@ -32,14 +32,15 @@ struct eap_method {
 
 	struct wpabuf * (*buildReq)(struct eap_sm *sm, void *priv, u8 id);
 	int (*getTimeout)(struct eap_sm *sm, void *priv);
-	bool (*check)(struct eap_sm *sm, void *priv, struct wpabuf *respData);
+	Boolean (*check)(struct eap_sm *sm, void *priv,
+			 struct wpabuf *respData);
 	void (*process)(struct eap_sm *sm, void *priv,
 			struct wpabuf *respData);
-	bool (*isDone)(struct eap_sm *sm, void *priv);
+	Boolean (*isDone)(struct eap_sm *sm, void *priv);
 	u8 * (*getKey)(struct eap_sm *sm, void *priv, size_t *len);
 	/* isSuccess is not specified in draft-ietf-eap-statemachine-05.txt,
 	 * but it is useful in implementing Policy.getDecision() */
-	bool (*isSuccess)(struct eap_sm *sm, void *priv);
+	Boolean (*isSuccess)(struct eap_sm *sm, void *priv);
 
 	/**
 	 * free - Free EAP method data
@@ -137,13 +138,13 @@ struct eap_sm {
 	int methodTimeout;
 
 	/* Short-term (not maintained between packets) */
-	bool rxResp;
-	bool rxInitiate;
+	Boolean rxResp;
+	Boolean rxInitiate;
 	int respId;
 	enum eap_type respMethod;
 	int respVendor;
 	u32 respVendorMethod;
-	bool ignore;
+	Boolean ignore;
 	enum {
 		DECISION_SUCCESS, DECISION_FAILURE, DECISION_CONTINUE,
 		DECISION_PASSTHROUGH, DECISION_INITIATE_REAUTH_START
@@ -152,7 +153,7 @@ struct eap_sm {
 	/* Miscellaneous variables */
 	const struct eap_method *m; /* selected EAP method */
 	/* not defined in RFC 4137 */
-	bool changed;
+	Boolean changed;
 	void *eapol_ctx;
 	const struct eapol_callbacks *eapol_cb;
 	void *eap_method_priv;
@@ -168,7 +169,7 @@ struct eap_sm {
 	int init_phase2;
 	const struct eap_config *cfg;
 	struct eap_config cfg_buf;
-	bool update_user;
+	Boolean update_user;
 
 	unsigned int num_rounds;
 	unsigned int num_rounds_short;
@@ -182,12 +183,12 @@ struct eap_sm {
 	struct wpabuf *assoc_wps_ie;
 	struct wpabuf *assoc_p2p_ie;
 
-	bool start_reauth;
+	Boolean start_reauth;
 
 	u8 peer_addr[ETH_ALEN];
 
-	bool initiate_reauth_start_sent;
-	bool try_initiate_reauth;
+	Boolean initiate_reauth_start_sent;
+	Boolean try_initiate_reauth;
 
 #ifdef CONFIG_TESTING_OPTIONS
 	u32 tls_test_flags;

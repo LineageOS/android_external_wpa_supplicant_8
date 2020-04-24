@@ -45,43 +45,43 @@ struct eap_user {
 
 struct eap_eapol_interface {
 	/* Lower layer to full authenticator variables */
-	bool eapResp; /* shared with EAPOL Backend Authentication */
+	Boolean eapResp; /* shared with EAPOL Backend Authentication */
 	struct wpabuf *eapRespData;
-	bool portEnabled;
+	Boolean portEnabled;
 	int retransWhile;
-	bool eapRestart; /* shared with EAPOL Authenticator PAE */
+	Boolean eapRestart; /* shared with EAPOL Authenticator PAE */
 	int eapSRTT;
 	int eapRTTVAR;
 
 	/* Full authenticator to lower layer variables */
-	bool eapReq; /* shared with EAPOL Backend Authentication */
-	bool eapNoReq; /* shared with EAPOL Backend Authentication */
-	bool eapSuccess;
-	bool eapFail;
-	bool eapTimeout;
+	Boolean eapReq; /* shared with EAPOL Backend Authentication */
+	Boolean eapNoReq; /* shared with EAPOL Backend Authentication */
+	Boolean eapSuccess;
+	Boolean eapFail;
+	Boolean eapTimeout;
 	struct wpabuf *eapReqData;
 	u8 *eapKeyData;
 	size_t eapKeyDataLen;
 	u8 *eapSessionId;
 	size_t eapSessionIdLen;
-	bool eapKeyAvailable; /* called keyAvailable in IEEE 802.1X-2004 */
+	Boolean eapKeyAvailable; /* called keyAvailable in IEEE 802.1X-2004 */
 
 	/* AAA interface to full authenticator variables */
-	bool aaaEapReq;
-	bool aaaEapNoReq;
-	bool aaaSuccess;
-	bool aaaFail;
+	Boolean aaaEapReq;
+	Boolean aaaEapNoReq;
+	Boolean aaaSuccess;
+	Boolean aaaFail;
 	struct wpabuf *aaaEapReqData;
 	u8 *aaaEapKeyData;
 	size_t aaaEapKeyDataLen;
-	bool aaaEapKeyAvailable;
+	Boolean aaaEapKeyAvailable;
 	int aaaMethodTimeout;
 
 	/* Full authenticator to AAA interface variables */
-	bool aaaEapResp;
+	Boolean aaaEapResp;
 	struct wpabuf *aaaEapRespData;
 	/* aaaIdentity -> eap_get_identity() */
-	bool aaaTimeout;
+	Boolean aaaTimeout;
 };
 
 struct eap_server_erp_key {
@@ -124,7 +124,7 @@ struct eap_config {
 	 * callback context.
 	 */
 	void *eap_sim_db_priv;
-	bool backend_auth;
+	Boolean backend_auth;
 	int eap_server;
 
 	/**

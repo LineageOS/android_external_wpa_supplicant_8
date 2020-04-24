@@ -270,8 +270,8 @@ static struct wpabuf * eap_wsc_buildReq(struct eap_sm *sm, void *priv, u8 id)
 }
 
 
-static bool eap_wsc_check(struct eap_sm *sm, void *priv,
-			  struct wpabuf *respData)
+static Boolean eap_wsc_check(struct eap_sm *sm, void *priv,
+			     struct wpabuf *respData)
 {
 	const u8 *pos;
 	size_t len;
@@ -280,10 +280,10 @@ static bool eap_wsc_check(struct eap_sm *sm, void *priv,
 			       respData, &len);
 	if (pos == NULL || len < 2) {
 		wpa_printf(MSG_INFO, "EAP-WSC: Invalid frame");
-		return true;
+		return TRUE;
 	}
 
-	return false;
+	return FALSE;
 }
 
 
@@ -462,17 +462,17 @@ static void eap_wsc_process(struct eap_sm *sm, void *priv,
 }
 
 
-static bool eap_wsc_isDone(struct eap_sm *sm, void *priv)
+static Boolean eap_wsc_isDone(struct eap_sm *sm, void *priv)
 {
 	struct eap_wsc_data *data = priv;
 	return data->state == FAIL;
 }
 
 
-static bool eap_wsc_isSuccess(struct eap_sm *sm, void *priv)
+static Boolean eap_wsc_isSuccess(struct eap_sm *sm, void *priv)
 {
 	/* EAP-WSC will always result in EAP-Failure */
-	return false;
+	return FALSE;
 }
 
 

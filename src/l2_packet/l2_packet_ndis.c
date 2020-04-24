@@ -294,8 +294,7 @@ static void l2_packet_callback(struct l2_packet_data *l2)
 	}
 	rx_src = ethhdr->h_source;
 
-	if (l2->rx_callback)
-		l2->rx_callback(l2->rx_callback_ctx, rx_src, rx_buf, rx_len);
+	l2->rx_callback(l2->rx_callback_ctx, rx_src, rx_buf, rx_len);
 #ifndef _WIN32_WCE
 	l2_ndisuio_start_read(l2, 1);
 #endif /* _WIN32_WCE */

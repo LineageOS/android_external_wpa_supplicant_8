@@ -530,8 +530,8 @@ eap_pwd_build_req(struct eap_sm *sm, void *priv, u8 id)
 }
 
 
-static bool eap_pwd_check(struct eap_sm *sm, void *priv,
-			  struct wpabuf *respData)
+static Boolean eap_pwd_check(struct eap_sm *sm, void *priv,
+			     struct wpabuf *respData)
 {
 	struct eap_pwd_data *data = priv;
 	const u8 *pos;
@@ -540,7 +540,7 @@ static bool eap_pwd_check(struct eap_sm *sm, void *priv,
 	pos = eap_hdr_validate(EAP_VENDOR_IETF, EAP_TYPE_PWD, respData, &len);
 	if (pos == NULL || len < 1) {
 		wpa_printf(MSG_INFO, "EAP-pwd: Invalid frame");
-		return true;
+		return TRUE;
 	}
 
 	wpa_printf(MSG_DEBUG, "EAP-pwd: Received frame: exch = %d, len = %d",
@@ -548,20 +548,20 @@ static bool eap_pwd_check(struct eap_sm *sm, void *priv,
 
 	if (data->state == PWD_ID_Req &&
 	    ((EAP_PWD_GET_EXCHANGE(*pos)) == EAP_PWD_OPCODE_ID_EXCH))
-		return false;
+		return FALSE;
 
 	if (data->state == PWD_Commit_Req &&
 	    ((EAP_PWD_GET_EXCHANGE(*pos)) == EAP_PWD_OPCODE_COMMIT_EXCH))
-		return false;
+		return FALSE;
 
 	if (data->state == PWD_Confirm_Req &&
 	    ((EAP_PWD_GET_EXCHANGE(*pos)) == EAP_PWD_OPCODE_CONFIRM_EXCH))
-		return false;
+		return FALSE;
 
 	wpa_printf(MSG_INFO, "EAP-pwd: Unexpected opcode=%d in state=%d",
 		   *pos, data->state);
 
-	return true;
+	return TRUE;
 }
 
 
@@ -1003,14 +1003,14 @@ static u8 * eap_pwd_get_emsk(struct eap_sm *sm, void *priv, size_t *len)
 }
 
 
-static bool eap_pwd_is_success(struct eap_sm *sm, void *priv)
+static Boolean eap_pwd_is_success(struct eap_sm *sm, void *priv)
 {
 	struct eap_pwd_data *data = priv;
 	return data->state == SUCCESS;
 }
 
 
-static bool eap_pwd_is_done(struct eap_sm *sm, void *priv)
+static Boolean eap_pwd_is_done(struct eap_sm *sm, void *priv)
 {
 	struct eap_pwd_data *data = priv;
 	return (data->state == SUCCESS) || (data->state == FAILURE);

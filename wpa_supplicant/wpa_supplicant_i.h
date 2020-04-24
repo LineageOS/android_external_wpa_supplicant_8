@@ -725,7 +725,6 @@ struct wpa_supplicant {
 	unsigned int no_suitable_network;
 
 	u64 drv_flags;
-	u64 drv_flags2;
 	unsigned int drv_enc;
 	unsigned int drv_rrm_flags;
 
@@ -1145,7 +1144,6 @@ struct wpa_supplicant {
 	unsigned int disable_sa_query:1;
 	unsigned int testing_resend_assoc:1;
 	unsigned int ignore_sae_h2e_only:1;
-	int ft_rsnxe_used;
 	struct wpabuf *sae_commit_override;
 	enum wpa_alg last_tk_alg;
 	u8 last_tk_addr[ETH_ALEN];
