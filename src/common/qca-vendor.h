@@ -10,8 +10,6 @@
 #ifndef QCA_VENDOR_H
 #define QCA_VENDOR_H
 
-#include "utils/common.h"
-
 /*
  * This file is a registry of identifier assignments from the Qualcomm Atheros
  * OUI 00:13:74 for purposes other than MAC address assignment. New identifiers
