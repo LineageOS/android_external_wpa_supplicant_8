@@ -482,6 +482,12 @@ int HidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 				    "Failed to enable scan mac randomization");
 			}
 		}
+
+		// Enable randomized source MAC address for GAS/ANQP
+		// Set the lifetime to 0, guarantees a unique address for each GAS
+		// session
+		wpa_s->conf->gas_rand_mac_addr = 1;
+		wpa_s->conf->gas_rand_addr_lifetime = 0;
 	}
 
 	// Invoke the |onInterfaceCreated| method on all registered callbacks.
