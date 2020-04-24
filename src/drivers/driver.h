@@ -1838,7 +1838,7 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS_FTM_RESPONDER		0x0100000000000000ULL
 /** Driver support 4-way handshake offload for WPA-Personal */
 #define WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK	0x0200000000000000ULL
-/** Driver supports a separate control port for EAPOL frames */
+/** Driver supports a separate control port TX for EAPOL frames */
 #define WPA_DRIVER_FLAGS_CONTROL_PORT		0x0400000000000000ULL
 /** Driver supports VLAN offload */
 #define WPA_DRIVER_FLAGS_VLAN_OFFLOAD		0x0800000000000000ULL
@@ -1851,6 +1851,10 @@ struct wpa_driver_capa {
 /** Driver supports Extended Key ID */
 #define WPA_DRIVER_FLAGS_EXTENDED_KEY_ID	0x8000000000000000ULL
 	u64 flags;
+
+/** Driver supports a separate control port RX for EAPOL frames */
+#define WPA_DRIVER_FLAGS2_CONTROL_PORT_RX	0x0000000000000001ULL
+	u64 flags2;
 
 #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
 	(drv_flags & WPA_DRIVER_FLAGS_FULL_AP_CLIENT_STATE)
@@ -4420,6 +4424,17 @@ struct wpa_driver_ops {
 	 */
 	int (*update_dh_ie)(void *priv, const u8 *peer_mac, u16 reason_code,
 			    const u8 *ie, size_t ie_len);
+
+	/**
+	 * dpp_listen - Notify driver about start/stop of DPP listen
+	 * @priv: Private driver interface data
+	 * @enable: Whether listen state is enabled (or disabled)
+	 * Returns: 0 on success, -1 on failure
+	 *
+	 * This optional callback can be used to update RX frame filtering to
+	 * explicitly allow reception of broadcast Public Action frames.
+	 */
+	int (*dpp_listen)(void *priv, bool enable);
 };
 
 /**
@@ -5921,6 +5936,7 @@ wpa_get_wowlan_triggers(const char *wowlan_triggers,
 			const struct wpa_driver_capa *capa);
 /* Convert driver flag to string */
 const char * driver_flag_to_string(u64 flag);
+const char * driver_flag2_to_string(u64 flag2);
 
 /* NULL terminated array of linked in driver wrappers */
 extern const struct wpa_driver_ops *const wpa_drivers[];

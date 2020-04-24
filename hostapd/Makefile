@@ -296,6 +296,7 @@ CFLAGS += -DCONFIG_SAE
 OBJS += ../src/common/sae.o
 NEED_ECC=y
 NEED_DH_GROUPS=y
+NEED_HMAC_SHA256_KDF=y
 NEED_AP_MLME=y
 NEED_DRAGONFLY=y
 endif
@@ -1244,6 +1245,10 @@ endif
 
 ifdef CONFIG_WEP
 CFLAGS += -DCONFIG_WEP
+endif
+
+ifdef CONFIG_NO_TKIP
+CFLAGS += -DCONFIG_NO_TKIP
 endif
 
 ALL=hostapd hostapd_cli

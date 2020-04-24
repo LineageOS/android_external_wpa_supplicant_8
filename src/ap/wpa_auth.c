@@ -1836,7 +1836,7 @@ int wpa_auth_sm_event(struct wpa_state_machine *sm, enum wpa_event event)
 #ifdef CONFIG_IEEE80211R_AP
 		wpa_printf(MSG_DEBUG,
 			   "FT: Retry PTK configuration after association");
-		wpa_ft_install_ptk(sm);
+		wpa_ft_install_ptk(sm, 1);
 
 		/* Using FT protocol, not WPA auth state machine */
 		sm->ft_completed = 1;
@@ -5457,6 +5457,13 @@ int wpa_auth_rekey_gtk(struct wpa_authenticator *wpa_auth)
 		return -1;
 	eloop_cancel_timeout(wpa_rekey_gtk, wpa_auth, NULL);
 	return eloop_register_timeout(0, 0, wpa_rekey_gtk, wpa_auth, NULL);
+}
+
+
+void wpa_auth_set_ft_rsnxe_used(struct wpa_authenticator *wpa_auth, int val)
+{
+	if (wpa_auth)
+		wpa_auth->conf.ft_rsnxe_used = val;
 }
 
 #endif /* CONFIG_TESTING_OPTIONS */

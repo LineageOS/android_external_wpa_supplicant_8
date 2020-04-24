@@ -238,6 +238,7 @@ struct wpa_auth_config {
 	unsigned int rsnxe_override_ft_set:1;
 	unsigned int gtk_rsc_override_set:1;
 	unsigned int igtk_rsc_override_set:1;
+	int ft_rsnxe_used;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_P2P
 	u8 ip_addr_go[4];
@@ -301,6 +302,7 @@ struct wpa_auth_callbacks {
 				 int *bandwidth, int *seg1_idx);
 #ifdef CONFIG_IEEE80211R_AP
 	struct wpa_state_machine * (*add_sta)(void *ctx, const u8 *sta_addr);
+	int (*add_sta_ft)(void *ctx, const u8 *sta_addr);
 	int (*set_vlan)(void *ctx, const u8 *sta_addr,
 			struct vlan_description *vlan);
 	int (*get_vlan)(void *ctx, const u8 *sta_addr,
@@ -440,7 +442,7 @@ void wpa_ft_process_auth(struct wpa_state_machine *sm, const u8 *bssid,
 				    u16 auth_transaction, u16 resp,
 				    const u8 *ies, size_t ies_len),
 			 void *ctx);
-u16 wpa_ft_validate_reassoc(struct wpa_state_machine *sm, const u8 *ies,
+int wpa_ft_validate_reassoc(struct wpa_state_machine *sm, const u8 *ies,
 			    size_t ies_len);
 int wpa_ft_action_rx(struct wpa_state_machine *sm, const u8 *data, size_t len);
 int wpa_ft_rrb_rx(struct wpa_authenticator *wpa_auth, const u8 *src_addr,
@@ -521,5 +523,6 @@ int wpa_auth_resend_group_m1(struct wpa_state_machine *sm,
 			     void *ctx1, void *ctx2);
 int wpa_auth_rekey_gtk(struct wpa_authenticator *wpa_auth);
 void wpa_auth_set_ptk_rekey_timer(struct wpa_state_machine *sm);
+void wpa_auth_set_ft_rsnxe_used(struct wpa_authenticator *wpa_auth, int val);
 
 #endif /* WPA_AUTH_H */
