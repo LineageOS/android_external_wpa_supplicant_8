@@ -2647,6 +2647,13 @@ u8 * wpa_sm_write_assoc_resp_ies(struct wpa_state_machine *sm, u8 *pos,
 	}
 	rsnxe_used = (auth_alg == WLAN_AUTH_FT) &&
 		(conf->sae_pwe == 1 || conf->sae_pwe == 2);
+#ifdef CONFIG_TESTING_OPTIONS
+	if (sm->wpa_auth->conf.ft_rsnxe_used) {
+		rsnxe_used = sm->wpa_auth->conf.ft_rsnxe_used == 1;
+		wpa_printf(MSG_DEBUG, "TESTING: FT: Force RSNXE Used %d",
+			   rsnxe_used);
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
 	res = wpa_write_ftie(conf, use_sha384, r0kh_id, r0kh_id_len,
 			     anonce, snonce, pos, end - pos,
 			     subelem, subelem_len, rsnxe_used);
@@ -2747,7 +2754,16 @@ static inline int wpa_auth_set_key(struct wpa_authenticator *wpa_auth,
 }
 
 
-void wpa_ft_install_ptk(struct wpa_state_machine *sm)
+static inline int wpa_auth_add_sta_ft(struct wpa_authenticator *wpa_auth,
+				      const u8 *addr)
+{
+	if (!wpa_auth->cb->add_sta_ft)
+		return -1;
+	return wpa_auth->cb->add_sta_ft(wpa_auth->cb_ctx, addr);
+}
+
+
+void wpa_ft_install_ptk(struct wpa_state_machine *sm, int retry)
 {
 	enum wpa_alg alg;
 	int klen;
@@ -2768,6 +2784,9 @@ void wpa_ft_install_ptk(struct wpa_state_machine *sm)
 			   "FT: Do not re-install same PTK to the driver");
 		return;
 	}
+
+	if (!retry)
+		wpa_auth_add_sta_ft(sm->wpa_auth, sm->addr);
 
 	/* FIX: add STA entry to kernel/driver here? The set_key will fail
 	 * most likely without this.. At the moment, STA entry is added only
@@ -3140,7 +3159,7 @@ pmk_r1_derived:
 	sm->pairwise = pairwise;
 	sm->PTK_valid = TRUE;
 	sm->tk_already_set = FALSE;
-	wpa_ft_install_ptk(sm);
+	wpa_ft_install_ptk(sm, 0);
 
 	if (wpa_ft_set_vlan(sm->wpa_auth, sm->addr, &vlan) < 0) {
 		wpa_printf(MSG_DEBUG, "FT: Failed to configure VLAN");
@@ -3235,7 +3254,7 @@ void wpa_ft_process_auth(struct wpa_state_machine *sm, const u8 *bssid,
 }
 
 
-u16 wpa_ft_validate_reassoc(struct wpa_state_machine *sm, const u8 *ies,
+int wpa_ft_validate_reassoc(struct wpa_state_machine *sm, const u8 *ies,
 			    size_t ies_len)
 {
 	struct wpa_ft_ies parse;
@@ -3433,7 +3452,7 @@ u16 wpa_ft_validate_reassoc(struct wpa_state_machine *sm, const u8 *ies,
 	    !parse.rsnxe) {
 		wpa_printf(MSG_INFO,
 			   "FT: FTE indicated that STA uses RSNXE, but RSNXE was not included");
-		return WLAN_STATUS_UNSPECIFIED_FAILURE;
+		return -1; /* discard request */
 	}
 
 #ifdef CONFIG_OCV
@@ -4560,7 +4579,6 @@ int wpa_ft_rrb_rx(struct wpa_authenticator *wpa_auth, const u8 *src_addr,
 			return -1;
 		}
 		status_code = WPA_GET_LE16(pos);
-		pos += 2;
 
 		wpa_printf(MSG_DEBUG, "FT: FT Packet Type - Response "
 			   "(status_code=%d)", status_code);
@@ -4571,11 +4589,6 @@ int wpa_ft_rrb_rx(struct wpa_authenticator *wpa_auth, const u8 *src_addr,
 		wpa_printf(MSG_DEBUG, "FT: RRB discarded frame with unknown "
 			   "packet_type %d", frame->packet_type);
 		return -1;
-	}
-
-	if (end > pos) {
-		wpa_hexdump(MSG_DEBUG, "FT: Ignore extra data in end",
-			    pos, end - pos);
 	}
 
 	return 0;

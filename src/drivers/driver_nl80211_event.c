@@ -2505,12 +2505,34 @@ static void nl80211_sta_opmode_change_event(struct wpa_driver_nl80211_data *drv,
 static void nl80211_control_port_frame(struct wpa_driver_nl80211_data *drv,
 				       struct nlattr **tb)
 {
-	if (!tb[NL80211_ATTR_MAC] || !tb[NL80211_ATTR_FRAME])
+	u8 *src_addr;
+	u16 ethertype;
+
+	if (!tb[NL80211_ATTR_MAC] ||
+	    !tb[NL80211_ATTR_FRAME] ||
+	    !tb[NL80211_ATTR_CONTROL_PORT_ETHERTYPE])
 		return;
 
-	drv_event_eapol_rx(drv->ctx, nla_data(tb[NL80211_ATTR_MAC]),
-			   nla_data(tb[NL80211_ATTR_FRAME]),
-			   nla_len(tb[NL80211_ATTR_FRAME]));
+	src_addr = nla_data(tb[NL80211_ATTR_MAC]);
+	ethertype = nla_get_u16(tb[NL80211_ATTR_CONTROL_PORT_ETHERTYPE]);
+
+	switch (ethertype) {
+	case ETH_P_RSN_PREAUTH:
+		wpa_printf(MSG_INFO, "nl80211: Got pre-auth frame from "
+			   MACSTR " over control port unexpectedly",
+			   MAC2STR(src_addr));
+		break;
+	case ETH_P_PAE:
+		drv_event_eapol_rx(drv->ctx, src_addr,
+				   nla_data(tb[NL80211_ATTR_FRAME]),
+				   nla_len(tb[NL80211_ATTR_FRAME]));
+		break;
+	default:
+		wpa_printf(MSG_INFO, "nl80211: Unxpected ethertype 0x%04x from "
+			   MACSTR " over control port",
+			   ethertype, MAC2STR(src_addr));
+		break;
+	}
 }
 
 
@@ -2729,9 +2751,6 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 	case NL80211_CMD_UPDATE_OWE_INFO:
 		mlme_event_dh_event(drv, bss, tb);
 		break;
-	case NL80211_CMD_CONTROL_PORT_FRAME:
-		nl80211_control_port_frame(drv, tb);
-		break;
 	default:
 		wpa_dbg(drv->ctx, MSG_DEBUG, "nl80211: Ignored unknown event "
 			"(cmd=%d)", cmd);
@@ -2820,6 +2839,9 @@ int process_bss_event(struct nl_msg *msg, void *arg)
 		break;
 	case NL80211_CMD_EXTERNAL_AUTH:
 		nl80211_external_auth(bss->drv, tb);
+		break;
+	case NL80211_CMD_CONTROL_PORT_FRAME:
+		nl80211_control_port_frame(bss->drv, tb);
 		break;
 	default:
 		wpa_printf(MSG_DEBUG, "nl80211: Ignored unknown event "

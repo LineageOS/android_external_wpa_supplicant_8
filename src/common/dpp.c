@@ -74,12 +74,14 @@ static void ECDSA_SIG_get0(const ECDSA_SIG *sig, const BIGNUM **pr,
 }
 
 
+#ifdef CONFIG_DPP2
 static EC_KEY * EVP_PKEY_get0_EC_KEY(EVP_PKEY *pkey)
 {
 	if (pkey->type != EVP_PKEY_EC)
 		return NULL;
 	return pkey->pkey.ec;
 }
+#endif /* CONFIG_DPP2 */
 
 #endif
 
@@ -3952,6 +3954,14 @@ dpp_auth_resp_rx(struct dpp_authentication *auth, const u8 *hdr,
 		dpp_auth_fail(auth,
 			      "Missing Initiator Bootstrapping Key Hash attribute");
 		return NULL;
+	} else if (auth->own_bi &&
+		   auth->own_bi->type == DPP_BOOTSTRAP_NFC_URI &&
+		   auth->own_bi->nfc_negotiated) {
+		/* NFC negotiated connection handover bootstrapping mandates
+		 * use of mutual authentication */
+		dpp_auth_fail(auth,
+			      "Missing Initiator Bootstrapping Key Hash attribute");
+		return NULL;
 	}
 
 	auth->peer_version = 1; /* default to the first version */
@@ -6730,7 +6740,7 @@ static int dpp_parse_cred_dpp(struct dpp_authentication *auth,
 	conf->connector = os_strdup(signed_connector);
 
 	dpp_copy_csign(conf, csign_pub);
-	if (dpp_akm_dpp(conf->akm))
+	if (dpp_akm_dpp(conf->akm) || auth->peer_version >= 2)
 		dpp_copy_netaccesskey(auth, conf);
 
 	ret = 0;
