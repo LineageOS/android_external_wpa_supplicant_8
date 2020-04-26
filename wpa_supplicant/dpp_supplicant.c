@@ -119,6 +119,7 @@ int wpas_dpp_nfc_handover_req(struct wpa_supplicant *wpa_s, const char *cmd)
 	own_bi = dpp_bootstrap_get_id(wpa_s->dpp, atoi(pos));
 	if (!own_bi)
 		return -1;
+	own_bi->nfc_negotiated = 1;
 
 	pos = os_strstr(cmd, " uri=");
 	if (!pos)
@@ -150,6 +151,7 @@ int wpas_dpp_nfc_handover_sel(struct wpa_supplicant *wpa_s, const char *cmd)
 	own_bi = dpp_bootstrap_get_id(wpa_s->dpp, atoi(pos));
 	if (!own_bi)
 		return -1;
+	own_bi->nfc_negotiated = 1;
 
 	pos = os_strstr(cmd, " uri=");
 	if (!pos)
@@ -858,6 +860,7 @@ static void dpp_start_listen_cb(struct wpa_radio_work *work, int deinit)
 	}
 	wpa_s->off_channel_freq = 0;
 	wpa_s->roc_waiting_drv_freq = lwork->freq;
+	wpa_drv_dpp_listen(wpa_s, true);
 }
 
 
@@ -932,6 +935,7 @@ void wpas_dpp_listen_stop(struct wpa_supplicant *wpa_s)
 	wpa_printf(MSG_DEBUG, "DPP: Stop listen on %u MHz",
 		   wpa_s->dpp_listen_freq);
 	wpa_drv_cancel_remain_on_channel(wpa_s);
+	wpa_drv_dpp_listen(wpa_s, false);
 	wpa_s->dpp_listen_freq = 0;
 	wpas_dpp_listen_work_done(wpa_s);
 }
@@ -1432,7 +1436,7 @@ static void wpas_dpp_start_gas_client(struct wpa_supplicant *wpa_s)
 		   MAC2STR(auth->peer_mac_addr), auth->curr_freq);
 
 	res = gas_query_req(wpa_s->gas, auth->peer_mac_addr, auth->curr_freq,
-			    1, buf, wpas_dpp_gas_resp_cb, wpa_s);
+			    1, 1, buf, wpas_dpp_gas_resp_cb, wpa_s);
 	if (res < 0) {
 		wpa_msg(wpa_s, MSG_DEBUG, "GAS: Failed to send Query Request");
 		wpabuf_free(buf);

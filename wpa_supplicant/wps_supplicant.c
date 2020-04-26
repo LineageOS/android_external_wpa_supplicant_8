@@ -484,7 +484,7 @@ static int wpa_supplicant_wps_cred(void *ctx,
 	case WPS_ENCR_NONE:
 		break;
 	case WPS_ENCR_TKIP:
-		ssid->pairwise_cipher = WPA_CIPHER_TKIP;
+		ssid->pairwise_cipher = WPA_CIPHER_TKIP | WPA_CIPHER_CCMP;
 		break;
 	case WPS_ENCR_AES:
 		ssid->pairwise_cipher = WPA_CIPHER_CCMP;
@@ -525,7 +525,7 @@ static int wpa_supplicant_wps_cred(void *ctx,
 	case WPS_AUTH_WPAPSK:
 		ssid->auth_alg = WPA_AUTH_ALG_OPEN;
 		ssid->key_mgmt = WPA_KEY_MGMT_PSK;
-		ssid->proto = WPA_PROTO_WPA;
+		ssid->proto = WPA_PROTO_WPA | WPA_PROTO_RSN;
 		break;
 	case WPS_AUTH_WPA2PSK:
 		ssid->auth_alg = WPA_AUTH_ALG_OPEN;
@@ -1618,8 +1618,13 @@ int wpas_wps_init(struct wpa_supplicant *wpa_s)
 	os_memcpy(wps->dev.mac_addr, wpa_s->own_addr, ETH_ALEN);
 	wpas_wps_set_uuid(wpa_s, wps);
 
+#ifdef CONFIG_NO_TKIP
+	wps->auth_types = WPS_AUTH_WPA2PSK;
+	wps->encr_types = WPS_ENCR_AES;
+#else /* CONFIG_NO_TKIP */
 	wps->auth_types = WPS_AUTH_WPA2PSK | WPS_AUTH_WPAPSK;
 	wps->encr_types = WPS_ENCR_AES | WPS_ENCR_TKIP;
+#endif /* CONFIG_NO_TKIP */
 
 	os_memset(&rcfg, 0, sizeof(rcfg));
 	rcfg.new_psk_cb = wpas_wps_new_psk_cb;
