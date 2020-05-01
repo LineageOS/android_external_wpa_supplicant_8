@@ -320,14 +320,14 @@ void wpa_supplicant_initiate_eapol(struct wpa_supplicant *wpa_s)
 		 * per-BSSID EAPOL authentication.
 		 */
 		eapol_sm_notify_portControl(wpa_s->eapol, ForceAuthorized);
-		eapol_sm_notify_eap_success(wpa_s->eapol, TRUE);
-		eapol_sm_notify_eap_fail(wpa_s->eapol, FALSE);
+		eapol_sm_notify_eap_success(wpa_s->eapol, true);
+		eapol_sm_notify_eap_fail(wpa_s->eapol, false);
 		return;
 	}
 #endif /* CONFIG_IBSS_RSN */
 
-	eapol_sm_notify_eap_success(wpa_s->eapol, FALSE);
-	eapol_sm_notify_eap_fail(wpa_s->eapol, FALSE);
+	eapol_sm_notify_eap_success(wpa_s->eapol, false);
+	eapol_sm_notify_eap_fail(wpa_s->eapol, false);
 
 	if (wpa_s->key_mgmt == WPA_KEY_MGMT_NONE ||
 	    wpa_s->key_mgmt == WPA_KEY_MGMT_WPA_NONE)
@@ -895,7 +895,7 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 {
 	enum wpa_states old_state = wpa_s->wpa_state;
 #if defined(CONFIG_FILS) && defined(IEEE8021X_EAPOL)
-	Boolean update_fils_connect_params = FALSE;
+	bool update_fils_connect_params = false;
 #endif /* CONFIG_FILS && IEEE8021X_EAPOL */
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "State: %s -> %s",
@@ -994,7 +994,7 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 
 #if defined(CONFIG_FILS) && defined(IEEE8021X_EAPOL)
 		if (!fils_hlp_sent && ssid && ssid->eap.erp)
-			update_fils_connect_params = TRUE;
+			update_fils_connect_params = true;
 #endif /* CONFIG_FILS && IEEE8021X_EAPOL */
 #ifdef CONFIG_OWE
 		if (ssid && (ssid->key_mgmt & WPA_KEY_MGMT_OWE))
@@ -1161,7 +1161,7 @@ int wpa_supplicant_reload_configuration(struct wpa_supplicant *wpa_s)
 		 * Clear forced success to clear EAP state for next
 		 * authentication.
 		 */
-		eapol_sm_notify_eap_success(wpa_s->eapol, FALSE);
+		eapol_sm_notify_eap_success(wpa_s->eapol, false);
 	}
 	eapol_sm_notify_config(wpa_s->eapol, NULL, NULL);
 	wpa_sm_set_config(wpa_s->wpa, NULL);
@@ -4752,12 +4752,12 @@ void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
 		wpa_sm_rx_eapol(wpa_s->wpa, src_addr, buf, len);
 	else if (wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt)) {
 		/*
-		 * Set portValid = TRUE here since we are going to skip 4-way
+		 * Set portValid = true here since we are going to skip 4-way
 		 * handshake processing which would normally set portValid. We
 		 * need this to allow the EAPOL state machines to be completed
 		 * without going through EAPOL-Key handshake.
 		 */
-		eapol_sm_notify_portValid(wpa_s->eapol, TRUE);
+		eapol_sm_notify_portValid(wpa_s->eapol, true);
 	}
 }
 
@@ -5476,7 +5476,7 @@ static void wpas_fst_update_mb_ie_cb(void *ctx, const u8 *addr,
 
 static const u8 * wpas_fst_get_peer_first(void *ctx,
 					  struct fst_get_peer_ctx **get_ctx,
-					  Boolean mb_only)
+					  bool mb_only)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
@@ -5490,7 +5490,7 @@ static const u8 * wpas_fst_get_peer_first(void *ctx,
 
 static const u8 * wpas_fst_get_peer_next(void *ctx,
 					 struct fst_get_peer_ctx **get_ctx,
-					 Boolean mb_only)
+					 bool mb_only)
 {
 	return NULL;
 }
@@ -6186,8 +6186,8 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 	}
 
 	/* RSNA Supplicant Key Management - INITIALIZE */
-	eapol_sm_notify_portEnabled(wpa_s->eapol, FALSE);
-	eapol_sm_notify_portValid(wpa_s->eapol, FALSE);
+	eapol_sm_notify_portEnabled(wpa_s->eapol, false);
+	eapol_sm_notify_portValid(wpa_s->eapol, false);
 
 	/* Initialize driver interface and register driver event handler before
 	 * L2 receive handler so that association events are processed before
