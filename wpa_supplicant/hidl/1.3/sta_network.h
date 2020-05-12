@@ -386,6 +386,8 @@ private:
 	std::pair<SupplicantStatus, uint32_t> getPairwiseCipher_1_3Internal();
 	SupplicantStatus setPairwiseCipher_1_3Internal(
 	    uint32_t pairwise_cipher_mask);
+	SupplicantStatus setWapiPskInternal(const std::vector<uint8_t>& psk);
+	std::pair<SupplicantStatus, std::vector<uint8_t>> getWapiPskInternal();
 
 	struct wpa_ssid* retrieveNetworkPtr();
 	struct wpa_supplicant* retrieveIfacePtr();
