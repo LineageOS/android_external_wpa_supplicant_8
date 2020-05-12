@@ -96,6 +96,7 @@ constexpr char kNetworkEapSimUmtsAuthFailure[] = "UMTS-FAIL";
 
 #ifdef CONFIG_WAPI_INTERFACE
 std::string dummyWapiCertSuite;
+std::vector<uint8_t> dummyWapiPsk;
 #endif /* CONFIG_WAPI_INTERFACE */
 }  // namespace
 
@@ -1038,9 +1039,30 @@ SupplicantStatus StaNetwork::setPairwiseCipherInternal(
 	return {SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"};
 }
 
-SupplicantStatus StaNetwork::setPskPassphraseInternal(const std::string &psk)
+SupplicantStatus StaNetwork::setPskPassphraseInternal(const std::string &rawPsk)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	std::string psk = rawPsk;
+#ifdef CONFIG_WAPI_INTERFACE
+	if (wpa_ssid->key_mgmt & WPA_KEY_MGMT_WAPI_PSK) {
+		if (rawPsk.size() > 2 && rawPsk.front()== '"' && rawPsk.back() == '"') {
+			psk = rawPsk.substr(1, rawPsk.size() - 2);
+		} else {
+			if ((rawPsk.size() & 1)) {
+				return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
+			}
+			size_t len = psk.size() / 2;
+			uint8_t *buf = (uint8_t *) os_malloc(len);
+			if (hexstr2bin(psk.c_str(), buf, len) < 0) {
+			        os_free(buf);
+				return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
+			}
+			std::vector<uint8_t> bytes(buf, buf + len);
+			os_free(buf);
+			return setWapiPskInternal(bytes);
+		}
+	}
+#endif
 	if (isPskPassphraseValid(psk)) {
 		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
 	}
@@ -1408,6 +1430,23 @@ SupplicantStatus StaNetwork::setWapiCertSuiteInternal(const std::string &suite)
 #endif
 }
 
+SupplicantStatus StaNetwork::setWapiPskInternal(const std::vector<uint8_t> &psk)
+{
+#ifdef CONFIG_WAPI_INTERFACE
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	str_clear_free(wpa_ssid->passphrase);
+	wpa_ssid->passphrase = nullptr;
+
+	dummyWapiPsk = psk;
+
+	wpa_ssid->psk_set = 1;
+	resetInternalStateAfterParamsUpdate();
+	return {SupplicantStatusCode::SUCCESS, "Dummy implementation"};
+#else
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, "Not implemented"};
+#endif
+}
+
 std::pair<SupplicantStatus, std::vector<uint8_t>> StaNetwork::getSsidInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1465,6 +1504,29 @@ std::pair<SupplicantStatus, uint32_t> StaNetwork::getPairwiseCipherInternal()
 std::pair<SupplicantStatus, std::string> StaNetwork::getPskPassphraseInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+#ifdef CONFIG_WAPI_INTERFACE
+	if (wpa_ssid->key_mgmt & WPA_KEY_MGMT_WAPI_PSK) {
+		if (wpa_ssid->psk_set) {
+			std::pair<SupplicantStatus, std::vector<uint8_t>> ret = getWapiPskInternal();
+			std::string psk;
+			char buf[3] = {0};
+			for (int i = 0; i < ret.second.size(); i++) {
+				snprintf(buf, sizeof(buf), "%02x", ret.second[i]);
+				psk.append(buf);
+			}
+			return {{SupplicantStatusCode::SUCCESS, ""}, psk};
+		} else {
+			if (!wpa_ssid->passphrase) {
+				return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
+			}
+			std::string passphrase;
+			passphrase.append("\"");
+			passphrase.append(wpa_ssid->passphrase);
+			passphrase.append("\"");
+			return {{SupplicantStatusCode::SUCCESS, ""}, passphrase};
+		}
+	}
+#endif
 	if (!wpa_ssid->passphrase) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
@@ -1750,6 +1812,15 @@ std::pair<SupplicantStatus, std::string> StaNetwork::getWapiCertSuiteInternal()
 {
 #ifdef CONFIG_WAPI_INTERFACE
 	return {{SupplicantStatusCode::SUCCESS, "Dummy implementation"}, dummyWapiCertSuite};
+#else
+	return {{SupplicantStatusCode::FAILURE_UNKNOWN, "Not implemented"}, {}};
+#endif
+}
+
+std::pair<SupplicantStatus, std::vector<uint8_t>> StaNetwork::getWapiPskInternal()
+{
+#ifdef CONFIG_WAPI_INTERFACE
+	return {{SupplicantStatusCode::SUCCESS, "Dummy implementation"}, dummyWapiPsk};
 #else
 	return {{SupplicantStatusCode::FAILURE_UNKNOWN, "Not implemented"}, {}};
 #endif
