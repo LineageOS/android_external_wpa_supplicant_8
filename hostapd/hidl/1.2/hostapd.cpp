@@ -375,6 +375,7 @@ std::string CreateHostapdConfig(
 	}
 
 	std::string he_params_as_string;
+#ifdef CONFIG_IEEE80211AX
 	if (iface_params.hwModeParams.enable80211AX) {
 		he_params_as_string = StringPrintf(
 		    "ieee80211ax=1\n"
@@ -389,6 +390,7 @@ std::string CreateHostapdConfig(
 	} else {
 		he_params_as_string = "ieee80211ax=0";
 	}
+#endif /* CONFIG_IEEE80211AX */
 
 	return StringPrintf(
 	    "interface=%s\n"
