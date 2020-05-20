@@ -1428,6 +1428,8 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
 		hapd->dpp_ignore_netaccesskey_mismatch = atoi(value);
 	} else if (os_strcasecmp(cmd, "dpp_test") == 0) {
 		dpp_test = atoi(value);
+	} else if (os_strcasecmp(cmd, "dpp_version_override") == 0) {
+		dpp_version_override = atoi(value);
 #endif /* CONFIG_DPP */
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_MBO
@@ -2162,6 +2164,32 @@ static int hostapd_ctrl_reset_pn(struct hostapd_data *hapd, const char *cmd)
 
 	if (hwaddr_aton(cmd, addr))
 		return -1;
+
+	if (is_broadcast_ether_addr(addr) && os_strstr(cmd, " BIGTK")) {
+		if (hapd->last_bigtk_alg == WPA_ALG_NONE)
+			return -1;
+
+		wpa_printf(MSG_INFO, "TESTING: Reset BIPN for BIGTK");
+
+		/* First, use a zero key to avoid any possible duplicate key
+		 * avoidance in the driver. */
+		if (hostapd_drv_set_key(hapd->conf->iface, hapd,
+					hapd->last_bigtk_alg,
+					broadcast_ether_addr,
+					hapd->last_bigtk_key_idx, 0, 1, NULL, 0,
+					zero, hapd->last_bigtk_len,
+					KEY_FLAG_GROUP_TX_DEFAULT) < 0)
+			return -1;
+
+		/* Set the previously configured key to reset its TSC */
+		return hostapd_drv_set_key(hapd->conf->iface, hapd,
+					   hapd->last_bigtk_alg,
+					   broadcast_ether_addr,
+					   hapd->last_bigtk_key_idx, 0, 1, NULL,
+					   0, hapd->last_bigtk,
+					   hapd->last_bigtk_len,
+					   KEY_FLAG_GROUP_TX_DEFAULT);
+	}
 
 	if (is_broadcast_ether_addr(addr) && os_strstr(cmd, "IGTK")) {
 		if (hapd->last_igtk_alg == WPA_ALG_NONE)
@@ -3706,6 +3734,13 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strncmp(buf, "DPP_PKEX_REMOVE ", 16) == 0) {
 		if (hostapd_dpp_pkex_remove(hapd, buf + 16) < 0)
 			reply_len = -1;
+#ifdef CONFIG_DPP2
+	} else if (os_strncmp(buf, "DPP_CHIRP ", 10) == 0) {
+		if (hostapd_dpp_chirp(hapd, buf + 9) < 0)
+			reply_len = -1;
+	} else if (os_strcmp(buf, "DPP_STOP_CHIRP") == 0) {
+		hostapd_dpp_chirp_stop(hapd);
+#endif /* CONFIG_DPP2 */
 #endif /* CONFIG_DPP */
 #ifdef RADIUS_SERVER
 	} else if (os_strncmp(buf, "DAC_REQUEST ", 12) == 0) {
@@ -4193,6 +4228,11 @@ static void hostapd_ctrl_iface_flush(struct hapd_interfaces *interfaces)
 #ifdef CONFIG_TESTING_OPTIONS
 #ifdef CONFIG_DPP
 	dpp_test = DPP_TEST_DISABLED;
+#ifdef CONFIG_DPP2
+	dpp_version_override = 2;
+#else /* CONFIG_DPP2 */
+	dpp_version_override = 1;
+#endif /* CONFIG_DPP2 */
 #endif /* CONFIG_DPP */
 #endif /* CONFIG_TESTING_OPTIONS */
 

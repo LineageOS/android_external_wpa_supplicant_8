@@ -76,6 +76,8 @@ int hostapd_for_each_interface(struct hapd_interfaces *interfaces,
 	int ret;
 
 	for (i = 0; i < interfaces->count; i++) {
+		if (!interfaces->iface[i])
+			continue;
 		ret = cb(interfaces->iface[i], ctx);
 		if (ret)
 			return ret;
@@ -1175,12 +1177,12 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 #endif /* CONFIG_MESH */
 
 	if (flush_old_stations)
-		hostapd_flush_old_stations(hapd,
-					   WLAN_REASON_PREV_AUTH_NOT_VALID);
+		hostapd_flush(hapd);
 	hostapd_set_privacy(hapd, 0);
 
 #ifdef CONFIG_WEP
-	hostapd_broadcast_wep_clear(hapd);
+	if (!hostapd_drv_nl80211(hapd))
+		hostapd_broadcast_wep_clear(hapd);
 	if (hostapd_setup_encryption(conf->iface, hapd))
 		return -1;
 #endif /* CONFIG_WEP */
@@ -1368,6 +1370,21 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 
 	if (!conf->start_disabled && ieee802_11_set_beacon(hapd) < 0)
 		return -1;
+
+	if (flush_old_stations && !conf->start_disabled &&
+	    conf->broadcast_deauth) {
+		u8 addr[ETH_ALEN];
+
+		/* Should any previously associated STA not have noticed that
+		 * the AP had stopped and restarted, send one more
+		 * deauthentication notification now that the AP is ready to
+		 * operate. */
+		wpa_dbg(hapd->msg_ctx, MSG_DEBUG,
+			"Deauthenticate all stations at BSS start");
+		os_memset(addr, 0xff, ETH_ALEN);
+		hostapd_drv_sta_deauth(hapd, addr,
+				       WLAN_REASON_PREV_AUTH_NOT_VALID);
+	}
 
 	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
 		return -1;

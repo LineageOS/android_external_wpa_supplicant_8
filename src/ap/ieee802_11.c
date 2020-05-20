@@ -3181,6 +3181,12 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 					 elems.he_capabilities_len);
 		if (resp != WLAN_STATUS_SUCCESS)
 			return resp;
+		if (is_6ghz_op_class(hapd->iconf->op_class)) {
+			resp = copy_sta_he_6ghz_capab(hapd, sta,
+						      elems.he_6ghz_band_cap);
+			if (resp != WLAN_STATUS_SUCCESS)
+				return resp;
+		}
 	}
 #endif /* CONFIG_IEEE80211AX */
 
@@ -3365,7 +3371,8 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		dpp_pfs_free(sta->dpp_pfs);
 		sta->dpp_pfs = NULL;
 
-		if ((hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_DPP) &&
+		if (DPP_VERSION > 1 &&
+		    (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_DPP) &&
 		    hapd->conf->dpp_netaccesskey && sta->wpa_sm &&
 		    wpa_auth_sta_key_mgmt(sta->wpa_sm) == WPA_KEY_MGMT_DPP &&
 		    elems.owe_dh) {
@@ -3626,6 +3633,7 @@ static int add_associated_sta(struct hostapd_data *hapd,
 			    sta->flags & WLAN_STA_VHT ? &vht_cap : NULL,
 			    sta->flags & WLAN_STA_HE ? &he_cap : NULL,
 			    sta->flags & WLAN_STA_HE ? sta->he_capab_len : 0,
+			    sta->he_6ghz_capab,
 			    sta->flags | WLAN_STA_ASSOC, sta->qosinfo,
 			    sta->vht_opmode, sta->p2p_ie ? 1 : 0,
 			    set)) {
@@ -3785,6 +3793,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 		p = hostapd_eid_he_operation(hapd, p);
 		p = hostapd_eid_spatial_reuse(hapd, p);
 		p = hostapd_eid_he_mu_edca_parameter_set(hapd, p);
+		p = hostapd_eid_he_6ghz_band_cap(hapd, p);
 	}
 #endif /* CONFIG_IEEE80211AX */
 
@@ -3843,7 +3852,7 @@ rsnxe_done:
 #endif /* CONFIG_OWE */
 
 #ifdef CONFIG_DPP2
-	if ((hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_DPP) &&
+	if (DPP_VERSION > 1 && (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_DPP) &&
 	    sta && sta->dpp_pfs && status_code == WLAN_STATUS_SUCCESS &&
 	    wpa_auth_sta_key_mgmt(sta->wpa_sm) == WPA_KEY_MGMT_DPP) {
 		os_memcpy(p, wpabuf_head(sta->dpp_pfs->ie),
@@ -4857,6 +4866,11 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
 		return 0;
 	}
 
+	if (hapd->iface->state != HAPD_IFACE_ENABLED) {
+		wpa_printf(MSG_DEBUG, "MGMT: Ignore management frame while interface is not enabled (SA=" MACSTR " DA=" MACSTR " subtype=%u)",
+			   MAC2STR(mgmt->sa), MAC2STR(mgmt->da), stype);
+		return 1;
+	}
 
 	if (stype == WLAN_FC_STYPE_PROBE_REQ) {
 		handle_probe_req(hapd, mgmt, len, ssi_signal);

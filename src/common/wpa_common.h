@@ -124,6 +124,7 @@ WPA_CIPHER_BIP_CMAC_256)
 #define WFA_KEY_DATA_IP_ADDR_REQ RSN_SELECTOR(0x50, 0x6f, 0x9a, 4)
 #define WFA_KEY_DATA_IP_ADDR_ALLOC RSN_SELECTOR(0x50, 0x6f, 0x9a, 5)
 #define WFA_KEY_DATA_TRANSITION_DISABLE RSN_SELECTOR(0x50, 0x6f, 0x9a, 0x20)
+#define WFA_KEY_DATA_DPP RSN_SELECTOR(0x50, 0x6f, 0x9a, 0x21)
 
 #define WPA_OUI_TYPE RSN_SELECTOR(0x00, 0x50, 0xf2, 1)
 
@@ -362,6 +363,10 @@ struct rsn_rdie {
 #define TRANSITION_DISABLE_WPA3_ENTERPRISE BIT(2)
 #define TRANSITION_DISABLE_ENHANCED_OPEN BIT(3)
 
+/* DPP KDE Flags */
+#define DPP_KDE_PFS_ALLOWED BIT(0)
+#define DPP_KDE_PFS_REQUIRED BIT(1)
+
 #ifdef _MSC_VER
 #pragma pack(pop)
 #endif /* _MSC_VER */
@@ -528,6 +533,8 @@ struct wpa_eapol_ie_parse {
 	const u8 *ip_addr_alloc;
 	const u8 *transition_disable;
 	size_t transition_disable_len;
+	const u8 *dpp_kde;
+	size_t dpp_kde_len;
 	const u8 *oci;
 	size_t oci_len;
 	const u8 *osen;
