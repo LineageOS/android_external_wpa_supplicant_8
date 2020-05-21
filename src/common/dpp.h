@@ -20,6 +20,18 @@
 struct crypto_ecdh;
 struct hostapd_ip_addr;
 struct dpp_global;
+struct json_token;
+
+#ifdef CONFIG_TESTING_OPTIONS
+#define DPP_VERSION (dpp_version_override)
+extern int dpp_version_override;
+#else /* CONFIG_TESTING_OPTIONS */
+#ifdef CONFIG_DPP2
+#define DPP_VERSION 2
+#else
+#define DPP_VERSION 1
+#endif
+#endif /* CONFIG_TESTING_OPTIONS */
 
 #define DPP_HDR_LEN (4 + 2) /* OUI, OUI Type, Crypto Suite, DPP frame type */
 #define DPP_TCP_PORT 7871
@@ -94,6 +106,12 @@ enum dpp_status_error {
 	DPP_STATUS_CSR_BAD = 13,
 };
 
+/* DPP Reconfig Flags object - connectorKey values */
+enum dpp_connector_key {
+	DPP_CONFIG_REUSEKEY = 0,
+	DPP_CONFIG_REPLACEKEY = 1,
+};
+
 #define DPP_CAPAB_ENROLLEE BIT(0)
 #define DPP_CAPAB_CONFIGURATOR BIT(1)
 #define DPP_CAPAB_ROLE_MASK (BIT(0) | BIT(1))
@@ -131,6 +149,7 @@ struct dpp_bootstrap_info {
 	char *pk;
 	unsigned int freq[DPP_BOOTSTRAP_MAX_FREQ];
 	unsigned int num_freq;
+	u8 version;
 	int own;
 	EVP_PKEY *pubkey;
 	u8 pubkey_hash[SHA256_MAC_LEN];
@@ -224,6 +243,8 @@ struct dpp_authentication {
 	struct dpp_bootstrap_info *tmp_own_bi;
 	u8 waiting_pubkey_hash[SHA256_MAC_LEN];
 	int response_pending;
+	int reconfig;
+	enum dpp_connector_key reconfig_connector_key;
 	enum dpp_status_error auth_resp_status;
 	enum dpp_status_error conf_resp_status;
 	u8 peer_mac_addr[ETH_ALEN];
@@ -234,8 +255,11 @@ struct dpp_authentication {
 	u8 r_capab;
 	EVP_PKEY *own_protocol_key;
 	EVP_PKEY *peer_protocol_key;
+	EVP_PKEY *reconfig_old_protocol_key;
 	struct wpabuf *req_msg;
 	struct wpabuf *resp_msg;
+	struct wpabuf *reconfig_req_msg;
+	struct wpabuf *reconfig_resp_msg;
 	/* Intersection of possible frequencies for initiating DPP
 	 * Authentication exchange */
 	unsigned int freq[DPP_BOOTSTRAP_MAX_FREQ];
@@ -253,6 +277,7 @@ struct dpp_authentication {
 	u8 k1[DPP_MAX_HASH_LEN];
 	u8 k2[DPP_MAX_HASH_LEN];
 	u8 ke[DPP_MAX_HASH_LEN];
+	u8 bk[DPP_MAX_HASH_LEN];
 	int initiator;
 	int waiting_auth_resp;
 	int waiting_auth_conf;
@@ -265,6 +290,7 @@ struct dpp_authentication {
 	int waiting_conf_result;
 	int waiting_conn_status_result;
 	int auth_success;
+	bool reconfig_success;
 	struct wpabuf *conf_req;
 	const struct wpabuf *conf_resp; /* owned by GAS server */
 	struct dpp_configuration *conf_ap;
@@ -292,6 +318,7 @@ struct dpp_authentication {
 	int conn_status_requested;
 	int akm_use_selector;
 	int configurator_set;
+	u8 transaction_id;
 #ifdef CONFIG_TESTING_OPTIONS
 	char *config_obj_override;
 	char *discovery_override;
@@ -307,8 +334,11 @@ struct dpp_configurator {
 	unsigned int id;
 	int own;
 	EVP_PKEY *csign;
+	u8 kid_hash[SHA256_MAC_LEN];
 	char *kid;
 	const struct dpp_curve_params *curve;
+	char *connector; /* own Connector for reconfiguration */
+	EVP_PKEY *connector_key;
 };
 
 struct dpp_introduction {
@@ -331,6 +361,7 @@ struct dpp_relay_config {
 struct dpp_controller_config {
 	const char *configurator_params;
 	int tcp_port;
+	u8 allowed_roles;
 };
 
 #ifdef CONFIG_TESTING_OPTIONS
@@ -591,6 +622,8 @@ int dpp_configurator_get_key_id(struct dpp_global *dpp, unsigned int id,
 				char *buf, size_t buflen);
 int dpp_configurator_from_backup(struct dpp_global *dpp,
 				 struct dpp_asymmetric_key *key);
+struct dpp_configurator * dpp_configurator_find_kid(struct dpp_global *dpp,
+						    const u8 *kid);
 int dpp_relay_add_controller(struct dpp_global *dpp,
 			     struct dpp_relay_config *config);
 int dpp_relay_rx_action(struct dpp_global *dpp, const u8 *src, const u8 *hdr,
@@ -615,6 +648,26 @@ struct dpp_global_config {
 struct dpp_global * dpp_global_init(struct dpp_global_config *config);
 void dpp_global_clear(struct dpp_global *dpp);
 void dpp_global_deinit(struct dpp_global *dpp);
+
+/* dpp_reconfig.c */
+
+struct wpabuf * dpp_build_reconfig_announcement(const u8 *csign_key,
+						size_t csign_key_len);
+struct dpp_authentication *
+dpp_reconfig_init(struct dpp_global *dpp, void *msg_ctx,
+		  struct dpp_configurator *conf, unsigned int freq);
+struct dpp_authentication *
+dpp_reconfig_auth_req_rx(struct dpp_global *dpp, void *msg_ctx,
+			 const char *own_connector,
+			 const u8 *net_access_key, size_t net_access_key_len,
+			 const u8 *csign_key, size_t csign_key_len,
+			 unsigned int freq, const u8 *hdr,
+			 const u8 *attr_start, size_t attr_len);
+struct wpabuf *
+dpp_reconfig_auth_resp_rx(struct dpp_authentication *auth, const u8 *hdr,
+			  const u8 *attr_start, size_t attr_len);
+int dpp_reconfig_auth_conf_rx(struct dpp_authentication *auth, const u8 *hdr,
+			      const u8 *attr_start, size_t attr_len);
 
 #endif /* CONFIG_DPP */
 #endif /* DPP_H */

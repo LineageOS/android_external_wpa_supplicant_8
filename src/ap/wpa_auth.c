@@ -14,6 +14,7 @@
 #include "utils/bitfield.h"
 #include "common/ieee802_11_defs.h"
 #include "common/ocv.h"
+#include "common/dpp.h"
 #include "crypto/aes.h"
 #include "crypto/aes_wrap.h"
 #include "crypto/aes_siv.h"
@@ -3079,6 +3080,24 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 	}
 #endif /* CONFIG_P2P */
 
+#ifdef CONFIG_DPP2
+	if (DPP_VERSION > 1 && kde.dpp_kde) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: peer Protocol Version %u Flags 0x%x",
+			   kde.dpp_kde[0], kde.dpp_kde[1]);
+		if (sm->wpa_key_mgmt == WPA_KEY_MGMT_DPP &&
+		    wpa_auth->conf.dpp_pfs != 2 &&
+		    (kde.dpp_kde[1] & DPP_KDE_PFS_ALLOWED) &&
+		    !sm->dpp_z) {
+			wpa_printf(MSG_INFO,
+				   "DPP: Peer indicated it supports PFS and local configuration allows this, but PFS was not negotiated for the association");
+			wpa_sta_disconnect(wpa_auth, sm->addr,
+					   WLAN_REASON_PREV_AUTH_NOT_VALID);
+			return;
+		}
+	}
+#endif /* CONFIG_DPP2 */
+
 #ifdef CONFIG_IEEE80211R_AP
 	if (sm->wpa == WPA_VERSION_WPA2 && wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
 		/*
@@ -3397,6 +3416,11 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 	if (conf->transition_disable)
 		kde_len += 2 + RSN_SELECTOR_LEN + 1;
 
+#ifdef CONFIG_DPP2
+	if (sm->wpa_key_mgmt == WPA_KEY_MGMT_DPP)
+		kde_len += 2 + RSN_SELECTOR_LEN + 2;
+#endif /* CONFIG_DPP2 */
+
 	kde = os_malloc(kde_len);
 	if (!kde)
 		goto done;
@@ -3491,6 +3515,22 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 	if (conf->transition_disable)
 		pos = wpa_add_kde(pos, WFA_KEY_DATA_TRANSITION_DISABLE,
 				  &conf->transition_disable, 1, NULL, 0);
+
+#ifdef CONFIG_DPP2
+	if (DPP_VERSION > 1 && sm->wpa_key_mgmt == WPA_KEY_MGMT_DPP) {
+		u8 payload[2];
+
+		payload[0] = DPP_VERSION; /* Protocol Version */
+		payload[1] = 0; /* Flags */
+		if (conf->dpp_pfs == 0)
+			payload[1] |= DPP_KDE_PFS_ALLOWED;
+		else if (conf->dpp_pfs == 1)
+			payload[1] |= DPP_KDE_PFS_ALLOWED |
+				DPP_KDE_PFS_REQUIRED;
+		pos = wpa_add_kde(pos, WFA_KEY_DATA_DPP,
+				  payload, sizeof(payload), NULL, 0);
+	}
+#endif /* CONFIG_DPP2 */
 
 	wpa_send_eapol(sm->wpa_auth, sm,
 		       (secure ? WPA_KEY_INFO_SECURE : 0) |

@@ -111,6 +111,7 @@ struct wpa_driver_nl80211_data {
 	unsigned int num_iface_ext_capa;
 
 	int has_capability;
+	int has_driver_key_mgmt;
 
 	int operstate;
 
@@ -169,7 +170,6 @@ struct wpa_driver_nl80211_data {
 	unsigned int set_wifi_conf_vendor_cmd_avail:1;
 	unsigned int fetch_bss_trans_status:1;
 	unsigned int roam_vendor_cmd_avail:1;
-	unsigned int get_supported_akm_suites_avail:1;
 	unsigned int add_sta_node_vendor_cmd_avail:1;
 	unsigned int control_port_ap:1;
 	unsigned int multicast_registrations:1;
@@ -274,6 +274,8 @@ int process_global_event(struct nl_msg *msg, void *arg);
 int process_bss_event(struct nl_msg *msg, void *arg);
 
 const char * nl80211_iftype_str(enum nl80211_iftype mode);
+
+void nl80211_restore_ap_mode(struct i802_bss *bss);
 
 #ifdef ANDROID
 int android_nl_socket_set_nonblocking(struct nl_sock *handle);

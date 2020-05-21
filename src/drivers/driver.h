@@ -1553,8 +1553,9 @@ struct wpa_driver_set_key_params {
 	 * alg - Encryption algorithm
 	 *
 	 * (%WPA_ALG_NONE, %WPA_ALG_WEP, %WPA_ALG_TKIP, %WPA_ALG_CCMP,
-	 * %WPA_ALG_IGTK, %WPA_ALG_GCMP, %WPA_ALG_GCMP_256, %WPA_ALG_CCMP_256,
-	 * %WPA_ALG_BIP_GMAC_128, %WPA_ALG_BIP_GMAC_256, %WPA_ALG_BIP_CMAC_256);
+	 * %WPA_ALG_BIP_AES_CMAC_128, %WPA_ALG_GCMP, %WPA_ALG_GCMP_256,
+	 * %WPA_ALG_CCMP_256, %WPA_ALG_BIP_GMAC_128, %WPA_ALG_BIP_GMAC_256,
+	 * %WPA_ALG_BIP_CMAC_256);
 	 * %WPA_ALG_NONE clears the key. */
 	enum wpa_alg alg;
 
@@ -1658,6 +1659,73 @@ struct wpa_driver_set_key_params {
 	enum key_flag key_flag;
 };
 
+enum wpa_driver_if_type {
+	/**
+	 * WPA_IF_STATION - Station mode interface
+	 */
+	WPA_IF_STATION,
+
+	/**
+	 * WPA_IF_AP_VLAN - AP mode VLAN interface
+	 *
+	 * This interface shares its address and Beacon frame with the main
+	 * BSS.
+	 */
+	WPA_IF_AP_VLAN,
+
+	/**
+	 * WPA_IF_AP_BSS - AP mode BSS interface
+	 *
+	 * This interface has its own address and Beacon frame.
+	 */
+	WPA_IF_AP_BSS,
+
+	/**
+	 * WPA_IF_P2P_GO - P2P Group Owner
+	 */
+	WPA_IF_P2P_GO,
+
+	/**
+	 * WPA_IF_P2P_CLIENT - P2P Client
+	 */
+	WPA_IF_P2P_CLIENT,
+
+	/**
+	 * WPA_IF_P2P_GROUP - P2P Group interface (will become either
+	 * WPA_IF_P2P_GO or WPA_IF_P2P_CLIENT, but the role is not yet known)
+	 */
+	WPA_IF_P2P_GROUP,
+
+	/**
+	 * WPA_IF_P2P_DEVICE - P2P Device interface is used to indentify the
+	 * abstracted P2P Device function in the driver
+	 */
+	WPA_IF_P2P_DEVICE,
+
+	/*
+	 * WPA_IF_MESH - Mesh interface
+	 */
+	WPA_IF_MESH,
+
+	/*
+	 * WPA_IF_TDLS - TDLS offchannel interface (used for pref freq only)
+	 */
+	WPA_IF_TDLS,
+
+	/*
+	 * WPA_IF_IBSS - IBSS interface (used for pref freq only)
+	 */
+	WPA_IF_IBSS,
+
+	/*
+	 * WPA_IF_NAN - NAN Device
+	 */
+	WPA_IF_NAN,
+
+	/* keep last */
+	WPA_IF_MAX
+};
+
 /**
  * struct wpa_driver_capa - Driver capability information
  */
@@ -1681,6 +1749,7 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_CAPA_KEY_MGMT_SAE 		0x00010000
 	/** Bitfield of supported key management suites */
 	unsigned int key_mgmt;
+	unsigned int key_mgmt_iftype[WPA_IF_MAX];
 
 #define WPA_DRIVER_CAPA_ENC_WEP40	0x00000001
 #define WPA_DRIVER_CAPA_ENC_WEP104	0x00000002
@@ -2018,6 +2087,7 @@ struct hostapd_sta_add_params {
 	u8 vht_opmode;
 	const struct ieee80211_he_capabilities *he_capab;
 	size_t he_capab_len;
+	const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab;
 	u32 flags; /* bitmask of WPA_STA_* flags */
 	u32 flags_mask; /* unset bits in flags */
 #ifdef CONFIG_MESH
@@ -2043,65 +2113,6 @@ struct hostapd_acl_params {
 	u8 acl_policy;
 	unsigned int num_mac_acl;
 	struct mac_address mac_acl[0];
-};
-
-enum wpa_driver_if_type {
-	/**
-	 * WPA_IF_STATION - Station mode interface
-	 */
-	WPA_IF_STATION,
-
-	/**
-	 * WPA_IF_AP_VLAN - AP mode VLAN interface
-	 *
-	 * This interface shares its address and Beacon frame with the main
-	 * BSS.
-	 */
-	WPA_IF_AP_VLAN,
-
-	/**
-	 * WPA_IF_AP_BSS - AP mode BSS interface
-	 *
-	 * This interface has its own address and Beacon frame.
-	 */
-	WPA_IF_AP_BSS,
-
-	/**
-	 * WPA_IF_P2P_GO - P2P Group Owner
-	 */
-	WPA_IF_P2P_GO,
-
-	/**
-	 * WPA_IF_P2P_CLIENT - P2P Client
-	 */
-	WPA_IF_P2P_CLIENT,
-
-	/**
-	 * WPA_IF_P2P_GROUP - P2P Group interface (will become either
-	 * WPA_IF_P2P_GO or WPA_IF_P2P_CLIENT, but the role is not yet known)
-	 */
-	WPA_IF_P2P_GROUP,
-
-	/**
-	 * WPA_IF_P2P_DEVICE - P2P Device interface is used to indentify the
-	 * abstracted P2P Device function in the driver
-	 */
-	WPA_IF_P2P_DEVICE,
-
-	/*
-	 * WPA_IF_MESH - Mesh interface
-	 */
-	WPA_IF_MESH,
-
-	/*
-	 * WPA_IF_TDLS - TDLS offchannel interface (used for pref freq only)
-	 */
-	WPA_IF_TDLS,
-
-	/*
-	 * WPA_IF_IBSS - IBSS interface (used for pref freq only)
-	 */
-	WPA_IF_IBSS,
 };
 
 struct wpa_init_params {

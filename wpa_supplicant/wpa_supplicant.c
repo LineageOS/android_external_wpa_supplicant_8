@@ -1686,6 +1686,9 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 	} else if (wpa_s->key_mgmt == WPA_KEY_MGMT_DPP) {
 		/* Use PMK from DPP network introduction (PMKSA entry) */
 		wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
+#ifdef CONFIG_DPP2
+		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_DPP_PFS, ssid->dpp_pfs);
+#endif /* CONFIG_DPP2 */
 #endif /* CONFIG_DPP */
 	} else if (wpa_key_mgmt_wpa_psk(ssid->key_mgmt)) {
 		int psk_set = 0;
@@ -3085,9 +3088,16 @@ static u8 * wpas_populate_assoc_ies(
 #endif /* CONFIG_OWE */
 
 #ifdef CONFIG_DPP2
-	if (wpa_sm_get_key_mgmt(wpa_s->wpa) == WPA_KEY_MGMT_DPP &&
+	if (DPP_VERSION > 1 &&
+	    wpa_sm_get_key_mgmt(wpa_s->wpa) == WPA_KEY_MGMT_DPP &&
 	    ssid->dpp_netaccesskey &&
 	    ssid->dpp_pfs != 2 && !ssid->dpp_pfs_fallback) {
+		struct rsn_pmksa_cache_entry *pmksa;
+
+		pmksa = pmksa_cache_get_current(wpa_s->wpa);
+		if (!pmksa || !pmksa->dpp_pfs)
+			goto pfs_fail;
+
 		dpp_pfs_free(wpa_s->dpp_pfs);
 		wpa_s->dpp_pfs = dpp_pfs_init(ssid->dpp_netaccesskey,
 					      ssid->dpp_netaccesskey_len);

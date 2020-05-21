@@ -2328,9 +2328,18 @@ static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
 	/* FT Action frames */
 	if (nl80211_register_action_frame(bss, (u8 *) "\x06", 1) < 0)
 		ret = -1;
-	else
+	else if (!drv->has_driver_key_mgmt) {
+		int i;
+
+		/* Update supported AKMs only if the driver doesn't advertize
+		 * any AKM capabilities. */
 		drv->capa.key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_FT |
 			WPA_DRIVER_CAPA_KEY_MGMT_FT_PSK;
+
+		/* Update per interface supported AKMs */
+		for (i = 0; i < WPA_IF_MAX; i++)
+			drv->capa.key_mgmt_iftype[i] = drv->capa.key_mgmt;
+	}
 
 	/* WNM - BSS Transition Management Request */
 	if (nl80211_register_action_frame(bss, (u8 *) "\x0a\x07", 2) < 0)
@@ -2918,7 +2927,7 @@ static u32 wpa_alg_to_cipher_suite(enum wpa_alg alg, size_t key_len)
 		return RSN_CIPHER_SUITE_CCMP_256;
 	case WPA_ALG_GCMP_256:
 		return RSN_CIPHER_SUITE_GCMP_256;
-	case WPA_ALG_IGTK:
+	case WPA_ALG_BIP_CMAC_128:
 		return RSN_CIPHER_SUITE_AES_128_CMAC;
 	case WPA_ALG_BIP_GMAC_128:
 		return RSN_CIPHER_SUITE_BIP_GMAC_128;
@@ -3275,10 +3284,7 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
 		goto fail2;
 	if (!key_msg ||
 	    nla_put_u8(key_msg, NL80211_KEY_IDX, key_idx) ||
-	    nla_put_flag(key_msg, (alg == WPA_ALG_IGTK ||
-				   alg == WPA_ALG_BIP_GMAC_128 ||
-				   alg == WPA_ALG_BIP_GMAC_256 ||
-				   alg == WPA_ALG_BIP_CMAC_256) ?
+	    nla_put_flag(key_msg, wpa_alg_bip(alg) ?
 			 (key_idx == 6 || key_idx == 7 ?
 			  NL80211_KEY_DEFAULT_BEACON :
 			  NL80211_KEY_DEFAULT_MGMT) :
@@ -3347,7 +3353,7 @@ static int nl_add_key(struct nl_msg *msg, enum wpa_alg alg,
 	if (!suite)
 		return -1;
 
-	if (defkey && alg == WPA_ALG_IGTK) {
+	if (defkey && wpa_alg_bip(alg)) {
 		if (nla_put_flag(msg, NL80211_KEY_DEFAULT_MGMT))
 			return -1;
 	} else if (defkey) {
@@ -4323,7 +4329,7 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 	num_suites = wpa_key_mgmt_to_suites(params->key_mgmt_suites,
 					    suites, ARRAY_SIZE(suites));
 	if (num_suites > NL80211_MAX_NR_AKM_SUITES)
-		wpa_printf(MSG_WARNING,
+		wpa_printf(MSG_DEBUG,
 			   "nl80211: Not enough room for all AKM suites (num_suites=%d > NL80211_MAX_NR_AKM_SUITES)",
 			   num_suites);
 	else if (num_suites &&
@@ -5056,6 +5062,10 @@ const char * nl80211_iftype_str(enum nl80211_iftype mode)
 		return "P2P_GO";
 	case NL80211_IFTYPE_P2P_DEVICE:
 		return "P2P_DEVICE";
+	case NL80211_IFTYPE_OCB:
+		return "OCB";
+	case NL80211_IFTYPE_NAN:
+		return "NAN";
 	default:
 		return "unknown";
 	}
@@ -6261,6 +6271,20 @@ static int wpa_driver_nl80211_set_mode_impl(
 			}
 		}
 
+		if (i == 0 && was_ap && !is_ap_interface(nlmode) &&
+		    bss->brname[0] &&
+		    (bss->added_if_into_bridge || bss->already_in_bridge)) {
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: Remove AP interface %s temporarily from the bridge %s to allow its mode to be set to STATION",
+				   bss->ifname, bss->brname);
+			if (linux_br_del_if(drv->global->ioctl_sock,
+					    bss->brname, bss->ifname) < 0)
+				wpa_printf(MSG_INFO,
+					   "nl80211: Failed to remove interface %s from bridge %s: %s",
+					   bss->ifname, bss->brname,
+					   strerror(errno));
+		}
+
 		/* Try to set the mode again while the interface is down */
 		mode_switch_res = nl80211_set_mode(drv, drv->ifindex, nlmode);
 		if (mode_switch_res == -EBUSY) {
@@ -6330,6 +6354,29 @@ done:
 			   "frame processing - ignore for now");
 
 	return 0;
+}
+
+
+void nl80211_restore_ap_mode(struct i802_bss *bss)
+{
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	int was_ap = is_ap_interface(drv->nlmode);
+
+	wpa_driver_nl80211_set_mode(bss, drv->ap_scan_as_station);
+	if (!was_ap && is_ap_interface(drv->ap_scan_as_station) &&
+	    bss->brname[0] &&
+	    (bss->added_if_into_bridge || bss->already_in_bridge)) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Add AP interface %s back into the bridge %s",
+			   bss->ifname, bss->brname);
+		if (linux_br_add_if(drv->global->ioctl_sock, bss->brname,
+				    bss->ifname) < 0) {
+			wpa_printf(MSG_WARNING,
+				   "nl80211: Failed to add interface %s into bridge %s: %s",
+				   bss->ifname, bss->brname, strerror(errno));
+		}
+	}
+	drv->ap_scan_as_station = NL80211_IFTYPE_UNSPECIFIED;
 }
 
 
@@ -7742,7 +7789,8 @@ static int wpa_driver_nl80211_send_action(struct i802_bss *bss,
 	struct ieee80211_hdr *hdr;
 	int offchanok = 1;
 
-	if (is_ap_interface(drv->nlmode) && (int) freq == bss->freq)
+	if (is_ap_interface(drv->nlmode) && (int) freq == bss->freq &&
+	    bss->beacon_set)
 		offchanok = 0;
 
 	wpa_printf(MSG_DEBUG, "nl80211: Send Action frame (ifindex=%d, "

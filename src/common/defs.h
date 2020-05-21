@@ -190,7 +190,7 @@ enum wpa_alg {
 	WPA_ALG_WEP,
 	WPA_ALG_TKIP,
 	WPA_ALG_CCMP,
-	WPA_ALG_IGTK,
+	WPA_ALG_BIP_CMAC_128,
 	WPA_ALG_GCMP,
 	WPA_ALG_SMS4,
 	WPA_ALG_KRK,
@@ -200,6 +200,14 @@ enum wpa_alg {
 	WPA_ALG_BIP_GMAC_256,
 	WPA_ALG_BIP_CMAC_256
 };
+
+static inline int wpa_alg_bip(enum wpa_alg alg)
+{
+	return alg == WPA_ALG_BIP_CMAC_128 ||
+		alg == WPA_ALG_BIP_GMAC_128 ||
+		alg == WPA_ALG_BIP_GMAC_256 ||
+		alg == WPA_ALG_BIP_CMAC_256;
+}
 
 /**
  * enum wpa_states - wpa_supplicant state
