@@ -2724,10 +2724,11 @@ static enum chan_width get_he_operation_channel_width(
 	if (he_oper_len < expected_len)
 		return channel_width;
 
+	const u8 *he_oper_u8 = (const u8 *) he_oper;
 	if (is_6ghz_info_present) {
 		struct ieee80211_6ghz_operation_info *six_ghz_oper_info =
 			(struct ieee80211_6ghz_operation_info *)
-			(he_oper + HE_OPERATION_IE_MIN_LEN
+			(he_oper_u8 + HE_OPERATION_IE_MIN_LEN
 			+ (is_vht_info_present ? HE_OPERATION_VHT_OPER_INFO_LEN : 0)
 			+ (is_cohosted_bss_present
 			? HE_OPERATION_COHOSTED_BSSID_INDICATOR_LEN : 0));
@@ -2736,7 +2737,7 @@ static enum chan_width get_he_operation_channel_width(
 	if (channel_width == CHAN_WIDTH_UNKNOWN && is_vht_info_present) {
 		struct ieee80211_vht_operation_info *vht_oper_info  =
 			(struct ieee80211_vht_operation_info *)
-			(he_oper + HE_OPERATION_IE_MIN_LEN);
+			(he_oper_u8 + HE_OPERATION_IE_MIN_LEN);
 		channel_width = get_vht_operation_channel_width(vht_oper_info);
 	}
 	wpa_printf(MSG_DEBUG, " HE operation CBW: %u", channel_width);
