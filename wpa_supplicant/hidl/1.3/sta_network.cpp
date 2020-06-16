@@ -2450,7 +2450,8 @@ void StaNetwork::setFastTransitionKeyMgmt(uint32_t &key_mgmt_mask)
 	if (res == 0) {
 #ifdef CONFIG_IEEE80211R
 #ifdef CONFIG_SAE
-		if (capa.key_mgmt_iftype[WPA_IF_STATION] & WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE) {
+		if ((key_mgmt_mask & WPA_KEY_MGMT_SAE) &&
+		    (capa.key_mgmt_iftype[WPA_IF_STATION] & WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE)) {
 			key_mgmt_mask |= WPA_KEY_MGMT_FT_SAE;
 		}
 #endif
