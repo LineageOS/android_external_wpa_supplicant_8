@@ -26,7 +26,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_3 {
+namespace V1_4 {
 namespace implementation {
 using V1_0::ISupplicantP2pNetwork;
 using V1_0::ISupplicantP2pNetworkCallback;
@@ -96,7 +96,7 @@ private:
 };
 
 }  // namespace implementation
-}  // namespace V1_3
+}  // namespace V1_4
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

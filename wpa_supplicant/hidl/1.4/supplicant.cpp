@@ -156,7 +156,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_3 {
+namespace V1_4 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 using V1_0::SupplicantStatusCode;
@@ -417,7 +417,7 @@ SupplicantStatus Supplicant::setConcurrencyPriorityInternal(IfaceType type)
 	return SupplicantStatus{SupplicantStatusCode::SUCCESS, ""};
 }
 }  // namespace implementation
-}  // namespace V1_3
+}  // namespace V1_4
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

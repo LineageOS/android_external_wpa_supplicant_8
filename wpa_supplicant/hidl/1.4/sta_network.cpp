@@ -104,7 +104,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_3 {
+namespace V1_4 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 using V1_0::SupplicantStatusCode;
@@ -822,7 +822,7 @@ Return<void> StaNetwork::setSaePasswordId(
 }
 
 Return<void> StaNetwork::setOcsp(
-    OcspType ocspType, setOcsp_cb _hidl_cb) {
+    V1_3::OcspType ocspType, setOcsp_cb _hidl_cb) {
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 	    &StaNetwork::setOcspInternal, _hidl_cb, ocspType);
@@ -2130,9 +2130,9 @@ std::pair<SupplicantStatus, uint32_t> StaNetwork::getGroupMgmtCipherInternal()
 		wpa_ssid->group_mgmt_cipher & kAllowedGroupMgmtCipherMask};
 }
 
-SupplicantStatus StaNetwork::setOcspInternal(OcspType ocspType) {
+SupplicantStatus StaNetwork::setOcspInternal(V1_3::OcspType ocspType) {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (ocspType < OcspType::NONE || ocspType > OcspType::REQUIRE_ALL_CERTS_STATUS) {
+	if (ocspType < V1_3::OcspType::NONE || ocspType > V1_3::OcspType::REQUIRE_ALL_CERTS_STATUS) {
 		return{ SupplicantStatusCode::FAILURE_ARGS_INVALID, "" };
 	}
 	wpa_ssid->eap.cert.ocsp = (int) ocspType;
@@ -2142,11 +2142,11 @@ SupplicantStatus StaNetwork::setOcspInternal(OcspType ocspType) {
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
 
-std::pair<SupplicantStatus, OcspType> StaNetwork::getOcspInternal()
+std::pair<SupplicantStatus, V1_3::OcspType> StaNetwork::getOcspInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	return {{SupplicantStatusCode::SUCCESS, ""},
-		(OcspType) wpa_ssid->eap.cert.ocsp};
+		(V1_3::OcspType) wpa_ssid->eap.cert.ocsp};
 }
 
 SupplicantStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& serializedEntry) {
@@ -2498,7 +2498,7 @@ SupplicantStatus StaNetwork::setEapErpInternal(bool enable)
 }
 
 }  // namespace implementation
-}  // namespace V1_3
+}  // namespace V1_4
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

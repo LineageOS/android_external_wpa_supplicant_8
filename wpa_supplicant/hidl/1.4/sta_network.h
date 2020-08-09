@@ -34,7 +34,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_3 {
+namespace V1_4 {
 namespace implementation {
 using V1_0::ISupplicantStaNetworkCallback;
 using V1_2::DppFailureCode;
@@ -227,7 +227,7 @@ public:
 	    const hidl_string& sae_password_id,
 	    setSaePasswordId_cb _hidl_cb) override;
 	Return<void> setOcsp(
-	    OcspType ocspType, setOcsp_cb _hidl_cb) override;
+	    V1_3::OcspType ocspType, setOcsp_cb _hidl_cb) override;
 	Return<void> getOcsp(
 	    getOcsp_cb _hidl_cb) override;
 	Return<void> setPmkCache(const hidl_vec<uint8_t>& serializedEntry,
@@ -372,8 +372,8 @@ private:
 	    const std::string& sae_password_id);
 	SupplicantStatus setGroupMgmtCipherInternal(uint32_t group_mgmt_cipher_mask);
 	std::pair<SupplicantStatus, uint32_t> getGroupMgmtCipherInternal();
-	SupplicantStatus setOcspInternal(OcspType ocspType);
-	std::pair<SupplicantStatus, OcspType> getOcspInternal();
+	SupplicantStatus setOcspInternal(V1_3::OcspType ocspType);
+	std::pair<SupplicantStatus, V1_3::OcspType> getOcspInternal();
 	SupplicantStatus setPmkCacheInternal(const std::vector<uint8_t>& serialziedEntry);
 	SupplicantStatus setWapiCertSuiteInternal(const std::string& suite);
 	std::pair<SupplicantStatus, std::string> getWapiCertSuiteInternal();
@@ -427,7 +427,7 @@ private:
 };
 
 }  // namespace implementation
-}  // namespace V1_3
+}  // namespace V1_4
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

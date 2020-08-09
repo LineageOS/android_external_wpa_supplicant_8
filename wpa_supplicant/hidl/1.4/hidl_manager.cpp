@@ -400,7 +400,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_3 {
+namespace V1_4 {
 namespace implementation {
 using V1_0::ISupplicantStaIfaceCallback;
 
@@ -1574,7 +1574,7 @@ void HidlManager::notifyDppProgress(struct wpa_supplicant *wpa_s,
  * @param ifname Interface name
  * @param code Status code
  */
-void HidlManager::notifyDppSuccess(struct wpa_supplicant *wpa_s, DppSuccessCode code)
+void HidlManager::notifyDppSuccess(struct wpa_supplicant *wpa_s, V1_3::DppSuccessCode code)
 {
 	std::string hidl_ifname = wpa_s->ifname;
 
@@ -1848,7 +1848,7 @@ int HidlManager::getP2pNetworkHidlObjectByIfnameAndNetworkId(
  */
 int HidlManager::getStaNetworkHidlObjectByIfnameAndNetworkId(
     const std::string &ifname, int network_id,
-    android::sp<ISupplicantStaNetwork> *network_object)
+    android::sp<V1_3::ISupplicantStaNetwork> *network_object)
 {
 	if (ifname.empty() || network_id < 0 || !network_object)
 		return 1;
@@ -2213,7 +2213,7 @@ void HidlManager::callWithEachStaNetworkCallback(
 	    ifname, network_id, method, sta_network_callbacks_map_);
 }
 }  // namespace implementation
-}  // namespace V1_3
+}  // namespace V1_4
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

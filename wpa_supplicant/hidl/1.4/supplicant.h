@@ -13,7 +13,7 @@
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantIface.h>
 #include <android/hardware/wifi/supplicant/1.0/types.h>
-#include <android/hardware/wifi/supplicant/1.3/ISupplicant.h>
+#include <android/hardware/wifi/supplicant/1.4/ISupplicant.h>
 #include <android-base/macros.h>
 #include <hidl/Status.h>
 
@@ -29,7 +29,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_3 {
+namespace V1_4 {
 namespace implementation {
 using V1_0::ISupplicantCallback;
 using V1_0::ISupplicantIface;
@@ -39,7 +39,7 @@ using V1_0::ISupplicantIface;
  * object is used core for global control operations on
  * wpa_supplicant.
  */
-class Supplicant : public V1_3::ISupplicant
+class Supplicant : public V1_4::ISupplicant
 {
 public:
 	Supplicant(struct wpa_global* global);
@@ -93,7 +93,7 @@ private:
 };
 
 }  // namespace implementation
-}  // namespace V1_3
+}  // namespace V1_4
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware
