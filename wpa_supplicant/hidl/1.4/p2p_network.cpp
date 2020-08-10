@@ -20,7 +20,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_3 {
+namespace V1_4 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 using V1_0::SupplicantStatusCode;
@@ -250,7 +250,7 @@ struct wpa_supplicant *P2pNetwork::retrieveIfacePtr()
 	    (struct wpa_global *)wpa_global_, ifname_.c_str());
 }
 }  // namespace implementation
-}  // namespace V1_3
+}  // namespace V1_4
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

@@ -33,7 +33,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_3 {
+namespace V1_4 {
 namespace implementation {
 using V1_0::ISupplicantNetwork;
 using android::hardware::wifi::supplicant::V1_2::DppAkm;
@@ -282,7 +282,7 @@ private:
 	SupplicantStatus startDppEnrolleeInitiatorInternal(uint32_t peer_bootstrap_id,
 			uint32_t own_bootstrap_id);
 	SupplicantStatus stopDppInitiatorInternal();
-	std::pair<SupplicantStatus, ConnectionCapabilities> getConnectionCapabilitiesInternal();
+	std::pair<SupplicantStatus, V1_3::ConnectionCapabilities> getConnectionCapabilitiesInternal();
 	std::pair<SupplicantStatus, uint32_t> getWpaDriverCapabilitiesInternal();
 	SupplicantStatus setMboCellularDataStatusInternal(bool available);
 	std::pair<SupplicantStatus, uint32_t> getKeyMgmtCapabilitiesInternal_1_3();
@@ -300,7 +300,7 @@ private:
 };
 
 }  // namespace implementation
-}  // namespace V1_3
+}  // namespace V1_4
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

@@ -38,7 +38,7 @@ using android::hardware::wifi::supplicant::V1_0::ISupplicantStaNetwork;
 using android::hardware::wifi::supplicant::V1_3::ISupplicantStaIface;
 using android::hardware::wifi::supplicant::V1_3::ConnectionCapabilities;
 using android::hardware::wifi::supplicant::V1_3::WifiTechnology;
-using android::hardware::wifi::supplicant::V1_3::implementation::HidlManager;
+using android::hardware::wifi::supplicant::V1_4::implementation::HidlManager;
 
 constexpr uint32_t kMaxAnqpElems = 100;
 constexpr char kGetMacAddress[] = "MACADDR";
@@ -223,7 +223,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_3 {
+namespace V1_4 {
 namespace implementation {
 using hidl_return_util::validateAndCall;
 using V1_0::ISupplicantStaIfaceCallback;
@@ -742,7 +742,7 @@ SupplicantStatus StaIface::filsHlpAddRequestInternal(
 std::pair<SupplicantStatus, sp<ISupplicantNetwork>>
 StaIface::addNetworkInternal()
 {
-	android::sp<ISupplicantStaNetwork> network;
+	android::sp<V1_3::ISupplicantStaNetwork> network;
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	struct wpa_ssid *ssid = wpa_supplicant_add_network(wpa_s);
 	if (!ssid) {
@@ -781,7 +781,7 @@ SupplicantStatus StaIface::removeNetworkInternal(SupplicantNetworkId id)
 std::pair<SupplicantStatus, sp<ISupplicantNetwork>>
 StaIface::getNetworkInternal(SupplicantNetworkId id)
 {
-	android::sp<ISupplicantStaNetwork> network;
+	android::sp<V1_3::ISupplicantStaNetwork> network;
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	struct wpa_ssid *ssid = wpa_config_get_network(wpa_s->conf, id);
 	if (!ssid) {
@@ -1479,9 +1479,9 @@ StaIface::getWpaDriverCapabilitiesInternal()
 	 * transition + Cellular steering. 11v is a default feature in
 	 * supplicant. And cellular steering is handled in framework.
 	 */
-	mask |= WpaDriverCapabilitiesMask::MBO;
+	mask |= V1_3::WpaDriverCapabilitiesMask::MBO;
 	if (wpa_s->enable_oce & OCE_STA) {
-		mask |= WpaDriverCapabilitiesMask::OCE;
+		mask |= V1_3::WpaDriverCapabilitiesMask::OCE;
 	}
 #endif
 
@@ -1535,7 +1535,7 @@ wpa_supplicant *StaIface::retrieveIfacePtr()
 	return wpa_supplicant_get_iface(wpa_global_, ifname_.c_str());
 }
 }  // namespace implementation
-}  // namespace V1_3
+}  // namespace V1_4
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

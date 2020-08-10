@@ -38,7 +38,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
-namespace V1_3 {
+namespace V1_4 {
 namespace implementation {
 using V1_0::ISupplicant;
 using V1_0::ISupplicantP2pIface;
@@ -133,7 +133,7 @@ public:
 	void notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 			struct wpa_ssid *config);
 	void notifyDppConfigSent(struct wpa_supplicant *wpa_s);
-	void notifyDppSuccess(struct wpa_supplicant *wpa_s, DppSuccessCode code);
+	void notifyDppSuccess(struct wpa_supplicant *wpa_s, V1_3::DppSuccessCode code);
 	void notifyDppFailure(struct wpa_supplicant *wpa_s,
 			android::hardware::wifi::supplicant::V1_3::DppFailureCode code);
 	void notifyDppFailure(struct wpa_supplicant *wpa_s,
@@ -162,7 +162,7 @@ public:
 	    android::sp<ISupplicantP2pNetwork> *network_object);
 	int getStaNetworkHidlObjectByIfnameAndNetworkId(
 	    const std::string &ifname, int network_id,
-	    android::sp<ISupplicantStaNetwork> *network_object);
+	    android::sp<V1_3::ISupplicantStaNetwork> *network_object);
 	int addSupplicantCallbackHidlObject(
 	    const android::sp<ISupplicantCallback> &callback);
 	int addP2pIfaceCallbackHidlObject(
@@ -338,51 +338,51 @@ static_assert(
     "Debug level value mismatch");
 
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::NONE) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::KeyMgmtMask::NONE) ==
 	WPA_KEY_MGMT_NONE,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK) ==
 	WPA_KEY_MGMT_PSK,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP) ==
 	WPA_KEY_MGMT_IEEE8021X,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::IEEE8021X) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::KeyMgmtMask::IEEE8021X) ==
 	WPA_KEY_MGMT_IEEE8021X_NO_WPA,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::FT_EAP) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::KeyMgmtMask::FT_EAP) ==
 	WPA_KEY_MGMT_FT_IEEE8021X,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::FT_PSK) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::KeyMgmtMask::FT_PSK) ==
 	WPA_KEY_MGMT_FT_PSK,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::OSEN) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::KeyMgmtMask::OSEN) ==
 	WPA_KEY_MGMT_OSEN,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::SAE) ==
+    static_cast<uint32_t>(V1_2::ISupplicantStaNetwork::KeyMgmtMask::SAE) ==
 	WPA_KEY_MGMT_SAE,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::SUITE_B_192) ==
+    static_cast<uint32_t>(V1_2::ISupplicantStaNetwork::KeyMgmtMask::SUITE_B_192) ==
 	WPA_KEY_MGMT_IEEE8021X_SUITE_B_192,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::OWE) ==
+    static_cast<uint32_t>(V1_2::ISupplicantStaNetwork::KeyMgmtMask::OWE) ==
 	WPA_KEY_MGMT_OWE,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK_SHA256) ==
+    static_cast<uint32_t>(V1_2::ISupplicantStaNetwork::KeyMgmtMask::WPA_PSK_SHA256) ==
 	WPA_KEY_MGMT_PSK_SHA256,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP_SHA256) ==
+    static_cast<uint32_t>(V1_2::ISupplicantStaNetwork::KeyMgmtMask::WPA_EAP_SHA256) ==
 	WPA_KEY_MGMT_IEEE8021X_SHA256,
     "KeyMgmt value mismatch");
 static_assert(
@@ -394,15 +394,15 @@ static_assert(
 	WPA_KEY_MGMT_WAPI_CERT,
     "KeyMgmt value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::WPA) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::ProtoMask::WPA) ==
 	WPA_PROTO_WPA,
     "Proto value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::RSN) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::ProtoMask::RSN) ==
 	WPA_PROTO_RSN,
     "Proto value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::ProtoMask::OSEN) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::ProtoMask::OSEN) ==
 	WPA_PROTO_OSEN,
     "Proto value mismatch");
 static_assert(
@@ -410,35 +410,35 @@ static_assert(
 	WPA_PROTO_WAPI,
     "Proto value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::AuthAlgMask::OPEN) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::AuthAlgMask::OPEN) ==
 	WPA_AUTH_ALG_OPEN,
     "AuthAlg value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::AuthAlgMask::SHARED) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::AuthAlgMask::SHARED) ==
 	WPA_AUTH_ALG_SHARED,
     "AuthAlg value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::AuthAlgMask::LEAP) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::AuthAlgMask::LEAP) ==
 	WPA_AUTH_ALG_LEAP,
     "AuthAlg value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::WEP40) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::GroupCipherMask::WEP40) ==
 	WPA_CIPHER_WEP40,
     "GroupCipher value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::WEP104) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::GroupCipherMask::WEP104) ==
 	WPA_CIPHER_WEP104,
     "GroupCipher value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::TKIP) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::GroupCipherMask::TKIP) ==
 	WPA_CIPHER_TKIP,
     "GroupCipher value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::CCMP) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::GroupCipherMask::CCMP) ==
 	WPA_CIPHER_CCMP,
     "GroupCipher value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::GCMP_256) ==
+    static_cast<uint32_t>(V1_2::ISupplicantStaNetwork::GroupCipherMask::GCMP_256) ==
 	WPA_CIPHER_GCMP_256,
     "GroupCipher value mismatch");
 static_assert(
@@ -447,24 +447,24 @@ static_assert(
     "GroupCipher value mismatch");
 static_assert(
     static_cast<uint32_t>(
-	ISupplicantStaNetwork::GroupCipherMask::GTK_NOT_USED) ==
+	V1_0::ISupplicantStaNetwork::GroupCipherMask::GTK_NOT_USED) ==
 	WPA_CIPHER_GTK_NOT_USED,
     "GroupCipher value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::NONE) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::PairwiseCipherMask::NONE) ==
 	WPA_CIPHER_NONE,
     "PairwiseCipher value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::TKIP) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::PairwiseCipherMask::TKIP) ==
 	WPA_CIPHER_TKIP,
     "PairwiseCipher value mismatch");
 static_assert(
-    static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::CCMP) ==
+    static_cast<uint32_t>(V1_0::ISupplicantStaNetwork::PairwiseCipherMask::CCMP) ==
 	WPA_CIPHER_CCMP,
     "PairwiseCipher value mismatch");
 static_assert(
     static_cast<uint32_t>(
-	ISupplicantStaNetwork::PairwiseCipherMask::GCMP_256) ==
+	V1_2::ISupplicantStaNetwork::PairwiseCipherMask::GCMP_256) ==
 	WPA_CIPHER_GCMP_256,
     "PairwiseCipher value mismatch");
 static_assert(
@@ -760,7 +760,7 @@ static_assert(
 	P2P_PROV_DISC_INFO_UNAVAILABLE,
     "P2P status code value mismatch");
 }  // namespace implementation
-}  // namespace V1_3
+}  // namespace V1_4
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware
