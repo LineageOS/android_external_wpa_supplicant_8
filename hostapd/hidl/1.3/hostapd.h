@@ -14,8 +14,8 @@
 
 #include <android-base/macros.h>
 
-#include <android/hardware/wifi/hostapd/1.2/IHostapd.h>
-#include <android/hardware/wifi/hostapd/1.1/IHostapdCallback.h>
+#include <android/hardware/wifi/hostapd/1.3/IHostapd.h>
+#include <android/hardware/wifi/hostapd/1.3/IHostapdCallback.h>
 
 extern "C"
 {
@@ -30,7 +30,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace hostapd {
-namespace V1_2 {
+namespace V1_3 {
 namespace implementation {
 using namespace android::hardware::wifi::hostapd::V1_0;
 
@@ -39,7 +39,7 @@ using namespace android::hardware::wifi::hostapd::V1_0;
  * object is used core for global control operations on
  * hostapd.
  */
-class Hostapd : public V1_2::IHostapd
+class Hostapd : public V1_3::IHostapd
 {
 public:
 	Hostapd(hapd_interfaces* interfaces);
@@ -62,12 +62,15 @@ public:
 	Return<void> registerCallback(
 	    const sp<V1_1::IHostapdCallback>& callback,
 	    registerCallback_cb _hidl_cb) override;
+	Return<void> registerCallback_1_3(
+	    const sp<V1_3::IHostapdCallback>& callback,
+	    registerCallback_1_3_cb _hidl_cb) override;
 	Return<void>forceClientDisconnect(
 	    const hidl_string& iface_name,
 	    const hidl_array<uint8_t, 6>& client_address,
 	    V1_2::Ieee80211ReasonCode reason_code, forceClientDisconnect_cb _hidl_cb) override;
 	Return<void> setDebugParams(
-	    DebugLevel level, setDebugParams_cb _hidl_cb) override;
+	    V1_2::DebugLevel level, setDebugParams_cb _hidl_cb) override;
 private:
 	// Corresponding worker functions for the HIDL methods.
 	V1_0::HostapdStatus addAccessPointInternal(
@@ -82,19 +85,21 @@ private:
 	V1_0::HostapdStatus removeAccessPointInternal(const std::string& iface_name);
 	V1_0::HostapdStatus registerCallbackInternal(
 	    const sp<V1_1::IHostapdCallback>& callback);
+	V1_2::HostapdStatus registerCallbackInternal_1_3(
+	    const sp<V1_3::IHostapdCallback>& callback);
 	V1_2::HostapdStatus forceClientDisconnectInternal(
 	    const std::string& iface_name,
 	    const std::array<uint8_t, 6>& client_address,
 	    V1_2::Ieee80211ReasonCode reason_code);
-	V1_2::HostapdStatus setDebugParamsInternal(DebugLevel level);
+	V1_2::HostapdStatus setDebugParamsInternal(V1_2::DebugLevel level);
 	// Raw pointer to the global structure maintained by the core.
 	struct hapd_interfaces* interfaces_;
 	// Callbacks registered.
-	std::vector<sp<V1_1::IHostapdCallback>> callbacks_;
+	std::vector<sp<V1_3::IHostapdCallback>> callbacks_;
 	DISALLOW_COPY_AND_ASSIGN(Hostapd);
 };
 }  // namespace implementation
-}  // namespace V1_2
+}  // namespace V1_3
 }  // namespace hostapd
 }  // namespace wifi
 }  // namespace hardware

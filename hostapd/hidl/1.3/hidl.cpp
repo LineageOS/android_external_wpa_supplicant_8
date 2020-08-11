@@ -22,8 +22,8 @@ extern "C"
 
 using android::hardware::configureRpcThreadpool;
 using android::hardware::IPCThreadState;
-using android::hardware::wifi::hostapd::V1_2::IHostapd;
-using android::hardware::wifi::hostapd::V1_2::implementation::Hostapd;
+using android::hardware::wifi::hostapd::V1_3::IHostapd;
+using android::hardware::wifi::hostapd::V1_3::implementation::Hostapd;
 
 // This file is a bridge between the hostapd code written in 'C' and the HIDL
 // interface in C++. So, using "C" style static globals here!

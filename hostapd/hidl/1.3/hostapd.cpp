@@ -442,7 +442,7 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace hostapd {
-namespace V1_2 {
+namespace V1_3 {
 namespace implementation {
 using hidl_return_util::call;
 using namespace android::hardware::wifi::hostapd::V1_0;
@@ -498,6 +498,13 @@ Return<void> Hostapd::registerCallback(
 	    this, &Hostapd::registerCallbackInternal, _hidl_cb, callback);
 }
 
+Return<void> Hostapd::registerCallback_1_3(
+    const sp<V1_3::IHostapdCallback>& callback, registerCallback_1_3_cb _hidl_cb)
+{
+	return call(
+	    this, &Hostapd::registerCallbackInternal_1_3, _hidl_cb, callback);
+}
+
 Return<void> Hostapd::forceClientDisconnect(
     const hidl_string& iface_name, const hidl_array<uint8_t, 6>& client_address,
     V1_2::Ieee80211ReasonCode reason_code, forceClientDisconnect_cb _hidl_cb)
@@ -508,7 +515,7 @@ Return<void> Hostapd::forceClientDisconnect(
 }
 
 Return<void> Hostapd::setDebugParams(
-    DebugLevel level, setDebugParams_cb _hidl_cb)
+     V1_2::DebugLevel level, setDebugParams_cb _hidl_cb)
 {
 	return call(
 	    this, &Hostapd::setDebugParamsInternal, _hidl_cb, level);
@@ -528,25 +535,25 @@ V1_0::HostapdStatus Hostapd::addAccessPointInternal_1_1(
 	return {V1_0::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 }
 
-HostapdStatus Hostapd::addAccessPointInternal_1_2(
+V1_2::HostapdStatus Hostapd::addAccessPointInternal_1_2(
     const IfaceParams& iface_params, const NetworkParams& nw_params)
 {
 	if (hostapd_get_iface(interfaces_, iface_params.V1_1.V1_0.ifaceName.c_str())) {
 		wpa_printf(
 		    MSG_ERROR, "Interface %s already present",
 		    iface_params.V1_1.V1_0.ifaceName.c_str());
-		return {HostapdStatusCode::FAILURE_IFACE_EXISTS, ""};
+		return {V1_2::HostapdStatusCode::FAILURE_IFACE_EXISTS, ""};
 	}
 	const auto conf_params = CreateHostapdConfig(iface_params, nw_params);
 	if (conf_params.empty()) {
 		wpa_printf(MSG_ERROR, "Failed to create config params");
-		return {HostapdStatusCode::FAILURE_ARGS_INVALID, ""};
+		return {V1_2::HostapdStatusCode::FAILURE_ARGS_INVALID, ""};
 	}
 	const auto conf_file_path =
 	    WriteHostapdConfig(iface_params.V1_1.V1_0.ifaceName, conf_params);
 	if (conf_file_path.empty()) {
 		wpa_printf(MSG_ERROR, "Failed to write config file");
-		return {HostapdStatusCode::FAILURE_UNKNOWN, ""};
+		return {V1_2::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	std::string add_iface_param_str = StringPrintf(
 	    "%s config=%s", iface_params.V1_1.V1_0.ifaceName.c_str(),
@@ -557,7 +564,7 @@ HostapdStatus Hostapd::addAccessPointInternal_1_2(
 		wpa_printf(
 		    MSG_ERROR, "Adding interface %s failed",
 		    add_iface_param_str.c_str());
-		return {HostapdStatusCode::FAILURE_UNKNOWN, ""};
+		return {V1_2::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	struct hostapd_data* iface_hapd =
 	    hostapd_get_iface(interfaces_, iface_params.V1_1.V1_0.ifaceName.c_str());
@@ -583,9 +590,9 @@ HostapdStatus Hostapd::addAccessPointInternal_1_2(
 		wpa_printf(
 		    MSG_ERROR, "Enabling interface %s failed",
 		    iface_params.V1_1.V1_0.ifaceName.c_str());
-		return {HostapdStatusCode::FAILURE_UNKNOWN, ""};
+		return {V1_2::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 	}
-	return {HostapdStatusCode::SUCCESS, ""};
+	return {V1_2::HostapdStatusCode::SUCCESS, ""};
 }
 
 V1_0::HostapdStatus Hostapd::removeAccessPointInternal(const std::string& iface_name)
@@ -605,8 +612,14 @@ V1_0::HostapdStatus Hostapd::removeAccessPointInternal(const std::string& iface_
 V1_0::HostapdStatus Hostapd::registerCallbackInternal(
     const sp<V1_1::IHostapdCallback>& callback)
 {
+	return {V1_0::HostapdStatusCode::FAILURE_UNKNOWN, ""};
+}
+
+V1_2::HostapdStatus Hostapd::registerCallbackInternal_1_3(
+    const sp<V1_3::IHostapdCallback>& callback)
+{
 	callbacks_.push_back(callback);
-	return {V1_0::HostapdStatusCode::SUCCESS, ""};
+	return {V1_2::HostapdStatusCode::SUCCESS, ""};
 }
 
 V1_2::HostapdStatus Hostapd::forceClientDisconnectInternal(const std::string& iface_name,
@@ -631,14 +644,14 @@ V1_2::HostapdStatus Hostapd::forceClientDisconnectInternal(const std::string& if
 	return {V1_2::HostapdStatusCode::FAILURE_CLIENT_UNKNOWN, ""};
 }
 
-V1_2::HostapdStatus Hostapd::setDebugParamsInternal(DebugLevel level)
+V1_2::HostapdStatus Hostapd::setDebugParamsInternal(V1_2::DebugLevel level)
 {
 	wpa_debug_level = static_cast<uint32_t>(level);
 	return {V1_2::HostapdStatusCode::SUCCESS, ""};
 }
 
 }  // namespace implementation
-}  // namespace V1_2
+}  // namespace V1_3
 }  // namespace hostapd
 }  // namespace wifi
 }  // namespace hardware
