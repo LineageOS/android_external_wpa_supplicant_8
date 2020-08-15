@@ -969,8 +969,12 @@ void HidlManager::notifyDisconnectReason(struct wpa_supplicant *wpa_s)
  *
  * @param wpa_s |wpa_supplicant| struct corresponding to the interface on which
  * the network is present.
+ * @param bssid bssid of AP that rejected the association.
+ * @param timed_out flag to indicate failure is due to timeout
+ * (auth, assoc, ...) rather than explicit rejection response from the AP.
  */
-void HidlManager::notifyAssocReject(struct wpa_supplicant *wpa_s)
+void HidlManager::notifyAssocReject(struct wpa_supplicant *wpa_s,
+    const u8 *bssid, u8 timed_out)
 {
 	if (!wpa_s)
 		return;
@@ -979,19 +983,13 @@ void HidlManager::notifyAssocReject(struct wpa_supplicant *wpa_s)
 	    sta_iface_object_map_.end())
 		return;
 
-	const u8 *bssid = wpa_s->bssid;
-	if (is_zero_ether_addr(bssid)) {
-		bssid = wpa_s->pending_bssid;
-	}
-
 	callWithEachStaIfaceCallback(
 	    wpa_s->ifname,
 	    std::bind(
 		&ISupplicantStaIfaceCallback::onAssociationRejected,
 		std::placeholders::_1, bssid,
 		static_cast<ISupplicantStaIfaceCallback::StatusCode>(
-		    wpa_s->assoc_status_code),
-		wpa_s->assoc_timed_out == 1));
+		    wpa_s->assoc_status_code), timed_out == 1));
 }
 
 void HidlManager::notifyAuthTimeout(struct wpa_supplicant *wpa_s)

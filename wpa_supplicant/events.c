@@ -4365,8 +4365,8 @@ static void wpas_event_assoc_reject(struct wpa_supplicant *wpa_s,
 			data->assoc_reject.timeout_reason ?
 			data->assoc_reject.timeout_reason : "");
 	wpa_s->assoc_status_code = data->assoc_reject.status_code;
-	wpa_s->assoc_timed_out = data->assoc_reject.timed_out;
-	wpas_notify_assoc_status_code(wpa_s);
+	wpas_notify_assoc_status_code(wpa_s,
+				      bssid, data->assoc_reject.timed_out);
 
 #ifdef CONFIG_OWE
 	if (data->assoc_reject.status_code ==
