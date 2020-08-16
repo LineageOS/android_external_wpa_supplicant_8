@@ -148,14 +148,15 @@ void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s)
 }
 
 
-void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s)
+void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s,
+				   const u8 *bssid, u8 timed_out)
 {
 	if (wpa_s->p2p_mgmt)
 		return;
 
 	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_ASSOC_STATUS_CODE);
 
-	wpas_hidl_notify_assoc_reject(wpa_s);
+	wpas_hidl_notify_assoc_reject(wpa_s, bssid, timed_out);
 }
 
 void wpas_notify_auth_timeout(struct wpa_supplicant *wpa_s) {

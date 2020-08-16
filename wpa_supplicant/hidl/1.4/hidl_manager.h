@@ -83,7 +83,8 @@ public:
 	    struct wpa_supplicant *wpa_s, u8 code, u16 reauth_delay,
 	    const char *url);
 	void notifyDisconnectReason(struct wpa_supplicant *wpa_s);
-	void notifyAssocReject(struct wpa_supplicant *wpa_s);
+	void notifyAssocReject(struct wpa_supplicant *wpa_s,
+	    const u8 *bssid, u8 timed_out);
 	void notifyAuthTimeout(struct wpa_supplicant *wpa_s);
 	void notifyBssidChanged(struct wpa_supplicant *wpa_s);
 	void notifyWpsEventFail(
