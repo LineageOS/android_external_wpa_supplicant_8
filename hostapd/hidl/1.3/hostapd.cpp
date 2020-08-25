@@ -436,6 +436,20 @@ void onAsyncSetupCompleteCb(void* ctx)
 		on_setup_complete_internal_callback = nullptr;
 	}
 }
+
+// Callback to be invoked on hotspot client connection/disconnection
+std::function<void(struct hostapd_data*, const u8 *mac_addr, int authorized,
+		   const u8 *p2p_dev_addr)> on_sta_authorized_internal_callback;
+void onAsyncStaAuthorizedCb(void* ctx, const u8 *mac_addr, int authorized,
+			    const u8 *p2p_dev_addr)
+{
+	struct hostapd_data* iface_hapd = (struct hostapd_data*)ctx;
+	if (on_sta_authorized_internal_callback) {
+		on_sta_authorized_internal_callback(iface_hapd, mac_addr,
+			authorized, p2p_dev_addr);
+	}
+}
+
 }  // namespace
 
 namespace android {
@@ -584,8 +598,30 @@ V1_2::HostapdStatus Hostapd::addAccessPointInternal_1_2(
 			    }
 		    }
 	    };
+
+	// Rgegister for new client connect/disconnect indication.
+	on_sta_authorized_internal_callback =
+	    [this](struct hostapd_data* iface_hapd, const u8 *mac_addr,
+		   int authorized, const u8 *p2p_dev_addr) {
+		wpa_printf(MSG_DEBUG, "notify client " MACSTR " %s",
+			   MAC2STR(mac_addr),
+			   (authorized) ? "Connected" : "Disconnected");
+
+		for (const auto &callback : callbacks_) {
+		    // TODO: The iface need to separate to iface and ap instance
+		    // identify for AP+AP case.
+		    callback->onConnectedClientsChanged(iface_hapd->conf->iface,
+			    iface_hapd->conf->iface, mac_addr, authorized);
+		}
+	    };
+
+
+	// Setup callback
 	iface_hapd->setup_complete_cb = onAsyncSetupCompleteCb;
 	iface_hapd->setup_complete_cb_ctx = iface_hapd;
+	iface_hapd->sta_authorized_cb = onAsyncStaAuthorizedCb;
+	iface_hapd->sta_authorized_cb_ctx = iface_hapd;
+
 	if (hostapd_enable_iface(iface_hapd->iface) < 0) {
 		wpa_printf(
 		    MSG_ERROR, "Enabling interface %s failed",
