@@ -1411,7 +1411,8 @@ int ieee80211_is_dfs(int freq, const struct hostapd_hw_modes *modes,
 
 static int is_11b(u8 rate)
 {
-	return rate == 0x02 || rate == 0x04 || rate == 0x0b || rate == 0x16;
+	return rate == 0x02 || rate == 0x04 || rate == 0x0b || rate == 0x16
+		|| rate == 0x82 || rate == 0x84 || rate == 0x8b || rate == 0x96;
 }
 
 
