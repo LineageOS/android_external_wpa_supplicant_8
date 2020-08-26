@@ -16,10 +16,6 @@ ifeq ($(BOARD_WLAN_DEVICE), qcwcn)
   CONFIG_DRIVER_NL80211_QCA=y
 endif
 
-ifeq ($(WIFI_UPDATE_SUPPLICANT_MAC_ADDR), enabled)
-  FEATURE_UPDATE_STA_MAC_ADDR=y
-endif
-
 include $(LOCAL_PATH)/android.config
 
 # To ignore possible wrong network configurations
@@ -70,6 +66,10 @@ endif
 # Disable roaming in wpa_supplicant
 ifdef CONFIG_NO_ROAMING
 L_CFLAGS += -DCONFIG_NO_ROAMING
+endif
+
+ifeq ($(WIFI_UPDATE_SUPPLICANT_MAC_ADDR), enabled)
+L_CFLAGS += -DFEATURE_UPDATE_STA_MAC_ADDR
 endif
 
 # Use Android specific directory for control interface sockets
