@@ -35,9 +35,10 @@ using android::hardware::wifi::V1_0::WifiChannelWidthInMhz;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
 using android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
 using android::hardware::wifi::supplicant::V1_0::ISupplicantStaNetwork;
-using android::hardware::wifi::supplicant::V1_3::ISupplicantStaIface;
-using android::hardware::wifi::supplicant::V1_3::ConnectionCapabilities;
 using android::hardware::wifi::supplicant::V1_3::WifiTechnology;
+using android::hardware::wifi::supplicant::V1_4::ISupplicantStaIface;
+using android::hardware::wifi::supplicant::V1_4::ConnectionCapabilities;
+using android::hardware::wifi::supplicant::V1_4::LegacyMode;
 using android::hardware::wifi::supplicant::V1_4::implementation::HidlManager;
 
 constexpr uint32_t kMaxAnqpElems = 100;
@@ -765,6 +766,14 @@ Return<void> StaIface::getConnectionCapabilities(
 	    &StaIface::getConnectionCapabilitiesInternal, _hidl_cb);
 }
 
+Return<void> StaIface::getConnectionCapabilities_1_4(
+    getConnectionCapabilities_1_4_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
+	    &StaIface::getConnectionCapabilitiesInternal_1_4, _hidl_cb);
+}
+
 SupplicantStatus StaIface::removeNetworkInternal(SupplicantNetworkId id)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
@@ -1421,49 +1430,64 @@ SupplicantStatus StaIface::stopDppInitiatorInternal()
 #endif
 }
 
-std::pair<SupplicantStatus, ConnectionCapabilities>
+std::pair<SupplicantStatus, android::hardware::wifi::supplicant::V1_3::ConnectionCapabilities>
 StaIface::getConnectionCapabilitiesInternal()
+{
+  struct android::hardware::wifi::supplicant::V1_3::ConnectionCapabilities capa;
+	return {{SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"}, capa};
+}
+
+std::pair<SupplicantStatus, ConnectionCapabilities>
+StaIface::getConnectionCapabilitiesInternal_1_4()
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	struct ConnectionCapabilities capa;
 
 	if (wpa_s->connection_set) {
+		capa.legacyMode = LegacyMode::UNKNOWN;
 		if (wpa_s->connection_he) {
-			capa.technology = WifiTechnology::HE;
+			capa.V1_3.technology = WifiTechnology::HE;
 		} else if (wpa_s->connection_vht) {
-			capa.technology = WifiTechnology::VHT;
+			capa.V1_3.technology = WifiTechnology::VHT;
 		} else if (wpa_s->connection_ht) {
-			capa.technology = WifiTechnology::HT;
+			capa.V1_3.technology = WifiTechnology::HT;
 		} else {
-			capa.technology = WifiTechnology::LEGACY;
+			capa.V1_3.technology = WifiTechnology::LEGACY;
+			if (wpas_freq_to_band(wpa_s->assoc_freq) == BAND_2_4_GHZ) {
+				capa.legacyMode = (wpa_s->connection_11b_only) ? LegacyMode::B_MODE
+						: LegacyMode::G_MODE; 
+			} else {
+				capa.legacyMode = LegacyMode::A_MODE;
+			}
 		}
 		switch (wpa_s->connection_channel_bandwidth) {
 		case CHAN_WIDTH_20:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
+			capa.V1_3.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
 			break;
 		case CHAN_WIDTH_40:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_40;
+			capa.V1_3.channelBandwidth = WifiChannelWidthInMhz::WIDTH_40;
 			break;
 		case CHAN_WIDTH_80:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_80;
+			capa.V1_3.channelBandwidth = WifiChannelWidthInMhz::WIDTH_80;
 			break;
 		case CHAN_WIDTH_160:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_160;
+			capa.V1_3.channelBandwidth = WifiChannelWidthInMhz::WIDTH_160;
 			break;
 		case CHAN_WIDTH_80P80:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_80P80;
+			capa.V1_3.channelBandwidth = WifiChannelWidthInMhz::WIDTH_80P80;
 			break;
 		default:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
+			capa.V1_3.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
 			break;
 		}
-		capa.maxNumberRxSpatialStreams = wpa_s->connection_max_nss_rx;
-		capa.maxNumberTxSpatialStreams = wpa_s->connection_max_nss_tx;
+		capa.V1_3.maxNumberRxSpatialStreams = wpa_s->connection_max_nss_rx;
+		capa.V1_3.maxNumberTxSpatialStreams = wpa_s->connection_max_nss_tx;
 	} else {
-		capa.technology = WifiTechnology::UNKNOWN;
-		capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
-		capa.maxNumberTxSpatialStreams = 1;
-		capa.maxNumberRxSpatialStreams = 1;
+		capa.V1_3.technology = WifiTechnology::UNKNOWN;
+		capa.V1_3.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
+		capa.V1_3.maxNumberTxSpatialStreams = 1;
+		capa.V1_3.maxNumberRxSpatialStreams = 1;
+		capa.legacyMode = LegacyMode::UNKNOWN;
 	}
 	return {{SupplicantStatusCode::SUCCESS, ""}, capa};
 }

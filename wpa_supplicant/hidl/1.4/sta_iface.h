@@ -15,7 +15,7 @@
 
 #include <android-base/macros.h>
 
-#include <android/hardware/wifi/supplicant/1.3/ISupplicantStaIface.h>
+#include <android/hardware/wifi/supplicant/1.4/ISupplicantStaIface.h>
 #include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.3/ISupplicantStaNetwork.h>
 
@@ -44,7 +44,7 @@ using android::hardware::wifi::supplicant::V1_2::DppNetRole;
  * object is used for control operations on a specific interface
  * controlled by wpa_supplicant.
  */
-class StaIface : public V1_3::ISupplicantStaIface
+class StaIface : public V1_4::ISupplicantStaIface
 {
 public:
 	StaIface(struct wpa_global* wpa_global, const char ifname[]);
@@ -189,6 +189,8 @@ public:
 	Return<void> stopDppInitiator(stopDppInitiator_cb _hidl_cb) override;
 	Return<void> getConnectionCapabilities(
 	    getConnectionCapabilities_cb _hidl_cb) override;
+	Return<void> getConnectionCapabilities_1_4(
+	    getConnectionCapabilities_1_4_cb _hidl_cb) override;
 	Return<void> getWpaDriverCapabilities(
 	    getWpaDriverCapabilities_cb _hidl_cb) override;
 	Return<void> setMboCellularDataStatus(bool available,
@@ -283,6 +285,8 @@ private:
 			uint32_t own_bootstrap_id);
 	SupplicantStatus stopDppInitiatorInternal();
 	std::pair<SupplicantStatus, V1_3::ConnectionCapabilities> getConnectionCapabilitiesInternal();
+	std::pair<SupplicantStatus, V1_4::ConnectionCapabilities>
+			getConnectionCapabilitiesInternal_1_4();
 	std::pair<SupplicantStatus, uint32_t> getWpaDriverCapabilitiesInternal();
 	SupplicantStatus setMboCellularDataStatusInternal(bool available);
 	std::pair<SupplicantStatus, uint32_t> getKeyMgmtCapabilitiesInternal_1_3();

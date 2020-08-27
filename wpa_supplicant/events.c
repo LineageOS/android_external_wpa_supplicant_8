@@ -2621,6 +2621,8 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 					   data->assoc_info.resp_ies_len,
 					   &resp_elems, 0) != ParseFailed) {
 			wpa_s->connection_set = 1;
+			wpa_s->connection_11b_only = supp_rates_11b_only(&req_elems) ||
+				supp_rates_11b_only(&resp_elems);
 			wpa_s->connection_ht = req_elems.ht_capabilities &&
 				resp_elems.ht_capabilities;
 			/* Do not include subset of VHT on 2.4 GHz vendor
