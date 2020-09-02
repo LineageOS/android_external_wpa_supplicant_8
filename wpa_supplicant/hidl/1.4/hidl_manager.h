@@ -185,6 +185,8 @@ private:
 	HidlManager(const HidlManager &) = default;
 	HidlManager &operator=(const HidlManager &) = default;
 
+	struct wpa_supplicant *getTargetP2pIfaceForGroup(
+	    struct wpa_supplicant *wpa_s);
 	void removeSupplicantCallbackHidlObject(
 	    const android::sp<ISupplicantCallback> &callback);
 	void removeP2pIfaceCallbackHidlObject(
