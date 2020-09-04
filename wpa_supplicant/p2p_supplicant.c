@@ -4925,6 +4925,15 @@ static void wpas_p2p_check_join_scan_limit(struct wpa_supplicant *wpa_s)
 				       MAC2STR(wpa_s->pending_join_dev_addr));
 			return;
 		}
+		if (wpa_s->p2p_fallback_to_go_neg) {
+			wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Join operating "
+				"failed - fall back to GO Negotiation");
+			wpa_msg_global(wpa_s->p2pdev, MSG_INFO,
+				       P2P_EVENT_FALLBACK_TO_GO_NEG
+				       "reason=join-failed");
+			wpas_p2p_fallback_to_go_neg(wpa_s, 0);
+			return;
+		}
 		wpa_msg_global(wpa_s->p2pdev, MSG_INFO,
 			       P2P_EVENT_GROUP_FORMATION_FAILURE);
 		wpas_notify_p2p_group_formation_failure(wpa_s, "");
@@ -9383,6 +9392,12 @@ static void wpas_p2p_move_go_no_csa(struct wpa_supplicant *wpa_s)
 	/* Stop the AP functionality */
 	/* TODO: Should do this in a way that does not indicated to possible
 	 * P2P Clients in the group that the group is terminated. */
+	/* If this action occurs before a group is started, the callback should be
+	 * preserved, or GROUP-STARTED event would be lost. If this action occurs after
+	 * a group is started, these poiners are all NULL and harmless. */
+	void (*ap_configured_cb)(void *ctx, void *data) = wpa_s->ap_configured_cb;
+	void *ap_configured_cb_ctx = wpa_s->ap_configured_cb_ctx;;
+	void *ap_configured_cb_data = wpa_s->ap_configured_cb_data;
 	wpa_supplicant_ap_deinit(wpa_s);
 
 	/* Reselect the GO frequency */
@@ -9406,6 +9421,9 @@ static void wpas_p2p_move_go_no_csa(struct wpa_supplicant *wpa_s)
 		return;
 	}
 
+	wpa_s->ap_configured_cb = ap_configured_cb;
+	wpa_s->ap_configured_cb_ctx = ap_configured_cb_ctx;
+	wpa_s->ap_configured_cb_data = ap_configured_cb_data;
 	/* Update the frequency */
 	current_ssid->frequency = params.freq;
 	wpa_s->connect_without_scan = current_ssid;
