@@ -19,6 +19,7 @@
 
 extern "C"
 {
+#include "common/wpa_ctrl.h"
 #include "utils/eloop.h"
 }
 
@@ -34,6 +35,8 @@ using android::base::RemoveFileIfExists;
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 using android::hardware::wifi::hostapd::V1_2::IHostapd;
+using android::hardware::wifi::hostapd::V1_3::Generation;
+using android::hardware::wifi::hostapd::V1_3::Bandwidth;
 
 std::string WriteHostapdConfig(
     const std::string& interface_name, const std::string& config)
@@ -418,6 +421,51 @@ std::string CreateHostapdConfig(
 	    nw_params.V1_0.isHidden ? 1 : 0, encryption_config_as_string.c_str());
 }
 
+Generation getGeneration(hostapd_hw_modes *current_mode)
+{
+	wpa_printf(MSG_DEBUG, "getGeneration hwmode=%d, ht_enabled=%d, vht_enabled=%d",
+		   current_mode->mode, current_mode->ht_capab != 0,
+		   current_mode->vht_capab != 0);
+	switch (current_mode->mode) {
+	case HOSTAPD_MODE_IEEE80211B:
+		return Generation::WIFI_STANDARD_LEGACY;
+	case HOSTAPD_MODE_IEEE80211G:
+		return current_mode->ht_capab == 0 ?
+		       Generation::WIFI_STANDARD_LEGACY : Generation::WIFI_STANDARD_11N;
+	case HOSTAPD_MODE_IEEE80211A:
+		return current_mode->vht_capab == 0 ?
+		       Generation::WIFI_STANDARD_11N : Generation::WIFI_STANDARD_11AC;
+        // TODO: b/162484222 miss HOSTAPD_MODE_IEEE80211AX definition.
+	default:
+		return Generation::WIFI_STANDARD_UNKNOWN;
+	}
+}
+
+Bandwidth getBandwidth(struct hostapd_config *iconf)
+{
+	wpa_printf(MSG_DEBUG, "getBandwidth %d, isHT=%d, isHT40=%d",
+		   iconf->vht_oper_chwidth, iconf->ieee80211n,
+		   iconf->secondary_channel);
+	switch (iconf->vht_oper_chwidth) {
+	case CHANWIDTH_80MHZ:
+		return Bandwidth::WIFI_BANDWIDTH_80;
+	case CHANWIDTH_80P80MHZ:
+		return Bandwidth::WIFI_BANDWIDTH_80P80;
+		break;
+	case CHANWIDTH_160MHZ:
+		return Bandwidth::WIFI_BANDWIDTH_160;
+		break;
+	case CHANWIDTH_USE_HT:
+		if (iconf->ieee80211n) {
+			return iconf->secondary_channel != 0 ?
+				Bandwidth::WIFI_BANDWIDTH_40 : Bandwidth::WIFI_BANDWIDTH_20;
+		}
+		return Bandwidth::WIFI_BANDWIDTH_20_NOHT;
+	default:
+		return Bandwidth::WIFI_BANDWIDTH_INVALID;
+	}
+}
+
 // hostapd core functions accept "C" style function pointers, so use global
 // functions to pass to the hostapd core function and store the corresponding
 // std::function methods to be invoked.
@@ -449,6 +497,22 @@ void onAsyncStaAuthorizedCb(void* ctx, const u8 *mac_addr, int authorized,
 			authorized, p2p_dev_addr);
 	}
 }
+
+std::function<void(struct hostapd_data*, int level,
+                   enum wpa_msg_type type, const char *txt,
+                   size_t len)> on_wpa_msg_internal_callback;
+
+void onAsyncWpaEventCb(void *ctx, int level,
+                   enum wpa_msg_type type, const char *txt,
+                   size_t len)
+{
+	struct hostapd_data* iface_hapd = (struct hostapd_data*)ctx;
+	if (on_wpa_msg_internal_callback) {
+		on_wpa_msg_internal_callback(iface_hapd, level,
+					       type, txt, len);
+	}
+}
+
 
 }  // namespace
 
@@ -615,12 +679,29 @@ V1_2::HostapdStatus Hostapd::addAccessPointInternal_1_2(
 		}
 	    };
 
+	// Register for wpa_event which used to get channel switch event
+	on_wpa_msg_internal_callback =
+	    [this](struct hostapd_data* iface_hapd, int level,
+		   enum wpa_msg_type type, const char *txt,
+		   size_t len) {
+		wpa_printf(MSG_DEBUG, "Receive wpa msg : %s", txt);
+		if (os_strncmp(txt, WPA_EVENT_CHANNEL_SWITCH,
+			       strlen(WPA_EVENT_CHANNEL_SWITCH)) == 0) {
+		    for (const auto &callback : callbacks_) {
+			callback->onApInstanceInfoChanged(
+				iface_hapd->conf->iface, iface_hapd->conf->iface,
+				iface_hapd->iface->freq, getBandwidth(iface_hapd->iconf),
+				getGeneration(iface_hapd->iface->current_mode));
+		    }
+		}
+	    };
 
 	// Setup callback
 	iface_hapd->setup_complete_cb = onAsyncSetupCompleteCb;
 	iface_hapd->setup_complete_cb_ctx = iface_hapd;
 	iface_hapd->sta_authorized_cb = onAsyncStaAuthorizedCb;
 	iface_hapd->sta_authorized_cb_ctx = iface_hapd;
+	wpa_msg_register_cb(onAsyncWpaEventCb);
 
 	if (hostapd_enable_iface(iface_hapd->iface) < 0) {
 		wpa_printf(
