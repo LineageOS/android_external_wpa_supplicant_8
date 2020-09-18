@@ -15,7 +15,7 @@
 
 #include <android-base/macros.h>
 
-#include <android/hardware/wifi/supplicant/1.3/ISupplicantStaNetwork.h>
+#include <android/hardware/wifi/supplicant/1.4/ISupplicantStaNetwork.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetworkCallback.h>
 
 extern "C"
@@ -45,7 +45,7 @@ using V1_2::DppProgressCode;
  * object is used for control operations on a specific network
  * controlled by wpa_supplicant.
  */
-class StaNetwork : public V1_3::ISupplicantStaNetwork
+class StaNetwork : public V1_4::ISupplicantStaNetwork
 {
 public:
 	StaNetwork(
@@ -133,6 +133,7 @@ public:
 	    const hidl_string& id_str, setIdStr_cb _hidl_cb) override;
 	Return<void> setUpdateIdentifier(
 	    uint32_t id, setUpdateIdentifier_cb _hidl_cb) override;
+	Return<void> setEdmg(bool enable, setEdmg_cb _hidl_cb) override;
 	Return<void> getSsid(getSsid_cb _hidl_cb) override;
 	Return<void> getBssid(getBssid_cb _hidl_cb) override;
 	Return<void> getScanSsid(getScanSsid_cb _hidl_cb) override;
@@ -172,6 +173,7 @@ public:
 	Return<void> getIdStr(getIdStr_cb _hidl_cb) override;
 	Return<void> getWpsNfcConfigurationToken(
 	    getWpsNfcConfigurationToken_cb _hidl_cb) override;
+	Return<void> getEdmg(getEdmg_cb _hidl_cb) override;
 	Return<void> enable(bool no_connect, enable_cb _hidl_cb) override;
 	Return<void> disable(disable_cb _hidl_cb) override;
 	Return<void> select(select_cb _hidl_cb) override;
@@ -256,6 +258,16 @@ public:
 			std::function<void(const SupplicantStatus &status)> _hidl_cb)
 					override;
 	Return<void> setEapErp(bool enable, setEapErp_cb _hidl_cb) override;
+	Return<void> setPairwiseCipher_1_4(
+	    uint32_t pairwise_cipher_mask,
+	    setPairwiseCipher_1_4_cb _hidl_cb) override;
+	Return<void> getPairwiseCipher_1_4(
+	    getPairwiseCipher_1_4_cb _hidl_cb) override;
+	Return<void> setGroupCipher_1_4(
+	    uint32_t group_cipher_mask,
+	    setGroupCipher_1_4_cb _hidl_cb) override;
+	Return<void> getGroupCipher_1_4(
+	    getGroupCipher_1_4_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -305,6 +317,7 @@ private:
 	SupplicantStatus setProactiveKeyCachingInternal(bool enable);
 	SupplicantStatus setIdStrInternal(const std::string& id_str);
 	SupplicantStatus setUpdateIdentifierInternal(uint32_t id);
+	SupplicantStatus setEdmgInternal(bool enable);
 	std::pair<SupplicantStatus, std::vector<uint8_t>> getSsidInternal();
 	std::pair<SupplicantStatus, std::array<uint8_t, 6>> getBssidInternal();
 	std::pair<SupplicantStatus, bool> getScanSsidInternal();
@@ -345,6 +358,7 @@ private:
 	std::pair<SupplicantStatus, std::string> getIdStrInternal();
 	std::pair<SupplicantStatus, std::vector<uint8_t>>
 	getWpsNfcConfigurationTokenInternal();
+	std::pair<SupplicantStatus, bool> getEdmgInternal();
 	SupplicantStatus enableInternal(bool no_connect);
 	SupplicantStatus disableInternal();
 	SupplicantStatus selectInternal();
@@ -388,6 +402,11 @@ private:
 	    uint32_t pairwise_cipher_mask);
 	SupplicantStatus setWapiPskInternal(const std::vector<uint8_t>& psk);
 	std::pair<SupplicantStatus, std::vector<uint8_t>> getWapiPskInternal();
+	std::pair<SupplicantStatus, uint32_t> getGroupCipher_1_4Internal();
+	SupplicantStatus setGroupCipher_1_4Internal(uint32_t group_cipher_mask);
+	std::pair<SupplicantStatus, uint32_t> getPairwiseCipher_1_4Internal();
+	SupplicantStatus setPairwiseCipher_1_4Internal(
+	    uint32_t pairwise_cipher_mask);
 
 	struct wpa_ssid* retrieveNetworkPtr();
 	struct wpa_supplicant* retrieveIfacePtr();
