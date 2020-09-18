@@ -695,7 +695,8 @@ V1_2::HostapdStatus Hostapd::addAccessPointInternal_1_2(
 			callback->onApInstanceInfoChanged(
 				iface_hapd->conf->iface, iface_hapd->conf->iface,
 				iface_hapd->iface->freq, getBandwidth(iface_hapd->iconf),
-				getGeneration(iface_hapd->iface->current_mode));
+				getGeneration(iface_hapd->iface->current_mode),
+				iface_hapd->own_addr);
 		    }
 		}
 	    };
