@@ -199,6 +199,10 @@ int getOpClassForChannel(int channel, int band, bool support11n, bool support11a
 			// 160MHz channel
 			return 134;
 		}
+		if (channel == 2) {
+			// 20MHz channel
+			return 136;
+		}
 		// Error
 		return 0;
 	}
