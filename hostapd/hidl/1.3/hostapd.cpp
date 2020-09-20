@@ -199,6 +199,10 @@ int getOpClassForChannel(int channel, int band, bool support11n, bool support11a
 			// 160MHz channel
 			return 134;
 		}
+		if (channel == 2) {
+			// 20MHz channel
+			return 136;
+		}
 		// Error
 		return 0;
 	}
@@ -691,7 +695,8 @@ V1_2::HostapdStatus Hostapd::addAccessPointInternal_1_2(
 			callback->onApInstanceInfoChanged(
 				iface_hapd->conf->iface, iface_hapd->conf->iface,
 				iface_hapd->iface->freq, getBandwidth(iface_hapd->iconf),
-				getGeneration(iface_hapd->iface->current_mode));
+				getGeneration(iface_hapd->iface->current_mode),
+				iface_hapd->own_addr);
 		    }
 		}
 	    };
