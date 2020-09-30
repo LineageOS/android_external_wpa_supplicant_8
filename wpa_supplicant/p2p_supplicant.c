@@ -5970,8 +5970,31 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 		} else {
 			if (os_get_random((u8 *) &r, sizeof(r)) < 0)
 				return -1;
-			freq = 5180 + (r % 4) * 20;
-			if (!p2p_supported_freq_go(wpa_s->global->p2p, freq)) {
+
+			/*
+			 * most of 5G channels are DFS, only operating class 115 and 124
+			 * are available possibly, randomly pick a start to check them.
+			 */
+			int possible_5g_freqs[] = {
+				/* operating class 115 */
+				5180, 5200, 5220, 5240,
+				/* operating class 124 */
+				5745, 5765, 5785, 5805,
+			};
+			int possible_5g_freqs_num =
+			    sizeof(possible_5g_freqs)/sizeof(possible_5g_freqs[0]);
+
+			int i;
+			for (i = 0; i < possible_5g_freqs_num; i++, r++) {
+				if (p2p_supported_freq_go(
+				    wpa_s->global->p2p,
+				    possible_5g_freqs[r % possible_5g_freqs_num])) {
+					freq = possible_5g_freqs[r % possible_5g_freqs_num];
+					break;
+				}
+			}
+
+			if (i >= possible_5g_freqs_num) {
 				wpa_printf(MSG_DEBUG, "P2P: Could not select "
 					   "5 GHz channel for P2P group");
 				return -1;
