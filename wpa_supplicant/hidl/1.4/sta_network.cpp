@@ -1927,11 +1927,6 @@ SupplicantStatus StaNetwork::selectInternal()
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	wpa_s->scan_min_time.sec = 0;
 	wpa_s->scan_min_time.usec = 0;
-#ifdef FEATURE_UPDATE_STA_MAC_ADDR
-	// Make sure that the supplicant is updated to the latest
-	// MAC address, which might have changed due to MAC randomization.
-	wpa_supplicant_update_mac_addr(wpa_s);
-#endif
 	wpa_supplicant_select_network(wpa_s, wpa_ssid);
 	return {SupplicantStatusCode::SUCCESS, ""};
 }

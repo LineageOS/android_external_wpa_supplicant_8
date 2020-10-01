@@ -68,10 +68,6 @@ ifdef CONFIG_NO_ROAMING
 L_CFLAGS += -DCONFIG_NO_ROAMING
 endif
 
-ifeq ($(WIFI_UPDATE_SUPPLICANT_MAC_ADDR), enabled)
-L_CFLAGS += -DFEATURE_UPDATE_STA_MAC_ADDR
-endif
-
 # Use Android specific directory for control interface sockets
 L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/wpa/sockets\"
 L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/wpa/sockets\"
