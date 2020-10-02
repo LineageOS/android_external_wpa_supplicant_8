@@ -18,7 +18,9 @@
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
 #include "driver_nl80211.h"
-
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+#include "common/brcm_vendor.h"
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 static const char * nl80211_command_to_string(enum nl80211_commands cmd)
 {
@@ -1705,7 +1707,96 @@ static void nl80211_spurious_frame(struct i802_bss *bss, struct nlattr **tb,
 	wpa_supplicant_event(drv->ctx, EVENT_RX_FROM_UNKNOWN, &event);
 }
 
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+static void brcm_nl80211_acs_select_ch(struct wpa_driver_nl80211_data
+	*drv, const u8 *data, size_t len)
+{
+	struct nlattr *tb[BRCM_VENDOR_ATTR_ACS_LAST + 1];
+	union wpa_event_data event;
 
+	wpa_printf(MSG_DEBUG, "nl80211: vendor ACS channel selection vendor even received");
+
+	if (nla_parse(tb, BRCM_VENDOR_ATTR_ACS_LAST, (struct nlattr*) data, len, NULL)
+		|| (!tb[BRCM_VENDOR_ATTR_ACS_PRIMARY_FREQ])
+			|| (!tb[BRCM_VENDOR_ATTR_ACS_SECONDARY_FREQ])) {
+			return;
+		}
+
+	os_memset(&event, 0, sizeof(event));
+	if (tb[BRCM_VENDOR_ATTR_ACS_PRIMARY_FREQ]) {
+		event.acs_selected_channels.pri_freq =
+				nla_get_u32(tb[BRCM_VENDOR_ATTR_ACS_PRIMARY_FREQ]);
+	}
+
+	wpa_printf(MSG_MSGDUMP, "got pri_freq=%d\n",
+		event.acs_selected_channels.pri_freq );
+
+	if (tb[BRCM_VENDOR_ATTR_ACS_SECONDARY_FREQ]) {
+		event.acs_selected_channels.sec_freq =
+			nla_get_u32(tb[BRCM_VENDOR_ATTR_ACS_SECONDARY_FREQ]);
+	}
+
+	wpa_printf(MSG_MSGDUMP, "got sec_freq=%d\n",
+		event.acs_selected_channels.sec_freq );
+	if (tb[BRCM_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL]) {
+		event.acs_selected_channels.vht_seg0_center_ch =
+			nla_get_u8(tb[BRCM_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL]);
+	}
+
+	if (tb[BRCM_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL]) {
+		event.acs_selected_channels.vht_seg1_center_ch =
+			nla_get_u8(tb[BRCM_VENDOR_ATTR_ACS_VHT_SEG1_CENTER_CHANNEL]);
+	}
+	if (tb[BRCM_VENDOR_ATTR_ACS_CHWIDTH]) {
+		event.acs_selected_channels.ch_width =
+			nla_get_u16(tb[BRCM_VENDOR_ATTR_ACS_CHWIDTH]);
+	}
+	if (tb[BRCM_VENDOR_ATTR_ACS_HW_MODE]) {
+		event.acs_selected_channels.hw_mode =
+		nla_get_u8(tb[BRCM_VENDOR_ATTR_ACS_HW_MODE]);
+		if ((event.acs_selected_channels.hw_mode == NUM_HOSTAPD_MODES)
+			|| (event.acs_selected_channels.hw_mode
+				== HOSTAPD_MODE_IEEE80211ANY)) {
+			wpa_printf(MSG_ERROR, "nl80211: Invalid hw_mode %d in ACS selection event",
+				event.acs_selected_channels.hw_mode);
+			return;
+		}
+	}
+
+	wpa_printf(MSG_INFO, "nl80211: ACS Results: PCH: %d SCH: %d BW: %d"
+		" VHT0: %d VHT1: %d HW_MODE: %d",
+		event.acs_selected_channels.pri_freq,
+		event.acs_selected_channels.sec_freq,
+		event.acs_selected_channels.ch_width,
+		event.acs_selected_channels.vht_seg0_center_ch,
+		event.acs_selected_channels.vht_seg1_center_ch,
+		event.acs_selected_channels.hw_mode);
+	wpa_supplicant_event(drv->ctx, EVENT_ACS_CHANNEL_SELECTED,
+		&event);
+	return;
+}
+
+static void nl80211_vendor_event_brcm( struct wpa_driver_nl80211_data *drv,
+	u32 subcmd, u8 *data, size_t len)
+{
+	union wpa_event_data event;
+        const struct nlattr *iter;
+        int rem = len;
+
+	wpa_printf(MSG_MSGDUMP, "got vendor event %d", subcmd);
+	memset(&event, 0, sizeof(event));
+	switch (subcmd) {
+	case BRCM_VENDOR_EVENT_ACS:
+		wpa_printf(MSG_DEBUG, "nl80211: Received VENDOR_EVENT_ACS");
+		brcm_nl80211_acs_select_ch(drv, data, len);
+		break;
+	default:
+		wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported vendor event %u", subcmd);
+		break;
+	}
+
+}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 #ifdef CONFIG_DRIVER_NL80211_QCA
 
 static void qca_nl80211_avoid_freq(struct wpa_driver_nl80211_data *drv,
@@ -2267,6 +2358,11 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 	case OUI_QCA:
 		nl80211_vendor_event_qca(drv, subcmd, data, len);
 		break;
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	case OUI_BRCM:
+	        nl80211_vendor_event_brcm(drv, subcmd, data, len);
+	        break;
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 	default:
 		wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported vendor event");
 		break;

@@ -37,7 +37,9 @@
 #include "radiotap_iter.h"
 #include "rfkill.h"
 #include "driver_nl80211.h"
-
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+#include "common/brcm_vendor.h"
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 #ifndef NETLINK_CAP_ACK
 #define NETLINK_CAP_ACK 10
@@ -3037,6 +3039,98 @@ static int wpa_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
 	return num_suites;
 }
 
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+static int wpa_driver_do_broadcom_acs(void *priv, struct drv_acs_params
+	*params)
+{
+	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct nl_msg *msg;
+	struct nlattr *data;
+	int  freq_list_len;
+	int  ret = 0;
+	do {
+		freq_list_len =
+			int_array_len(params->freq_list);
+		wpa_printf(MSG_DEBUG, "%s: freq_list_len=%d",
+				__FUNCTION__, freq_list_len);
+		msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR);
+		if (!msg) {
+			wpa_printf(MSG_ERROR, "%s: *errof, no memory for msg", __FUNCTION__);
+			return ret;
+		}
+		if ((nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_BRCM))) {
+			wpa_printf(MSG_ERROR, "%s: *errof, NL80211_ATTR_VENDOR_ID",
+					__FUNCTION__);
+			nlmsg_free(msg);
+			return ret;
+		}
+
+		if ((nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD, BRCM_VENDOR_SCMD_ACS))) {
+			wpa_printf(MSG_ERROR, "%s: *errof, NL80211_ATTR_VENDOR_SUBCMD",
+				__FUNCTION__);
+			nlmsg_free(msg);
+			return ret;
+		}
+		if (!(data = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA))) {
+			wpa_printf(MSG_ERROR, "%s: *errof, NL80211_ATTR_VENDOR_DATA", __FUNCTION__);
+			nlmsg_free(msg);
+			return ret;
+		}
+		if ((nla_put_u8(msg, BRCM_VENDOR_ATTR_ACS_HW_MODE, params->hw_mode))) {
+			wpa_printf(MSG_ERROR, "%s: *errof, BRCM_VENDOR_ATTR_ACS_HW_MODE",
+				__FUNCTION__);
+			nlmsg_free(msg);
+			return ret;
+		}
+		if ((nla_put_u8(msg, BRCM_VENDOR_ATTR_ACS_HT_ENABLED, params->ht_enabled))) {
+			wpa_printf(MSG_ERROR, "%s: *errof, BRCM_VENDOR_ATTR_ACS_HT_ENABLED",
+				__FUNCTION__);
+			nlmsg_free(msg);
+			return ret;
+		}
+		if ((nla_put_u8(msg, BRCM_VENDOR_ATTR_ACS_HT40_ENABLED, params->ht40_enabled))) {
+			wpa_printf(MSG_ERROR, "%s: *errof, BRCM_VENDOR_ATTR_ACS_HT40_ENABLED",
+				__FUNCTION__);
+			nlmsg_free(msg);
+			return ret;
+		}
+		if ((nla_put_u8(msg, BRCM_VENDOR_ATTR_ACS_VHT_ENABLED, params->vht_enabled))) {
+			wpa_printf(MSG_ERROR, "%s: *errof, BRCM_VENDOR_ATTR_ACS_VHT_ENABLED",
+				__FUNCTION__);
+			nlmsg_free(msg);
+			return ret;
+		}
+		if ((nla_put_u16(msg, BRCM_VENDOR_ATTR_ACS_CHWIDTH, params->ch_width))) {
+			wpa_printf(MSG_ERROR, "%s: *errof, BRCM_VENDOR_ATTR_ACS_CHWIDTH",
+				__FUNCTION__);
+			nlmsg_free(msg);
+			return ret;
+		}
+		wpa_printf(MSG_DEBUG, "%s: ht40=%d, ch_width=%d\n",
+			__FUNCTION__, params->ht40_enabled, params->ch_width);
+		if ((freq_list_len > 0)	&& (nla_put(msg, BRCM_VENDOR_ATTR_ACS_FREQ_LIST,
+				sizeof(int) * freq_list_len, params->freq_list))) {
+			wpa_printf(MSG_ERROR, "%s: *error, BRCM_VENDOR_ATTR_ACS_FREQ_LIST,"
+				"list_len=%d\n", __FUNCTION__, freq_list_len);
+			nlmsg_free(msg);
+			return ret;
+		}
+		nla_nest_end(msg, data);
+		wpa_printf(MSG_DEBUG, "nl80211: ACS Params: HW_MODE: %d HT: %d HT40:"
+			" %d VHT: %d BW: %d\n",
+			params->hw_mode, params->ht_enabled, params->ht40_enabled,
+			params->vht_enabled, params->ch_width);
+		ret = send_and_recv_msgs(drv, msg, NULL, NULL);
+		if (ret) {
+			wpa_printf(MSG_ERROR, "nl80211:	Failed to invoke vendor"
+				" driver ACS function: %s\n",
+				strerror(errno));
+		}
+	} while (0);
+	return ret;
+}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
 static int issue_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
@@ -11641,6 +11735,9 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.add_sta_node = nl80211_add_sta_node,
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 	.configure_data_frame_filters = nl80211_configure_data_frame_filters,
+#if defined(CONFIG_DRIVER_NL80211_BRCM)
+	.do_acs = wpa_driver_do_broadcom_acs,
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 	.get_ext_capab = nl80211_get_ext_capab,
 	.update_connect_params = nl80211_update_connection_params,
 	.send_external_auth_status = nl80211_send_external_auth_status,
