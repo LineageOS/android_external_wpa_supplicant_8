@@ -239,6 +239,9 @@ std::string CreateHostapdConfig(
 	const std::string ssid_as_string = ss.str();
 
 	// Encryption config string
+	uint32_t band = 0;
+	band |= iface_params.channelParams.bandMask;
+	bool is_6Ghz_band_only = band == static_cast<uint32_t>(IHostapd::BandMask::BAND_6_GHZ);
 	std::string encryption_config_as_string;
 	switch (nw_params.V1_2.encryptionType) {
 	case IHostapd::EncryptionType::NONE:
@@ -304,16 +307,15 @@ std::string CreateHostapdConfig(
 		    "wpa_key_mgmt=SAE\n"
 		    "ieee80211w=2\n"
 		    "sae_require_mfp=2\n"
+		    "sae_pwe=%d\n"
 		    "sae_password=%s",
+		    is_6Ghz_band_only ? 1 : 2,
 		    nw_params.V1_2.passphrase.c_str());
 		break;
 	default:
 		wpa_printf(MSG_ERROR, "Unknown encryption type");
 		return "";
 	}
-
-	unsigned int band = 0;
-	band |= iface_params.channelParams.bandMask;
 
 	std::string channel_config_as_string;
 	bool isFirst = true;
