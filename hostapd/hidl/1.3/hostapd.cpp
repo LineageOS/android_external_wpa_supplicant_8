@@ -20,7 +20,6 @@
 extern "C"
 {
 #include "common/wpa_ctrl.h"
-#include "utils/eloop.h"
 }
 
 // The HIDL implementation for hostapd creates a hostapd.conf dynamically for
@@ -550,7 +549,8 @@ namespace implementation {
 using hidl_return_util::call;
 using namespace android::hardware::wifi::hostapd::V1_0;
 
-Hostapd::Hostapd(struct hapd_interfaces* interfaces) : interfaces_(interfaces)
+Hostapd::Hostapd(struct hapd_interfaces* interfaces)
+    : interfaces_(interfaces), death_notifier_(sp<DeathNotifier>::make())
 {}
 
 Return<void> Hostapd::addAccessPoint(
@@ -779,6 +779,13 @@ V1_0::HostapdStatus Hostapd::registerCallbackInternal(
 V1_2::HostapdStatus Hostapd::registerCallbackInternal_1_3(
     const sp<V1_3::IHostapdCallback>& callback)
 {
+	if (!callback->linkToDeath(death_notifier_, 0)) {
+		wpa_printf(
+		    MSG_ERROR,
+		    "Error registering for death notification for "
+		    "hostapd callback object");
+		return {V1_2::HostapdStatusCode::FAILURE_UNKNOWN, ""};
+	}
 	callbacks_.push_back(callback);
 	return {V1_2::HostapdStatusCode::SUCCESS, ""};
 }

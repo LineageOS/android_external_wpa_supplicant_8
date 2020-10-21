@@ -34,6 +34,26 @@ extern "C"
 #include "driver_i.h"
 }
 
+class DeathNotifier : public android::hardware::hidl_death_recipient
+{
+public:
+	DeathNotifier(struct wpa_global *wpa_global)
+	    : wpa_global_(wpa_global)
+	{}
+
+	void serviceDied(
+	    uint64_t /*cookie*/,
+	    const android::wp<android::hidl::base::V1_0::IBase>
+		& /* who */) override
+	{
+		wpa_printf(MSG_ERROR, "Client died. Terminating...");
+		wpa_supplicant_terminate_proc(wpa_global_);
+	}
+
+private:
+	struct wpa_global *wpa_global_;
+};
+
 namespace android {
 namespace hardware {
 namespace wifi {
@@ -241,6 +261,10 @@ private:
 
 	// Singleton instance of this class.
 	static HidlManager *instance_;
+	// Raw pointer to the global structure maintained by the core.
+	struct wpa_global *wpa_global_;
+	// Death notifier.
+	android::sp<DeathNotifier> death_notifier_;
 	// The main hidl service object.
 	android::sp<Supplicant> supplicant_object_;
 	// Map of all the P2P interface specific hidl objects controlled by
@@ -294,40 +318,6 @@ private:
 	    const std::string,
 	    std::vector<android::sp<ISupplicantStaNetworkCallback>>>
 	    sta_network_callbacks_map_;
-
-#if 0  // TODO(b/31632518): HIDL object death notifications.
-	/**
-	 * Helper class used to deregister the callback object reference from
-	 * our callback list on the death of the hidl object.
-	 * This class stores a reference of the callback hidl object and a
-	 * function to be called to indicate the death of the hidl object.
-	 */
-	template <class CallbackType>
-	class CallbackObjectDeathNotifier
-	    : public android::hardware::IBinder::DeathRecipient
-	{
-	public:
-		CallbackObjectDeathNotifier(
-		    const android::sp<CallbackType> &callback,
-		    const std::function<void(const android::sp<CallbackType> &)>
-			&on_hidl_died)
-		    : callback_(callback), on_hidl_died_(on_hidl_died)
-		{
-		}
-		void binderDied(const android::wp<android::hardware::IBinder>
-				    & /* who */) override
-		{
-			on_hidl_died_(callback_);
-		}
-
-	private:
-		// The callback hidl object reference.
-		const android::sp<CallbackType> callback_;
-		// Callback function to be called when the hidl dies.
-		const std::function<void(const android::sp<CallbackType> &)>
-		    on_hidl_died_;
-	};
-#endif
 };
 
 // The hidl interface uses some values which are the same as internal ones to
