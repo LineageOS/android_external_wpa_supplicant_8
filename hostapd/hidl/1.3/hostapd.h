@@ -20,11 +20,25 @@
 extern "C"
 {
 #include "utils/common.h"
+#include "utils/eloop.h"
 #include "utils/includes.h"
 #include "utils/wpa_debug.h"
 #include "ap/hostapd.h"
 #include "ap/sta_info.h"
 }
+
+class DeathNotifier : public android::hardware::hidl_death_recipient
+{
+public:
+	void serviceDied(
+	    uint64_t /*cookie*/,
+	    const android::wp<android::hidl::base::V1_0::IBase>
+		& /* who */) override
+	{
+		wpa_printf(MSG_ERROR, "Client died. Terminating...");
+		eloop_terminate();
+	}
+};
 
 namespace android {
 namespace hardware {
@@ -104,6 +118,8 @@ private:
 	struct hapd_interfaces* interfaces_;
 	// Callbacks registered.
 	std::vector<sp<V1_3::IHostapdCallback>> callbacks_;
+	// Death notifier.
+	android::sp<DeathNotifier> death_notifier_;
 	DISALLOW_COPY_AND_ASSIGN(Hostapd);
 };
 }  // namespace implementation
