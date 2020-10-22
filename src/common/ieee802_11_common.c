@@ -136,6 +136,10 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
 		case DPP_CC_OUI_TYPE:
 			/* DPP Configurator Connectivity element */
 			break;
+		case SAE_PK_OUI_TYPE:
+			elems->sae_pk = pos + 4;
+			elems->sae_pk_len = elen - 4;
+			break;
 		default:
 			wpa_printf(MSG_MSGDUMP, "Unknown WFA "
 				   "information element ignored "
@@ -762,6 +766,98 @@ int hostapd_config_wmm_ac(struct hostapd_wmm_ac_params wmm_ac_params[],
 		ac->admission_control_mandatory = v;
 	} else {
 		wpa_printf(MSG_ERROR, "Unknown wmm_ac_ field '%s'", pos);
+		return -1;
+	}
+
+	return 0;
+}
+
+
+/* convert floats with one decimal place to value*10 int, i.e.,
+ * "1.5" will return 15
+ */
+static int hostapd_config_read_int10(const char *value)
+{
+	int i, d;
+	char *pos;
+
+	i = atoi(value);
+	pos = os_strchr(value, '.');
+	d = 0;
+	if (pos) {
+		pos++;
+		if (*pos >= '0' && *pos <= '9')
+			d = *pos - '0';
+	}
+
+	return i * 10 + d;
+}
+
+
+static int valid_cw(int cw)
+{
+	return (cw == 1 || cw == 3 || cw == 7 || cw == 15 || cw == 31 ||
+		cw == 63 || cw == 127 || cw == 255 || cw == 511 || cw == 1023 ||
+		cw == 2047 || cw == 4095 || cw == 8191 || cw == 16383 ||
+		cw == 32767);
+}
+
+
+int hostapd_config_tx_queue(struct hostapd_tx_queue_params tx_queue[],
+			    const char *name, const char *val)
+{
+	int num;
+	const char *pos;
+	struct hostapd_tx_queue_params *queue;
+
+	/* skip 'tx_queue_' prefix */
+	pos = name + 9;
+	if (os_strncmp(pos, "data", 4) == 0 &&
+	    pos[4] >= '0' && pos[4] <= '9' && pos[5] == '_') {
+		num = pos[4] - '0';
+		pos += 6;
+	} else if (os_strncmp(pos, "after_beacon_", 13) == 0 ||
+		   os_strncmp(pos, "beacon_", 7) == 0) {
+		wpa_printf(MSG_INFO, "DEPRECATED: '%s' not used", name);
+		return 0;
+	} else {
+		wpa_printf(MSG_ERROR, "Unknown tx_queue name '%s'", pos);
+		return -1;
+	}
+
+	if (num >= NUM_TX_QUEUES) {
+		/* for backwards compatibility, do not trigger failure */
+		wpa_printf(MSG_INFO, "DEPRECATED: '%s' not used", name);
+		return 0;
+	}
+
+	queue = &tx_queue[num];
+
+	if (os_strcmp(pos, "aifs") == 0) {
+		queue->aifs = atoi(val);
+		if (queue->aifs < 0 || queue->aifs > 255) {
+			wpa_printf(MSG_ERROR, "Invalid AIFS value %d",
+				   queue->aifs);
+			return -1;
+		}
+	} else if (os_strcmp(pos, "cwmin") == 0) {
+		queue->cwmin = atoi(val);
+		if (!valid_cw(queue->cwmin)) {
+			wpa_printf(MSG_ERROR, "Invalid cwMin value %d",
+				   queue->cwmin);
+			return -1;
+		}
+	} else if (os_strcmp(pos, "cwmax") == 0) {
+		queue->cwmax = atoi(val);
+		if (!valid_cw(queue->cwmax)) {
+			wpa_printf(MSG_ERROR, "Invalid cwMax value %d",
+				   queue->cwmax);
+			return -1;
+		}
+	} else if (os_strcmp(pos, "burst") == 0) {
+		queue->burst = hostapd_config_read_int10(val);
+	} else {
+		wpa_printf(MSG_ERROR, "Unknown queue field '%s'", pos);
 		return -1;
 	}
 
@@ -1683,7 +1779,9 @@ const char * status2str(u16 status)
 	S2S(FILS_AUTHENTICATION_FAILURE)
 	S2S(UNKNOWN_AUTHENTICATION_SERVER)
 	S2S(UNKNOWN_PASSWORD_IDENTIFIER)
+	S2S(DENIED_HE_NOT_SUPPORTED)
 	S2S(SAE_HASH_TO_ELEMENT)
+	S2S(SAE_PK)
 	}
 	return "UNKNOWN";
 #undef S2S
@@ -1781,7 +1879,6 @@ const struct oper_class_map global_op_class[] = {
 	 */
 	{ HOSTAPD_MODE_IEEE80211A, 128, 36, 161, 4, BW80, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 129, 50, 114, 16, BW160, P2P_SUPP },
-	{ HOSTAPD_MODE_IEEE80211A, 130, 36, 161, 4, BW80P80, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 131, 1, 233, 4, BW20, P2P_SUPP },
 
 	/*
@@ -1793,6 +1890,12 @@ const struct oper_class_map global_op_class[] = {
 	{ HOSTAPD_MODE_IEEE80211AD, 181, 9, 13, 1, BW4320, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211AD, 182, 17, 20, 1, BW6480, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211AD, 183, 25, 27, 1, BW8640, P2P_SUPP },
+
+	/* Keep the operating class 130 as the last entry as a workaround for
+	 * the OneHundredAndThirty Delimiter value used in the Supported
+	 * Operating Classes element to indicate the end of the Operating
+	 * Classes field. */
+	{ HOSTAPD_MODE_IEEE80211A, 130, 36, 161, 4, BW80P80, P2P_SUPP },
 	{ -1, 0, 0, 0, 0, BW20, NO_P2P_SUPP }
 };
 

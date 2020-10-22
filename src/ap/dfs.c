@@ -955,10 +955,13 @@ dfs_downgrade_bandwidth(struct hostapd_iface *iface, int *secondary_channel,
 		if (*skip_radar) {
 			*skip_radar = 0;
 		} else {
-			if (iface->conf->vht_oper_chwidth == CHANWIDTH_USE_HT)
+			int oper_chwidth;
+
+			oper_chwidth = hostapd_get_oper_chwidth(iface->conf);
+			if (oper_chwidth == CHANWIDTH_USE_HT)
 				break;
 			*skip_radar = 1;
-			iface->conf->vht_oper_chwidth--;
+			hostapd_set_oper_chwidth(iface->conf, oper_chwidth - 1);
 		}
 	}
 
@@ -1028,7 +1031,7 @@ static int hostapd_dfs_start_channel_switch(struct hostapd_iface *iface)
 	unsigned int i;
 	int err = 1;
 	struct hostapd_hw_modes *cmode = iface->current_mode;
-	u8 current_vht_oper_chwidth = iface->conf->vht_oper_chwidth;
+	u8 current_vht_oper_chwidth = hostapd_get_oper_chwidth(iface->conf);
 
 	wpa_printf(MSG_DEBUG, "%s called (CAC active: %s, CSA active: %s)",
 		   __func__, iface->cac_started ? "yes" : "no",
@@ -1089,8 +1092,8 @@ static int hostapd_dfs_start_channel_switch(struct hostapd_iface *iface)
 		"freq=%d chan=%d sec_chan=%d", channel->freq,
 		channel->chan, secondary_channel);
 
-	new_vht_oper_chwidth = iface->conf->vht_oper_chwidth;
-	iface->conf->vht_oper_chwidth = current_vht_oper_chwidth;
+	new_vht_oper_chwidth = hostapd_get_oper_chwidth(iface->conf);
+	hostapd_set_oper_chwidth(iface->conf, current_vht_oper_chwidth);
 
 	/* Setup CSA request */
 	os_memset(&csa_settings, 0, sizeof(csa_settings));
@@ -1130,7 +1133,7 @@ static int hostapd_dfs_start_channel_switch(struct hostapd_iface *iface)
 		iface->freq = channel->freq;
 		iface->conf->channel = channel->chan;
 		iface->conf->secondary_channel = secondary_channel;
-		iface->conf->vht_oper_chwidth = new_vht_oper_chwidth;
+		hostapd_set_oper_chwidth(iface->conf, new_vht_oper_chwidth);
 		hostapd_set_oper_centr_freq_seg0_idx(iface->conf,
 						     oper_centr_freq_seg0_idx);
 		hostapd_set_oper_centr_freq_seg1_idx(iface->conf,

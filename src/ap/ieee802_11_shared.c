@@ -11,6 +11,7 @@
 #include "utils/common.h"
 #include "common/ieee802_11_defs.h"
 #include "common/ocv.h"
+#include "common/wpa_ctrl.h"
 #include "hostapd.h"
 #include "sta_info.h"
 #include "ap_config.h"
@@ -72,6 +73,16 @@ void ieee802_11_send_sa_query_req(struct hostapd_data *hapd,
 				   "Failed to get channel info for OCI element in SA Query Request");
 			return;
 		}
+#ifdef CONFIG_TESTING_OPTIONS
+		if (hapd->conf->oci_freq_override_saquery_req) {
+			wpa_printf(MSG_INFO,
+				   "TEST: Override OCI frequency %d -> %u MHz",
+				   ci.frequency,
+				   hapd->conf->oci_freq_override_saquery_req);
+			ci.frequency =
+				hapd->conf->oci_freq_override_saquery_req;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 
 		oci_ie_len = OCV_OCI_EXTENDED_LEN;
 		oci_ie = os_zalloc(oci_ie_len);
@@ -151,6 +162,16 @@ static void ieee802_11_send_sa_query_resp(struct hostapd_data *hapd,
 				   "Failed to get channel info for OCI element in SA Query Response");
 			return;
 		}
+#ifdef CONFIG_TESTING_OPTIONS
+		if (hapd->conf->oci_freq_override_saquery_resp) {
+			wpa_printf(MSG_INFO,
+				   "TEST: Override OCI frequency %d -> %u MHz",
+				   ci.frequency,
+				   hapd->conf->oci_freq_override_saquery_resp);
+			ci.frequency =
+				hapd->conf->oci_freq_override_saquery_resp;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 
 		oci_ie_len = OCV_OCI_EXTENDED_LEN;
 		oci_ie = os_zalloc(oci_ie_len);
@@ -254,14 +275,21 @@ void ieee802_11_sa_query_action(struct hostapd_data *hapd,
 			return;
 
 		if (ocv_verify_tx_params(elems.oci, elems.oci_len, &ci,
-					 tx_chanwidth, tx_seg1_idx) != 0) {
-			wpa_printf(MSG_WARNING, "%s", ocv_errorstr);
+					 tx_chanwidth, tx_seg1_idx) !=
+		    OCI_SUCCESS) {
+			wpa_msg(hapd->msg_ctx, MSG_INFO, OCV_FAILURE "addr="
+				MACSTR " frame=saquery%s error=%s",
+				MAC2STR(sa),
+				action_type == WLAN_SA_QUERY_REQUEST ?
+				"req" : "resp", ocv_errorstr);
 			return;
 		}
 	}
 #endif /* CONFIG_OCV */
 
 	if (action_type == WLAN_SA_QUERY_REQUEST) {
+		if (sta)
+			sta->post_csa_sa_query = 0;
 		ieee802_11_send_sa_query_resp(hapd, sa, trans_id);
 		return;
 	}
@@ -400,6 +428,14 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx)
 		if (hapd->conf->beacon_prot)
 			*pos |= 0x10; /* Bit 84 - Beacon Protection Enabled */
 		break;
+	case 11: /* Bits 88-95 */
+#ifdef CONFIG_SAE_PK
+		if (hapd->conf->wpa &&
+		    wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt) &&
+		    hostapd_sae_pk_exclusively(hapd->conf))
+			*pos |= 0x01; /* Bit 88 - SAE PK Exclusively */
+#endif /* CONFIG_SAE_PK */
+		break;
 	}
 }
 
@@ -460,6 +496,12 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid)
 #endif /* CONFIG_SAE */
 	if (len < 11 && hapd->conf->beacon_prot)
 		len = 11;
+#ifdef CONFIG_SAE_PK
+	if (len < 12 && hapd->conf->wpa &&
+	    wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt) &&
+	    hostapd_sae_pk_exclusively(hapd->conf))
+		len = 12;
+#endif /* CONFIG_SAE_PK */
 	if (len < hapd->iface->extended_capa_len)
 		len = hapd->iface->extended_capa_len;
 	if (len == 0)
@@ -1054,11 +1096,16 @@ int get_tx_parameters(struct sta_info *sta, int ap_max_chanwidth,
 u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len)
 {
 	u8 *pos = eid;
+	bool sae_pk = false;
+
+#ifdef CONFIG_SAE_PK
+	sae_pk = hostapd_sae_pk_in_use(hapd->conf);
+#endif /* CONFIG_SAE_PK */
 
 	if (!(hapd->conf->wpa & WPA_PROTO_RSN) ||
 	    !wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt) ||
 	    (hapd->conf->sae_pwe != 1 && hapd->conf->sae_pwe != 2 &&
-	     !hostapd_sae_pw_id_in_use(hapd->conf)) ||
+	     !hostapd_sae_pw_id_in_use(hapd->conf) && !sae_pk) ||
 	    hapd->conf->sae_pwe == 3 ||
 	    len < 3)
 		return pos;
@@ -1067,7 +1114,12 @@ u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len)
 	*pos++ = 1;
 	/* bits 0-3 = 0 since only one octet of Extended RSN Capabilities is
 	 * used for now */
-	*pos++ = BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+	*pos = BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+#ifdef CONFIG_SAE_PK
+	if (sae_pk)
+		*pos |= BIT(WLAN_RSNX_CAPAB_SAE_PK);
+#endif /* CONFIG_SAE_PK */
+	pos++;
 
 	return pos;
 }

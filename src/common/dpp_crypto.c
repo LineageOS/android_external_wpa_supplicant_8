@@ -12,12 +12,14 @@
 #include <openssl/err.h>
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
+#include <openssl/pem.h>
 
 #include "utils/common.h"
 #include "utils/base64.h"
 #include "utils/json.h"
 #include "common/ieee802_11_defs.h"
 #include "crypto/crypto.h"
+#include "crypto/random.h"
 #include "crypto/sha384.h"
 #include "crypto/sha512.h"
 #include "dpp.h"
@@ -123,6 +125,18 @@ const struct dpp_curve_params * dpp_get_curve_nid(int nid)
 	for (i = 0; dpp_curves[i].name; i++) {
 		tmp = OBJ_txt2nid(dpp_curves[i].name);
 		if (tmp == nid)
+			return &dpp_curves[i];
+	}
+	return NULL;
+}
+
+
+const struct dpp_curve_params * dpp_get_curve_ike_group(u16 group)
+{
+	int i;
+
+	for (i = 0; dpp_curves[i].name; i++) {
+		if (dpp_curves[i].ike_group == group)
 			return &dpp_curves[i];
 	}
 	return NULL;
@@ -855,7 +869,7 @@ int dpp_derive_bk_ke(struct dpp_authentication *auth)
 			"DPP: bk = HKDF-Extract(I-nonce | R-nonce, M.x | N.x [| L.x])",
 			auth->bk, hash_len);
 
-	/* ke = HKDF-Expand(bkK, "DPP Key", length) */
+	/* ke = HKDF-Expand(bk, "DPP Key", length) */
 	res = dpp_hkdf_expand(hash_len, auth->bk, hash_len, info_ke, auth->ke,
 			      hash_len);
 	if (res < 0)
@@ -2256,6 +2270,7 @@ int dpp_reconfig_derive_ke_responder(struct dpp_authentication *auth,
 	u8 prk[DPP_MAX_HASH_LEN];
 	const struct dpp_curve_params *curve;
 	int res = -1;
+	u8 nonces[2 * DPP_MAX_NONCE_LEN];
 
 	own_key = dpp_set_keypair(&auth->curve, net_access_key,
 				  net_access_key_len);
@@ -2271,7 +2286,7 @@ int dpp_reconfig_derive_ke_responder(struct dpp_authentication *auth,
 
 	if (auth->curve != curve) {
 		wpa_printf(MSG_DEBUG,
-			   "DPP: Mismatching netAccessKey curves (%s != %s)",
+			   "DPP: Mismatching netAccessKey curves (own=%s != peer=%s)",
 			   auth->curve->name, curve->name);
 		goto fail;
 	}
@@ -2279,6 +2294,13 @@ int dpp_reconfig_derive_ke_responder(struct dpp_authentication *auth,
 	auth->own_protocol_key = dpp_gen_keypair(curve);
 	if (!auth->own_protocol_key)
 		goto fail;
+
+	if (random_get_bytes(auth->e_nonce, auth->curve->nonce_len)) {
+		wpa_printf(MSG_ERROR, "DPP: Failed to generate E-nonce");
+		goto fail;
+	}
+	wpa_hexdump_key(MSG_DEBUG, "DPP: E-nonce",
+			auth->e_nonce, auth->curve->nonce_len);
 
 	/* M = { cR + pR } * CI */
 	cR = EVP_PKEY_get0_EC_KEY(own_key);
@@ -2312,10 +2334,12 @@ int dpp_reconfig_derive_ke_responder(struct dpp_authentication *auth,
 		goto fail;
 	wpa_hexdump_key(MSG_DEBUG, "DPP: M.x", Mx, curve->prime_len);
 
-	/* ke = HKDF(I-nonce, "dpp reconfig key", M.x) */
+	/* ke = HKDF(C-nonce | E-nonce, "dpp reconfig key", M.x) */
 
-	/* HKDF-Extract(I-nonce, M.x) */
-	if (dpp_hmac(curve->hash_len, auth->i_nonce, curve->nonce_len,
+	/* HKDF-Extract(C-nonce | E-nonce, M.x) */
+	os_memcpy(nonces, auth->c_nonce, curve->nonce_len);
+	os_memcpy(&nonces[curve->nonce_len], auth->e_nonce, curve->nonce_len);
+	if (dpp_hmac(curve->hash_len, nonces, 2 * curve->nonce_len,
 		     Mx, curve->prime_len, prk) < 0)
 		goto fail;
 	wpa_hexdump_key(MSG_DEBUG, "DPP: PRK", prk, curve->hash_len);
@@ -2325,7 +2349,7 @@ int dpp_reconfig_derive_ke_responder(struct dpp_authentication *auth,
 			    "dpp reconfig key", auth->ke, curve->hash_len) < 0)
 		goto fail;
 	wpa_hexdump_key(MSG_DEBUG,
-			"DPP: ke = HKDF(I-nonce, \"dpp reconfig key\", M.x)",
+			"DPP: ke = HKDF(C-nonce | E-nonce, \"dpp reconfig key\", M.x)",
 			auth->ke, curve->hash_len);
 
 	res = 0;
@@ -2362,6 +2386,7 @@ int dpp_reconfig_derive_ke_initiator(struct dpp_authentication *auth,
 	u8 prk[DPP_MAX_HASH_LEN];
 	int res = -1;
 	const struct dpp_curve_params *curve;
+	u8 nonces[2 * DPP_MAX_NONCE_LEN];
 
 	pr = dpp_set_pubkey_point(auth->conf->connector_key,
 				  r_proto, r_proto_len);
@@ -2380,7 +2405,7 @@ int dpp_reconfig_derive_ke_initiator(struct dpp_authentication *auth,
 	dpp_debug_print_key("DPP: Received netAccessKey", peer_key);
 	if (auth->curve != curve) {
 		wpa_printf(MSG_DEBUG,
-			   "DPP: Mismatching netAccessKey curves (%s != %s)",
+			   "DPP: Mismatching netAccessKey curves (own=%s != peer=%s)",
 			   auth->curve->name, curve->name);
 		goto fail;
 	}
@@ -2407,10 +2432,12 @@ int dpp_reconfig_derive_ke_initiator(struct dpp_authentication *auth,
 
 	wpa_hexdump_key(MSG_DEBUG, "DPP: M.x", Mx, curve->prime_len);
 
-	/* ke = HKDF(I-nonce, "dpp reconfig key", M.x) */
+	/* ke = HKDF(C-nonce | E-nonce, "dpp reconfig key", M.x) */
 
-	/* HKDF-Extract(I-nonce, M.x) */
-	if (dpp_hmac(curve->hash_len, auth->i_nonce, curve->nonce_len,
+	/* HKDF-Extract(C-nonce | E-nonce, M.x) */
+	os_memcpy(nonces, auth->c_nonce, curve->nonce_len);
+	os_memcpy(&nonces[curve->nonce_len], auth->e_nonce, curve->nonce_len);
+	if (dpp_hmac(curve->hash_len, nonces, 2 * curve->nonce_len,
 		     Mx, curve->prime_len, prk) < 0)
 		goto fail;
 	wpa_hexdump_key(MSG_DEBUG, "DPP: PRK", prk, curve->hash_len);
@@ -2420,7 +2447,7 @@ int dpp_reconfig_derive_ke_initiator(struct dpp_authentication *auth,
 			    "dpp reconfig key", auth->ke, curve->hash_len) < 0)
 		goto fail;
 	wpa_hexdump_key(MSG_DEBUG,
-			"DPP: ke = HKDF(I-nonce, \"dpp reconfig key\", M.x)",
+			"DPP: ke = HKDF(C-nonce | E-nonce, \"dpp reconfig key\", M.x)",
 			auth->ke, curve->hash_len);
 
 	res = 0;
@@ -2662,6 +2689,520 @@ void dpp_pfs_free(struct dpp_pfs *pfs)
 	wpabuf_free(pfs->ie);
 	wpabuf_clear_free(pfs->secret);
 	os_free(pfs);
+}
+
+
+struct wpabuf * dpp_build_csr(struct dpp_authentication *auth, const char *name)
+{
+	X509_REQ *req = NULL;
+	struct wpabuf *buf = NULL;
+	unsigned char *der;
+	int der_len;
+	EVP_PKEY *key;
+	const EVP_MD *sign_md;
+	unsigned int hash_len = auth->curve->hash_len;
+	EC_KEY *eckey;
+	BIO *out = NULL;
+	u8 cp[DPP_CP_LEN];
+	char *password;
+	size_t password_len;
+	int res;
+
+	/* TODO: use auth->csrattrs */
+
+	/* TODO: support generation of a new private key if csrAttrs requests
+	 * a specific group to be used */
+	key = auth->own_protocol_key;
+
+	eckey = EVP_PKEY_get1_EC_KEY(key);
+	if (!eckey)
+		goto fail;
+	der = NULL;
+	der_len = i2d_ECPrivateKey(eckey, &der);
+	if (der_len <= 0)
+		goto fail;
+	wpabuf_free(auth->priv_key);
+	auth->priv_key = wpabuf_alloc_copy(der, der_len);
+	OPENSSL_free(der);
+	if (!auth->priv_key)
+		goto fail;
+
+	req = X509_REQ_new();
+	if (!req || !X509_REQ_set_pubkey(req, key))
+		goto fail;
+
+	if (name) {
+		X509_NAME *n;
+
+		n = X509_REQ_get_subject_name(req);
+		if (!n)
+			goto fail;
+
+		if (X509_NAME_add_entry_by_txt(
+			    n, "CN", MBSTRING_UTF8,
+			    (const unsigned char *) name, -1, -1, 0) != 1)
+			goto fail;
+	}
+
+	/* cp = HKDF-Expand(bk, "CSR challengePassword", 64) */
+	if (dpp_hkdf_expand(hash_len, auth->bk, hash_len,
+			    "CSR challengePassword", cp, DPP_CP_LEN) < 0)
+		goto fail;
+	wpa_hexdump_key(MSG_DEBUG,
+			"DPP: cp = HKDF-Expand(bk, \"CSR challengePassword\", 64)",
+			cp, DPP_CP_LEN);
+	password = base64_encode_no_lf(cp, DPP_CP_LEN, &password_len);
+	forced_memzero(cp, DPP_CP_LEN);
+	if (!password)
+		goto fail;
+
+	res = X509_REQ_add1_attr_by_NID(req, NID_pkcs9_challengePassword,
+					V_ASN1_UTF8STRING,
+					(const unsigned char *) password,
+					password_len);
+	bin_clear_free(password, password_len);
+	if (!res)
+		goto fail;
+
+	/* TODO */
+
+	/* TODO: hash func selection based on csrAttrs */
+	if (hash_len == SHA256_MAC_LEN) {
+		sign_md = EVP_sha256();
+	} else if (hash_len == SHA384_MAC_LEN) {
+		sign_md = EVP_sha384();
+	} else if (hash_len == SHA512_MAC_LEN) {
+		sign_md = EVP_sha512();
+	} else {
+		wpa_printf(MSG_DEBUG, "DPP: Unknown signature algorithm");
+		goto fail;
+	}
+
+	if (!X509_REQ_sign(req, key, sign_md))
+		goto fail;
+
+	der = NULL;
+	der_len = i2d_X509_REQ(req, &der);
+	if (der_len < 0)
+		goto fail;
+	buf = wpabuf_alloc_copy(der, der_len);
+	OPENSSL_free(der);
+
+	wpa_hexdump_buf(MSG_DEBUG, "DPP: CSR", buf);
+
+fail:
+	BIO_free_all(out);
+	X509_REQ_free(req);
+	return buf;
+}
+
+
+struct wpabuf * dpp_pkcs7_certs(const struct wpabuf *pkcs7)
+{
+#ifdef OPENSSL_IS_BORINGSSL
+	CBS pkcs7_cbs;
+#else /* OPENSSL_IS_BORINGSSL */
+	PKCS7 *p7 = NULL;
+	const unsigned char *p = wpabuf_head(pkcs7);
+#endif /* OPENSSL_IS_BORINGSSL */
+	STACK_OF(X509) *certs;
+	int i, num;
+	BIO *out = NULL;
+	size_t rlen;
+	struct wpabuf *pem = NULL;
+	int res;
+
+#ifdef OPENSSL_IS_BORINGSSL
+	certs = sk_X509_new_null();
+	if (!certs)
+		goto fail;
+	CBS_init(&pkcs7_cbs, wpabuf_head(pkcs7), wpabuf_len(pkcs7));
+	if (!PKCS7_get_certificates(certs, &pkcs7_cbs)) {
+		wpa_printf(MSG_INFO, "DPP: Could not parse PKCS#7 object: %s",
+			   ERR_error_string(ERR_get_error(), NULL));
+		goto fail;
+	}
+#else /* OPENSSL_IS_BORINGSSL */
+	p7 = d2i_PKCS7(NULL, &p, wpabuf_len(pkcs7));
+	if (!p7) {
+		wpa_printf(MSG_INFO, "DPP: Could not parse PKCS#7 object: %s",
+			   ERR_error_string(ERR_get_error(), NULL));
+		goto fail;
+	}
+
+	switch (OBJ_obj2nid(p7->type)) {
+	case NID_pkcs7_signed:
+		certs = p7->d.sign->cert;
+		break;
+	case NID_pkcs7_signedAndEnveloped:
+		certs = p7->d.signed_and_enveloped->cert;
+		break;
+	default:
+		certs = NULL;
+		break;
+	}
+#endif /* OPENSSL_IS_BORINGSSL */
+
+	if (!certs || ((num = sk_X509_num(certs)) == 0)) {
+		wpa_printf(MSG_INFO,
+			   "DPP: No certificates found in PKCS#7 object");
+		goto fail;
+	}
+
+	out = BIO_new(BIO_s_mem());
+	if (!out)
+		goto fail;
+
+	for (i = 0; i < num; i++) {
+		X509 *cert = sk_X509_value(certs, i);
+
+		PEM_write_bio_X509(out, cert);
+	}
+
+	rlen = BIO_ctrl_pending(out);
+	pem = wpabuf_alloc(rlen);
+	if (!pem)
+		goto fail;
+	res = BIO_read(out, wpabuf_put(pem, 0), rlen);
+	if (res <= 0) {
+		wpabuf_free(pem);
+		goto fail;
+	}
+	wpabuf_put(pem, res);
+
+fail:
+#ifdef OPENSSL_IS_BORINGSSL
+	if (certs)
+		sk_X509_pop_free(certs, X509_free);
+#else /* OPENSSL_IS_BORINGSSL */
+	PKCS7_free(p7);
+#endif /* OPENSSL_IS_BORINGSSL */
+	if (out)
+		BIO_free_all(out);
+
+	return pem;
+}
+
+
+int dpp_validate_csr(struct dpp_authentication *auth, const struct wpabuf *csr)
+{
+	X509_REQ *req;
+	const unsigned char *pos;
+	EVP_PKEY *pkey;
+	int res, loc, ret = -1;
+	X509_ATTRIBUTE *attr;
+	ASN1_TYPE *type;
+	ASN1_STRING *str;
+	unsigned char *utf8 = NULL;
+	unsigned char *cp = NULL;
+	size_t cp_len;
+	u8 exp_cp[DPP_CP_LEN];
+	unsigned int hash_len = auth->curve->hash_len;
+
+	pos = wpabuf_head(csr);
+	req = d2i_X509_REQ(NULL, &pos, wpabuf_len(csr));
+	if (!req) {
+		wpa_printf(MSG_DEBUG, "DPP: Failed to parse CSR");
+		return -1;
+	}
+
+	pkey = X509_REQ_get_pubkey(req);
+	if (!pkey) {
+		wpa_printf(MSG_DEBUG, "DPP: Failed to get public key from CSR");
+		goto fail;
+	}
+
+	res = X509_REQ_verify(req, pkey);
+	EVP_PKEY_free(pkey);
+	if (res != 1) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: CSR does not have a valid signature");
+		goto fail;
+	}
+
+	loc = X509_REQ_get_attr_by_NID(req, NID_pkcs9_challengePassword, -1);
+	if (loc < 0) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: CSR does not include challengePassword");
+		goto fail;
+	}
+
+	attr = X509_REQ_get_attr(req, loc);
+	if (!attr) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Could not get challengePassword attribute");
+		goto fail;
+	}
+
+	type = X509_ATTRIBUTE_get0_type(attr, 0);
+	if (!type) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Could not get challengePassword attribute type");
+		goto fail;
+	}
+
+	res = ASN1_TYPE_get(type);
+	/* This is supposed to be UTF8String, but allow other strings as well
+	 * since challengePassword is using ASCII (base64 encoded). */
+	if (res != V_ASN1_UTF8STRING && res != V_ASN1_PRINTABLESTRING &&
+	    res != V_ASN1_IA5STRING) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Unexpected challengePassword attribute type %d",
+			   res);
+		goto fail;
+	}
+
+	str = X509_ATTRIBUTE_get0_data(attr, 0, res, NULL);
+	if (!str) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Could not get ASN.1 string for challengePassword");
+		goto fail;
+	}
+
+	res = ASN1_STRING_to_UTF8(&utf8, str);
+	if (res < 0) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Could not get UTF8 version of challengePassword");
+		goto fail;
+	}
+
+	cp = base64_decode((const char *) utf8, res, &cp_len);
+	OPENSSL_free(utf8);
+	if (!cp) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Could not base64 decode challengePassword");
+		goto fail;
+	}
+	if (cp_len != DPP_CP_LEN) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Unexpected cp length (%zu) in CSR challengePassword",
+			   cp_len);
+		goto fail;
+	}
+	wpa_hexdump_key(MSG_DEBUG, "DPP: cp from CSR challengePassword",
+			cp, cp_len);
+
+	/* cp = HKDF-Expand(bk, "CSR challengePassword", 64) */
+	if (dpp_hkdf_expand(hash_len, auth->bk, hash_len,
+			    "CSR challengePassword", exp_cp, DPP_CP_LEN) < 0)
+		goto fail;
+	wpa_hexdump_key(MSG_DEBUG,
+			"DPP: cp = HKDF-Expand(bk, \"CSR challengePassword\", 64)",
+			exp_cp, DPP_CP_LEN);
+	if (os_memcmp_const(cp, exp_cp, DPP_CP_LEN) != 0) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: CSR challengePassword does not match calculated cp");
+		goto fail;
+	}
+
+	ret = 0;
+fail:
+	os_free(cp);
+	X509_REQ_free(req);
+	return ret;
+}
+
+
+struct dpp_reconfig_id * dpp_gen_reconfig_id(const u8 *csign_key,
+					     size_t csign_key_len,
+					     const u8 *pp_key,
+					     size_t pp_key_len)
+{
+	const unsigned char *p;
+	EVP_PKEY *csign = NULL, *ppkey = NULL;
+	struct dpp_reconfig_id *id = NULL;
+	BN_CTX *ctx = NULL;
+	BIGNUM *bn = NULL, *q = NULL;
+	const EC_KEY *eckey;
+	const EC_GROUP *group;
+	EC_POINT *e_id = NULL;
+
+	p = csign_key;
+	csign = d2i_PUBKEY(NULL, &p, csign_key_len);
+	if (!csign)
+		goto fail;
+
+	if (!pp_key)
+		goto fail;
+	p = pp_key;
+	ppkey = d2i_PUBKEY(NULL, &p, pp_key_len);
+	if (!ppkey)
+		goto fail;
+
+	eckey = EVP_PKEY_get0_EC_KEY(csign);
+	if (!eckey)
+		goto fail;
+	group = EC_KEY_get0_group(eckey);
+	if (!group)
+		goto fail;
+
+	e_id = EC_POINT_new(group);
+	ctx = BN_CTX_new();
+	bn = BN_new();
+	q = BN_new();
+	if (!e_id || !ctx || !bn || !q ||
+	    !EC_GROUP_get_order(group, q, ctx) ||
+	    !BN_rand_range(bn, q) ||
+	    !EC_POINT_mul(group, e_id, bn, NULL, NULL, ctx))
+		goto fail;
+
+	dpp_debug_print_point("DPP: Generated random point E-id", group, e_id);
+
+	id = os_zalloc(sizeof(*id));
+	if (!id)
+		goto fail;
+	id->group = group;
+	id->e_id = e_id;
+	e_id = NULL;
+	id->csign = csign;
+	csign = NULL;
+	id->pp_key = ppkey;
+	ppkey = NULL;
+fail:
+	EC_POINT_free(e_id);
+	EVP_PKEY_free(csign);
+	EVP_PKEY_free(ppkey);
+	BN_clear_free(bn);
+	BN_CTX_free(ctx);
+	return id;
+}
+
+
+static EVP_PKEY * dpp_pkey_from_point(const EC_GROUP *group,
+				      const EC_POINT *point)
+{
+	EC_KEY *eckey;
+	EVP_PKEY *pkey = NULL;
+
+	eckey = EC_KEY_new();
+	if (!eckey ||
+	    EC_KEY_set_group(eckey, group) != 1 ||
+	    EC_KEY_set_public_key(eckey, point) != 1) {
+		wpa_printf(MSG_ERROR,
+			   "DPP: Failed to set EC_KEY: %s",
+			   ERR_error_string(ERR_get_error(), NULL));
+		goto fail;
+	}
+	EC_KEY_set_asn1_flag(eckey, OPENSSL_EC_NAMED_CURVE);
+
+	pkey = EVP_PKEY_new();
+	if (!pkey || EVP_PKEY_set1_EC_KEY(pkey, eckey) != 1) {
+		wpa_printf(MSG_ERROR, "DPP: Could not create EVP_PKEY");
+		EVP_PKEY_free(pkey);
+		pkey = NULL;
+		goto fail;
+	}
+
+fail:
+	EC_KEY_free(eckey);
+	return pkey;
+}
+
+
+int dpp_update_reconfig_id(struct dpp_reconfig_id *id)
+{
+	BN_CTX *ctx = NULL;
+	BIGNUM *bn = NULL, *q = NULL;
+	EC_POINT *e_prime_id = NULL, *a_nonce = NULL;
+	int ret = -1;
+	const EC_KEY *pp;
+	const EC_POINT *pp_point;
+
+	pp = EVP_PKEY_get0_EC_KEY(id->pp_key);
+	if (!pp)
+		goto fail;
+	pp_point = EC_KEY_get0_public_key(pp);
+	e_prime_id = EC_POINT_new(id->group);
+	a_nonce = EC_POINT_new(id->group);
+	ctx = BN_CTX_new();
+	bn = BN_new();
+	q = BN_new();
+	/* Generate random 0 <= a-nonce < q
+	 * A-NONCE = a-nonce * G
+	 * E'-id = E-id + a-nonce * P_pk */
+	if (!pp_point || !e_prime_id || !a_nonce || !ctx || !bn || !q ||
+	    !EC_GROUP_get_order(id->group, q, ctx) ||
+	    !BN_rand_range(bn, q) || /* bn = a-nonce */
+	    !EC_POINT_mul(id->group, a_nonce, bn, NULL, NULL, ctx) ||
+	    !EC_POINT_mul(id->group, e_prime_id, NULL, pp_point, bn, ctx) ||
+	    !EC_POINT_add(id->group, e_prime_id, id->e_id, e_prime_id, ctx))
+		goto fail;
+
+	dpp_debug_print_point("DPP: Generated A-NONCE", id->group, a_nonce);
+	dpp_debug_print_point("DPP: Encrypted E-id to E'-id",
+			      id->group, e_prime_id);
+
+	EVP_PKEY_free(id->a_nonce);
+	EVP_PKEY_free(id->e_prime_id);
+	id->a_nonce = dpp_pkey_from_point(id->group, a_nonce);
+	id->e_prime_id = dpp_pkey_from_point(id->group, e_prime_id);
+	if (!id->a_nonce || !id->e_prime_id)
+		goto fail;
+
+	ret = 0;
+
+fail:
+	EC_POINT_free(e_prime_id);
+	EC_POINT_free(a_nonce);
+	BN_clear_free(bn);
+	BN_CTX_free(ctx);
+	return ret;
+}
+
+
+void dpp_free_reconfig_id(struct dpp_reconfig_id *id)
+{
+	if (id) {
+		EC_POINT_clear_free(id->e_id);
+		EVP_PKEY_free(id->csign);
+		EVP_PKEY_free(id->a_nonce);
+		EVP_PKEY_free(id->e_prime_id);
+		EVP_PKEY_free(id->pp_key);
+		os_free(id);
+	}
+}
+
+
+EC_POINT * dpp_decrypt_e_id(EVP_PKEY *ppkey, EVP_PKEY *a_nonce,
+			    EVP_PKEY *e_prime_id)
+{
+	const EC_KEY *pp_ec, *a_nonce_ec, *e_prime_id_ec;
+	const BIGNUM *pp_bn;
+	const EC_GROUP *group;
+	EC_POINT *e_id = NULL;
+	const EC_POINT *a_nonce_point, *e_prime_id_point;
+	BN_CTX *ctx = NULL;
+
+	if (!ppkey)
+		return NULL;
+
+	/* E-id = E'-id - s_C * A-NONCE */
+	pp_ec = EVP_PKEY_get0_EC_KEY(ppkey);
+	a_nonce_ec = EVP_PKEY_get0_EC_KEY(a_nonce);
+	e_prime_id_ec = EVP_PKEY_get0_EC_KEY(e_prime_id);
+	if (!pp_ec || !a_nonce_ec || !e_prime_id_ec)
+		return NULL;
+	pp_bn = EC_KEY_get0_private_key(pp_ec);
+	group = EC_KEY_get0_group(pp_ec);
+	a_nonce_point = EC_KEY_get0_public_key(a_nonce_ec);
+	e_prime_id_point = EC_KEY_get0_public_key(e_prime_id_ec);
+	ctx = BN_CTX_new();
+	if (!pp_bn || !group || !a_nonce_point || !e_prime_id_point || !ctx)
+		goto fail;
+	e_id = EC_POINT_new(group);
+	if (!e_id ||
+	    !EC_POINT_mul(group, e_id, NULL, a_nonce_point, pp_bn, ctx) ||
+	    !EC_POINT_invert(group, e_id, ctx) ||
+	    !EC_POINT_add(group, e_id, e_prime_id_point, e_id, ctx)) {
+		EC_POINT_clear_free(e_id);
+		goto fail;
+	}
+
+	dpp_debug_print_point("DPP: Decrypted E-id", group, e_id);
+
+fail:
+	BN_CTX_free(ctx);
+	return e_id;
 }
 
 #endif /* CONFIG_DPP2 */

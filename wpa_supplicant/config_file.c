@@ -876,9 +876,10 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	write_int(f, "proactive_key_caching", ssid->proactive_key_caching, -1);
 	INT(disabled);
 	INT(mixed_cell);
-	INT(vht);
+	INT_DEF(vht, 1);
 	INT_DEF(ht, 1);
 	INT(ht40);
+	INT_DEF(he, 1);
 	INT_DEF(max_oper_chwidth, DEFAULT_MAX_OPER_CHWIDTH);
 	INT(vht_center_freq1);
 	INT(vht_center_freq2);
@@ -928,6 +929,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(dpp_netaccesskey);
 	INT(dpp_netaccesskey_expiry);
 	STR(dpp_csign);
+	STR(dpp_pp_key);
 	INT(dpp_pfs);
 #endif /* CONFIG_DPP */
 	INT(owe_group);
@@ -937,6 +939,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(ft_eap_pmksa_caching);
 	INT(beacon_prot);
 	INT(transition_disable);
+	INT(sae_pk);
 #ifdef CONFIG_HT_OVERRIDES
 	INT_DEF(disable_ht, DEFAULT_DISABLE_HT);
 	INT_DEF(disable_ht40, DEFAULT_DISABLE_HT40);
@@ -1332,6 +1335,10 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->p2p_go_freq_change_policy != DEFAULT_P2P_GO_FREQ_MOVE)
 		fprintf(f, "p2p_go_freq_change_policy=%u\n",
 			config->p2p_go_freq_change_policy);
+
+	if (config->p2p_6ghz_disable)
+		fprintf(f, "p2p_6ghz_disable=%d\n", config->p2p_6ghz_disable);
+
 	if (WPA_GET_BE32(config->ip_addr_go))
 		fprintf(f, "ip_addr_go=%u.%u.%u.%u\n",
 			config->ip_addr_go[0], config->ip_addr_go[1],

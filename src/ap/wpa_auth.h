@@ -168,6 +168,7 @@ struct ft_remote_r1kh {
 
 
 struct wpa_auth_config {
+	void *msg_ctx;
 	int wpa;
 	int extended_key_id;
 	int wpa_key_mgmt;
@@ -240,6 +241,10 @@ struct wpa_auth_config {
 	unsigned int igtk_rsc_override_set:1;
 	int ft_rsnxe_used;
 #endif /* CONFIG_TESTING_OPTIONS */
+	unsigned int oci_freq_override_eapol_m3;
+	unsigned int oci_freq_override_eapol_g1;
+	unsigned int oci_freq_override_ft_assoc;
+	unsigned int oci_freq_override_fils_assoc;
 #ifdef CONFIG_P2P
 	u8 ip_addr_go[4];
 	u8 ip_addr_mask[4];
@@ -251,6 +256,7 @@ struct wpa_auth_config {
 	u8 fils_cache_id[FILS_CACHE_ID_LEN];
 #endif /* CONFIG_FILS */
 	int sae_pwe;
+	bool sae_pk;
 	int owe_ptk_workaround;
 	u8 transition_disable;
 #ifdef CONFIG_DPP2
@@ -511,6 +517,8 @@ u8 * wpa_auth_write_assoc_resp_fils(struct wpa_state_machine *sm,
 				    const u8 *req_ies, size_t req_ies_len);
 void wpa_auth_set_auth_alg(struct wpa_state_machine *sm, u16 auth_alg);
 void wpa_auth_set_dpp_z(struct wpa_state_machine *sm, const struct wpabuf *z);
+void wpa_auth_set_transition_disable(struct wpa_authenticator *wpa_auth,
+				     u8 val);
 
 int wpa_auth_resend_m1(struct wpa_state_machine *sm, int change_anonce,
 		       void (*cb)(void *ctx1, void *ctx2),
@@ -524,5 +532,15 @@ int wpa_auth_resend_group_m1(struct wpa_state_machine *sm,
 int wpa_auth_rekey_gtk(struct wpa_authenticator *wpa_auth);
 void wpa_auth_set_ptk_rekey_timer(struct wpa_state_machine *sm);
 void wpa_auth_set_ft_rsnxe_used(struct wpa_authenticator *wpa_auth, int val);
+
+enum wpa_auth_ocv_override_frame {
+	WPA_AUTH_OCV_OVERRIDE_EAPOL_M3,
+	WPA_AUTH_OCV_OVERRIDE_EAPOL_G1,
+	WPA_AUTH_OCV_OVERRIDE_FT_ASSOC,
+	WPA_AUTH_OCV_OVERRIDE_FILS_ASSOC,
+};
+void wpa_auth_set_ocv_override_freq(struct wpa_authenticator *wpa_auth,
+				    enum wpa_auth_ocv_override_frame frame,
+				    unsigned int freq);
 
 #endif /* WPA_AUTH_H */

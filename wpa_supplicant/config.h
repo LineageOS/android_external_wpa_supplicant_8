@@ -376,6 +376,7 @@ struct wpa_cred {
 #define CFG_CHANGED_SCHED_SCAN_PLANS BIT(17)
 #define CFG_CHANGED_WOWLAN_TRIGGERS BIT(18)
 #define CFG_CHANGED_DISABLE_BTM BIT(19)
+#define CFG_CHANGED_BGSCAN BIT(20)
 
 /**
  * struct wpa_config - wpa_supplicant configuration data
@@ -779,6 +780,8 @@ struct wpa_config {
 	int p2p_ignore_shared_freq;
 	int p2p_optimize_listen_chan;
 
+	int p2p_6ghz_disable;
+
 	struct wpabuf *wps_vendor_ext_m1;
 
 #define MAX_WPS_VENDOR_EXT 10
@@ -974,7 +977,7 @@ struct wpa_config {
 	int go_venue_type;
 
 	/**
-	 * hessid - Homogenous ESS identifier
+	 * hessid - Homogeneous ESS identifier
 	 *
 	 * If this is set (any octet is non-zero), scans will be used to
 	 * request response only from BSSes belonging to the specified
@@ -1058,6 +1061,7 @@ struct wpa_config {
 	int p2p_go_max_inactivity;
 
 	struct hostapd_wmm_ac_params wmm_ac_params[4];
+	struct hostapd_tx_queue_params tx_queue[4];
 
 	/**
 	 * auto_interworking - Whether to use network selection automatically

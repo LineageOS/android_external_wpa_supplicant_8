@@ -173,6 +173,7 @@ struct wpa_driver_nl80211_data {
 	unsigned int add_sta_node_vendor_cmd_avail:1;
 	unsigned int control_port_ap:1;
 	unsigned int multicast_registrations:1;
+	unsigned int no_rrm:1;
 
 	u64 vendor_scan_cookie;
 	u64 remain_on_chan_cookie;
@@ -180,6 +181,7 @@ struct wpa_driver_nl80211_data {
 #define MAX_SEND_FRAME_COOKIES 20
 	u64 send_frame_cookies[MAX_SEND_FRAME_COOKIES];
 	unsigned int num_send_frame_cookies;
+	u64 eapol_tx_cookie;
 
 	unsigned int last_mgmt_freq;
 
@@ -230,7 +232,9 @@ struct nl_msg * nl80211_drv_msg(struct wpa_driver_nl80211_data *drv, int flags,
 struct nl_msg * nl80211_bss_msg(struct i802_bss *bss, int flags, uint8_t cmd);
 int send_and_recv_msgs(struct wpa_driver_nl80211_data *drv, struct nl_msg *msg,
 		       int (*valid_handler)(struct nl_msg *, void *),
-		       void *valid_data);
+		       void *valid_data,
+		       int (*ack_handler_custom)(struct nl_msg *, void *),
+		       void *ack_data);
 struct nl_sock * get_connect_handle(struct i802_bss *bss);
 int nl80211_create_iface(struct wpa_driver_nl80211_data *drv,
 			 const char *ifname, enum nl80211_iftype iftype,

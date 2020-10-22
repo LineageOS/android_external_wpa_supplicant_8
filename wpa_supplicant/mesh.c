@@ -333,30 +333,6 @@ static int wpa_supplicant_mesh_init(struct wpa_supplicant *wpa_s,
 			   frequency);
 		goto out_free;
 	}
-	if (ssid->ht40)
-		conf->secondary_channel = ssid->ht40;
-	if (conf->hw_mode == HOSTAPD_MODE_IEEE80211A && ssid->vht) {
-		if (ssid->max_oper_chwidth != DEFAULT_MAX_OPER_CHWIDTH)
-			conf->vht_oper_chwidth = ssid->max_oper_chwidth;
-		switch (conf->vht_oper_chwidth) {
-		case CHANWIDTH_80MHZ:
-		case CHANWIDTH_80P80MHZ:
-			ieee80211_freq_to_chan(
-				frequency,
-				&conf->vht_oper_centr_freq_seg0_idx);
-			conf->vht_oper_centr_freq_seg0_idx += ssid->ht40 * 2;
-			break;
-		case CHANWIDTH_160MHZ:
-			ieee80211_freq_to_chan(
-				frequency,
-				&conf->vht_oper_centr_freq_seg0_idx);
-			conf->vht_oper_centr_freq_seg0_idx += ssid->ht40 * 2;
-			conf->vht_oper_centr_freq_seg0_idx += 40 / 5;
-			break;
-		}
-		ieee80211_freq_to_chan(ssid->vht_center_freq2,
-				       &conf->vht_oper_centr_freq_seg1_idx);
-	}
 
 	if (ssid->mesh_basic_rates == NULL) {
 		/*
@@ -387,6 +363,31 @@ static int wpa_supplicant_mesh_init(struct wpa_supplicant *wpa_s,
 		conf->basic_rates[rate_len] = -1;
 	}
 
+	/* While it can enhance performance to switch the primary channel, which
+	 * is also the secondary channel of another network at the same time),
+	 * to the other primary channel, problems exist with this in mesh
+	 * networks.
+	 *
+	 * Example with problems:
+	 *     - 3 mesh nodes M1-M3, freq (5200, 5180)
+	 *     - other node O1, e.g. AP mode, freq (5180, 5200),
+	 * Locations: O1 M1      M2      M3
+	 *
+	 * M3 can only send frames to M1 over M2, no direct connection is
+	 * possible
+	 * Start O1, M1 and M3 first, M1 or O1 will switch channels to align
+	 * with* each other. M3 does not swap, because M1 or O1 cannot be
+	 * reached. M2 is started afterwards and can either connect to M3 or M1
+	 * because of this primary secondary channel switch.
+	 *
+	 * Solutions: (1) central coordination -> not always possible
+	 *            (2) disable pri/sec channel switch in mesh networks
+	 *
+	 * In AP mode, when all nodes can work independently, this poses of
+	 * course no problem, therefore disable it only in mesh mode. */
+	conf->no_pri_sec_switch = 1;
+	wpa_supplicant_conf_ap_ht(wpa_s, ssid, conf);
+
 	if (wpa_drv_init_mesh(wpa_s)) {
 		wpa_msg(wpa_s, MSG_ERROR, "Failed to init mesh in driver");
 		return -1;
@@ -397,8 +398,6 @@ static int wpa_supplicant_mesh_init(struct wpa_supplicant *wpa_s,
 			   "Failed to initialize hostapd interface for mesh");
 		return -1;
 	}
-
-	wpa_supplicant_conf_ap_ht(wpa_s, ssid, conf);
 
 	return 0;
 out_free:

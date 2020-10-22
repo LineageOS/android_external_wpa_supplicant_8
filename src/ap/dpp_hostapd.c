@@ -29,6 +29,9 @@ static int hostapd_dpp_auth_init_next(struct hostapd_data *hapd);
 #ifdef CONFIG_DPP2
 static void hostapd_dpp_reconfig_reply_wait_timeout(void *eloop_ctx,
 						    void *timeout_ctx);
+static void hostapd_dpp_handle_config_obj(struct hostapd_data *hapd,
+					  struct dpp_authentication *auth,
+					  struct dpp_config_obj *conf);
 #endif /* CONFIG_DPP2 */
 
 static const u8 broadcast[ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
@@ -62,6 +65,10 @@ int hostapd_dpp_qr_code(struct hostapd_data *hapd, const char *cmd)
 					wpabuf_head(hapd->dpp_auth->resp_msg),
 					wpabuf_len(hapd->dpp_auth->resp_msg));
 	}
+
+#ifdef CONFIG_DPP2
+	dpp_controller_new_qr_code(hapd->iface->interfaces->dpp, bi);
+#endif /* CONFIG_DPP2 */
 
 	return bi->id;
 }
@@ -486,12 +493,35 @@ static int hostapd_dpp_auth_init_next(struct hostapd_data *hapd)
 }
 
 
+#ifdef CONFIG_DPP2
+static int hostapd_dpp_process_conf_obj(void *ctx,
+				     struct dpp_authentication *auth)
+{
+	struct hostapd_data *hapd = ctx;
+	unsigned int i;
+
+	for (i = 0; i < auth->num_conf_obj; i++)
+		hostapd_dpp_handle_config_obj(hapd, auth,
+					      &auth->conf_obj[i]);
+
+	return 0;
+}
+#endif /* CONFIG_DPP2 */
+
+
 int hostapd_dpp_auth_init(struct hostapd_data *hapd, const char *cmd)
 {
 	const char *pos;
 	struct dpp_bootstrap_info *peer_bi, *own_bi = NULL;
+	struct dpp_authentication *auth;
 	u8 allowed_roles = DPP_CAPAB_CONFIGURATOR;
 	unsigned int neg_freq = 0;
+	int tcp = 0;
+#ifdef CONFIG_DPP2
+	int tcp_port = DPP_TCP_PORT;
+	struct hostapd_ip_addr ipaddr;
+	char *addr;
+#endif /* CONFIG_DPP2 */
 
 	pos = os_strstr(cmd, " peer=");
 	if (!pos)
@@ -503,6 +533,25 @@ int hostapd_dpp_auth_init(struct hostapd_data *hapd, const char *cmd)
 			   "DPP: Could not find bootstrapping info for the identified peer");
 		return -1;
 	}
+
+#ifdef CONFIG_DPP2
+	pos = os_strstr(cmd, " tcp_port=");
+	if (pos) {
+		pos += 10;
+		tcp_port = atoi(pos);
+	}
+
+	addr = get_param(cmd, " tcp_addr=");
+	if (addr) {
+		int res;
+
+		res = hostapd_parse_ip_addr(addr, &ipaddr);
+		os_free(addr);
+		if (res)
+			return -1;
+		tcp = 1;
+	}
+#endif /* CONFIG_DPP2 */
 
 	pos = os_strstr(cmd, " own=");
 	if (pos) {
@@ -541,7 +590,7 @@ int hostapd_dpp_auth_init(struct hostapd_data *hapd, const char *cmd)
 	if (pos)
 		neg_freq = atoi(pos + 10);
 
-	if (hapd->dpp_auth) {
+	if (!tcp && hapd->dpp_auth) {
 		eloop_cancel_timeout(hostapd_dpp_init_timeout, hapd, NULL);
 		eloop_cancel_timeout(hostapd_dpp_reply_wait_timeout,
 				     hapd, NULL);
@@ -555,26 +604,32 @@ int hostapd_dpp_auth_init(struct hostapd_data *hapd, const char *cmd)
 		dpp_auth_deinit(hapd->dpp_auth);
 	}
 
-	hapd->dpp_auth = dpp_auth_init(hapd->iface->interfaces->dpp,
-				       hapd->msg_ctx, peer_bi, own_bi,
-				       allowed_roles, neg_freq,
-				       hapd->iface->hw_features,
-				       hapd->iface->num_hw_features);
-	if (!hapd->dpp_auth)
+	auth = dpp_auth_init(hapd->iface->interfaces->dpp, hapd->msg_ctx,
+			     peer_bi, own_bi, allowed_roles, neg_freq,
+			     hapd->iface->hw_features,
+			     hapd->iface->num_hw_features);
+	if (!auth)
 		goto fail;
-	hostapd_dpp_set_testing_options(hapd, hapd->dpp_auth);
-	if (dpp_set_configurator(hapd->dpp_auth, cmd) < 0) {
-		dpp_auth_deinit(hapd->dpp_auth);
-		hapd->dpp_auth = NULL;
+	hostapd_dpp_set_testing_options(hapd, auth);
+	if (dpp_set_configurator(auth, cmd) < 0) {
+		dpp_auth_deinit(auth);
 		goto fail;
 	}
 
-	hapd->dpp_auth->neg_freq = neg_freq;
+	auth->neg_freq = neg_freq;
 
 	if (!is_zero_ether_addr(peer_bi->mac_addr))
-		os_memcpy(hapd->dpp_auth->peer_mac_addr, peer_bi->mac_addr,
-			  ETH_ALEN);
+		os_memcpy(auth->peer_mac_addr, peer_bi->mac_addr, ETH_ALEN);
 
+#ifdef CONFIG_DPP2
+	if (tcp)
+		return dpp_tcp_init(hapd->iface->interfaces->dpp, auth,
+				    &ipaddr, tcp_port, hapd->conf->dpp_name,
+				    DPP_NETROLE_AP, hapd->msg_ctx, hapd,
+				    hostapd_dpp_process_conf_obj);
+#endif /* CONFIG_DPP2 */
+
+	hapd->dpp_auth = auth;
 	return hostapd_dpp_auth_init_next(hapd);
 fail:
 	return -1;
@@ -1173,6 +1228,9 @@ hostapd_dpp_rx_presence_announcement(struct hostapd_data *hapd, const u8 *src,
 		    r_bootstrap, r_bootstrap_len);
 	peer_bi = dpp_bootstrap_find_chirp(hapd->iface->interfaces->dpp,
 					   r_bootstrap);
+	dpp_notify_chirp_received(hapd->msg_ctx,
+				  peer_bi ? (int) peer_bi->id : -1,
+				  src, freq, r_bootstrap);
 	if (!peer_bi) {
 		if (dpp_relay_rx_action(hapd->iface->interfaces->dpp,
 					src, hdr, buf, len, freq, NULL,
@@ -1194,8 +1252,8 @@ hostapd_dpp_rx_presence_announcement(struct hostapd_data *hapd, const u8 *src,
 			     0);
 	if (!auth)
 		return;
-	hostapd_dpp_set_testing_options(hapd, hapd->dpp_auth);
-	if (dpp_set_configurator(hapd->dpp_auth,
+	hostapd_dpp_set_testing_options(hapd, auth);
+	if (dpp_set_configurator(auth,
 				 hapd->dpp_configurator_params) < 0) {
 		dpp_auth_deinit(auth);
 		return;
@@ -1235,11 +1293,12 @@ hostapd_dpp_rx_reconfig_announcement(struct hostapd_data *hapd, const u8 *src,
 				     const u8 *hdr, const u8 *buf, size_t len,
 				     unsigned int freq)
 {
-	const u8 *csign_hash;
-	u16 csign_hash_len;
+	const u8 *csign_hash, *fcgroup, *a_nonce, *e_id;
+	u16 csign_hash_len, fcgroup_len, a_nonce_len, e_id_len;
 	struct dpp_configurator *conf;
 	struct dpp_authentication *auth;
 	unsigned int wait_time, max_wait_time;
+	u16 group;
 
 	if (hapd->dpp_auth) {
 		wpa_printf(MSG_DEBUG,
@@ -1271,8 +1330,22 @@ hostapd_dpp_rx_reconfig_announcement(struct hostapd_data *hapd, const u8 *src,
 		return;
 	}
 
+	fcgroup = dpp_get_attr(buf, len, DPP_ATTR_FINITE_CYCLIC_GROUP,
+			       &fcgroup_len);
+	if (!fcgroup || fcgroup_len != 2) {
+		wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_FAIL
+			"Missing or invalid required Finite Cyclic Group attribute");
+		return;
+	}
+	group = WPA_GET_LE16(fcgroup);
+	wpa_printf(MSG_DEBUG, "DPP: Enrollee finite cyclic group: %u", group);
+
+	a_nonce = dpp_get_attr(buf, len, DPP_ATTR_A_NONCE, &a_nonce_len);
+	e_id = dpp_get_attr(buf, len, DPP_ATTR_E_PRIME_ID, &e_id_len);
+
 	auth = dpp_reconfig_init(hapd->iface->interfaces->dpp, hapd->msg_ctx,
-				 conf, freq);
+				 conf, freq, group, a_nonce, a_nonce_len,
+				 e_id, e_id_len);
 	if (!auth)
 		return;
 	hostapd_dpp_set_testing_options(hapd, auth);
@@ -2155,6 +2228,45 @@ void hostapd_dpp_deinit(struct hostapd_data *hapd)
 
 
 #ifdef CONFIG_DPP2
+
+int hostapd_dpp_controller_start(struct hostapd_data *hapd, const char *cmd)
+{
+	struct dpp_controller_config config;
+	const char *pos;
+
+	os_memset(&config, 0, sizeof(config));
+	config.allowed_roles = DPP_CAPAB_ENROLLEE | DPP_CAPAB_CONFIGURATOR;
+	config.netrole = DPP_NETROLE_AP;
+	config.msg_ctx = hapd->msg_ctx;
+	config.cb_ctx = hapd;
+	config.process_conf_obj = hostapd_dpp_process_conf_obj;
+	if (cmd) {
+		pos = os_strstr(cmd, " tcp_port=");
+		if (pos) {
+			pos += 10;
+			config.tcp_port = atoi(pos);
+		}
+
+		pos = os_strstr(cmd, " role=");
+		if (pos) {
+			pos += 6;
+			if (os_strncmp(pos, "configurator", 12) == 0)
+				config.allowed_roles = DPP_CAPAB_CONFIGURATOR;
+			else if (os_strncmp(pos, "enrollee", 8) == 0)
+				config.allowed_roles = DPP_CAPAB_ENROLLEE;
+			else if (os_strncmp(pos, "either", 6) == 0)
+				config.allowed_roles = DPP_CAPAB_CONFIGURATOR |
+					DPP_CAPAB_ENROLLEE;
+			else
+				return -1;
+		}
+
+		config.qr_mutual = os_strstr(cmd, " qr=mutual") != NULL;
+	}
+	config.configurator_params = hapd->dpp_configurator_params;
+	return dpp_controller_start(hapd->iface->interfaces->dpp, &config);
+}
+
 
 static void hostapd_dpp_chirp_next(void *eloop_ctx, void *timeout_ctx);
 

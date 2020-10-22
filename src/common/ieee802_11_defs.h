@@ -204,7 +204,9 @@
 #define WLAN_STATUS_FILS_AUTHENTICATION_FAILURE 112
 #define WLAN_STATUS_UNKNOWN_AUTHENTICATION_SERVER 113
 #define WLAN_STATUS_UNKNOWN_PASSWORD_IDENTIFIER 123
+#define WLAN_STATUS_DENIED_HE_NOT_SUPPORTED 124
 #define WLAN_STATUS_SAE_HASH_TO_ELEMENT 126
+#define WLAN_STATUS_SAE_PK 127
 
 /* Reason codes (IEEE Std 802.11-2016, 9.4.1.7, Table 9-45) */
 #define WLAN_REASON_UNSPECIFIED 1
@@ -476,6 +478,8 @@
 #define WLAN_EID_EXT_HE_6GHZ_BAND_CAP 59
 #define WLAN_EID_EXT_EDMG_CAPABILITIES 61
 #define WLAN_EID_EXT_EDMG_OPERATION 62
+#define WLAN_EID_EXT_MSCS_DESCRIPTOR 88
+#define WLAN_EID_EXT_TCLAS_MASK 89
 #define WLAN_EID_EXT_REJECTED_GROUPS 92
 #define WLAN_EID_EXT_ANTI_CLOGGING_TOKEN 93
 
@@ -560,11 +564,14 @@
 #define WLAN_EXT_CAPAB_SAE_PW_ID 81
 #define WLAN_EXT_CAPAB_SAE_PW_ID_EXCLUSIVELY 82
 #define WLAN_EXT_CAPAB_BEACON_PROTECTION 84
+#define WLAN_EXT_CAPAB_MSCS 85
+#define WLAN_EXT_CAPAB_SAE_PK_EXCLUSIVELY 88
 
 /* Extended RSN Capabilities */
 /* bits 0-3: Field length (n-1) */
 #define WLAN_RSNX_CAPAB_PROTECTED_TWT 4
 #define WLAN_RSNX_CAPAB_SAE_H2E 5
+#define WLAN_RSNX_CAPAB_SAE_PK 6
 
 /* Action frame categories (IEEE Std 802.11-2016, 9.4.1.11, Table 9-76) */
 #define WLAN_ACTION_SPECTRUM_MGMT 0
@@ -1325,6 +1332,8 @@ struct ieee80211_ampe_ie {
 #define MULTI_AP_OUI_TYPE 0x1B
 #define DPP_CC_IE_VENDOR_TYPE 0x506f9a1e
 #define DPP_CC_OUI_TYPE 0x1e
+#define SAE_PK_IE_VENDOR_TYPE 0x506f9a1f
+#define SAE_PK_OUI_TYPE 0x1f
 
 #define MULTI_AP_SUB_ELEM_TYPE 0x06
 #define MULTI_AP_TEAR_DOWN BIT(4)
@@ -2178,23 +2187,30 @@ struct ieee80211_he_6ghz_band_cap {
 	 /* Minimum MPDU Start Spacing B0..B2
 	  * Maximum A-MPDU Length Exponent B3..B5
 	  * Maximum MPDU Length B6..B7 */
-	u8 a_mpdu_params; /* B0..B7 */
-	u8 info; /* B8..B15 */
+	le16 capab;
 } STRUCT_PACKED;
 
-#define HE_6GHZ_BAND_CAP_MIN_MPDU_START_SPACE_MASK		0x7
-#define HE_6GHZ_BAND_CAP_MAX_A_MPDU_LENGTH_EXPONENT_MASK	0x7
-#define HE_6GHZ_BAND_CAP_MAX_A_MPDU_LENGTH_EXPONENT_SHIFT	3
-#define HE_6GHZ_BAND_CAP_MAX_MPDU_LENGTH_MASK			0x3
-#define HE_6GHZ_BAND_CAP_MAX_MPDU_LENGTH_SHIFT			6
-
-#define HE_6GHZ_BAND_CAP_SMPS_MASK			  (BIT(1) | BIT(2))
-#define HE_6GHZ_BAND_CAP_SMPS_STATIC			  0
-#define HE_6GHZ_BAND_CAP_SMPS_DYNAMIC			  BIT(1)
-#define HE_6GHZ_BAND_CAP_SMPS_DISABLED			  (BIT(1) | BIT(2))
-#define HE_6GHZ_BAND_CAP_RD_RESPONDER			  BIT(3)
-#define HE_6GHZ_BAND_CAP_RX_ANTENNA_PATTERN		  BIT(4)
-#define HE_6GHZ_BAND_CAP_TX_ANTENNA_PATTERN		  BIT(5)
+#define HE_6GHZ_BAND_CAP_MIN_MPDU_START              (BIT(0) | BIT(1) | BIT(2))
+#define HE_6GHZ_BAND_CAP_MAX_AMPDU_LEN_EXP_16K       BIT(3)
+#define HE_6GHZ_BAND_CAP_MAX_AMPDU_LEN_EXP_32K       BIT(4)
+#define HE_6GHZ_BAND_CAP_MAX_AMPDU_LEN_EXP_64K       (BIT(3) | BIT(4))
+#define HE_6GHZ_BAND_CAP_MAX_AMPDU_LEN_EXP_128K      BIT(5)
+#define HE_6GHZ_BAND_CAP_MAX_AMPDU_LEN_EXP_256K      (BIT(3) | BIT(5))
+#define HE_6GHZ_BAND_CAP_MAX_AMPDU_LEN_EXP_512K      (BIT(4) | BIT(5))
+#define HE_6GHZ_BAND_CAP_MAX_AMPDU_LEN_EXP_1024K     (BIT(3) | BIT(4) | BIT(5))
+#define HE_6GHZ_BAND_CAP_MAX_AMPDU_LEN_EXP_MASK      (BIT(3) | BIT(4) | BIT(5))
+#define HE_6GHZ_BAND_CAP_MAX_AMPDU_LEN_EXP_SHIFT     3
+#define HE_6GHZ_BAND_CAP_MAX_MPDU_LEN_7991           BIT(6)
+#define HE_6GHZ_BAND_CAP_MAX_MPDU_LEN_11454          BIT(7)
+#define HE_6GHZ_BAND_CAP_MAX_MPDU_LEN_MASK           (BIT(6) | BIT(7))
+#define HE_6GHZ_BAND_CAP_MAX_MPDU_LEN_SHIFT	     6
+#define HE_6GHZ_BAND_CAP_SMPS_MASK                   (BIT(9) | BIT(10))
+#define HE_6GHZ_BAND_CAP_SMPS_STATIC                 0
+#define HE_6GHZ_BAND_CAP_SMPS_DYNAMIC                BIT(9)
+#define HE_6GHZ_BAND_CAP_SMPS_DISABLED               (BIT(9) | BIT(10))
+#define HE_6GHZ_BAND_CAP_RD_RESPONDER                BIT(11)
+#define HE_6GHZ_BAND_CAP_RX_ANTPAT_CONS              BIT(12)
+#define HE_6GHZ_BAND_CAP_TX_ANTPAT_CONS              BIT(13)
 
 /*
  * IEEE P802.11ax/D4.0, 9.4.2.246 Spatial Reuse Parameter Set element
@@ -2354,5 +2370,26 @@ enum edmg_bw_config {
 
 /* DPP Public Action frame identifiers - OUI_WFA */
 #define DPP_OUI_TYPE 0x1A
+
+/* Robust AV streaming Action field values */
+enum robust_av_streaming_action {
+	ROBUST_AV_SCS_REQ = 0,
+	ROBUST_AV_SCS_RESP = 1,
+	ROBUST_AV_GROUP_MEMBERSHIP_REQ = 2,
+	ROBUST_AV_GROUP_MEMBERSHIP_RESP = 3,
+	ROBUST_AV_MSCS_REQ = 4,
+	ROBUST_AV_MSCS_RESP = 5,
+};
+
+enum scs_request_type {
+	SCS_REQ_ADD = 0,
+	SCS_REQ_REMOVE = 1,
+	SCS_REQ_CHANGE = 2,
+};
+
+/* Optional subelement IDs for MSCS Descriptor element */
+enum mscs_description_subelem {
+	MCSC_SUBELEM_STATUS = 1,
+};
 
 #endif /* IEEE802_11_DEFS_H */

@@ -439,6 +439,10 @@ static void hostapd_free_hapd_data(struct hostapd_data *hapd)
 	hostapd_clean_rrm(hapd);
 	fils_hlp_deinit(hapd);
 
+#ifdef CONFIG_OCV
+	eloop_cancel_timeout(hostapd_ocv_check_csa_sa_query, hapd, NULL);
+#endif /* CONFIG_OCV */
+
 #ifdef CONFIG_SAE
 	{
 		struct hostapd_sae_commit_queue *q;
@@ -1911,6 +1915,13 @@ static int hostapd_owe_iface_iter2(struct hostapd_iface *iface, void *ctx)
 
 		if (!bss->conf->owe_transition_ifname[0])
 			continue;
+		if (bss->iface->state != HAPD_IFACE_ENABLED) {
+			wpa_printf(MSG_DEBUG,
+				   "OWE: Interface %s state %s - defer beacon update",
+				   bss->conf->iface,
+				   hostapd_state_text(bss->iface->state));
+			continue;
+		}
 		res = hostapd_owe_trans_get_info(bss);
 		if (res == 0)
 			continue;
@@ -3151,6 +3162,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 
 	hostapd_prune_associations(hapd, sta->addr);
 	ap_sta_clear_disconnect_timeouts(hapd, sta);
+	sta->post_csa_sa_query = 0;
 
 #ifdef CONFIG_P2P
 	if (sta->p2p_ie == NULL && !sta->no_p2p_set) {
@@ -3662,3 +3674,25 @@ void hostapd_periodic_iface(struct hostapd_iface *iface)
 #endif /* CONFIG_NO_RADIUS */
 	}
 }
+
+
+#ifdef CONFIG_OCV
+void hostapd_ocv_check_csa_sa_query(void *eloop_ctx, void *timeout_ctx)
+{
+	struct hostapd_data *hapd = eloop_ctx;
+	struct sta_info *sta;
+
+	wpa_printf(MSG_DEBUG, "OCV: Post-CSA SA Query initiation check");
+
+	for (sta = hapd->sta_list; sta; sta = sta->next) {
+		if (!sta->post_csa_sa_query)
+			continue;
+
+		wpa_printf(MSG_DEBUG, "OCV: OCVC STA " MACSTR
+			   " did not start SA Query after CSA - disconnect",
+			   MAC2STR(sta->addr));
+		ap_sta_disconnect(hapd, sta, sta->addr,
+				  WLAN_REASON_PREV_AUTH_NOT_VALID);
+	}
+}
+#endif /* CONFIG_OCV */

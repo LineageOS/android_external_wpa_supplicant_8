@@ -378,7 +378,7 @@ int wpa_write_rsnxe(struct wpa_auth_config *conf, u8 *buf, size_t len)
 {
 	u8 *pos = buf;
 
-	if (conf->sae_pwe != 1 && conf->sae_pwe != 2)
+	if (conf->sae_pwe != 1 && conf->sae_pwe != 2 && !conf->sae_pk)
 		return 0; /* no supported extended RSN capabilities */
 
 	if (len < 3)
@@ -388,7 +388,12 @@ int wpa_write_rsnxe(struct wpa_auth_config *conf, u8 *buf, size_t len)
 	*pos++ = 1;
 	/* bits 0-3 = 0 since only one octet of Extended RSN Capabilities is
 	 * used for now */
-	*pos++ = BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+	*pos = BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+#ifdef CONFIG_SAE_PK
+	if (conf->sae_pk)
+		*pos |= BIT(WLAN_RSNX_CAPAB_SAE_PK);
+#endif /* CONFIG_SAE_PK */
+	pos++;
 
 	return pos - buf;
 }
@@ -803,14 +808,26 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 #endif /* CONFIG_SAE */
 
 #ifdef CONFIG_OCV
-	if ((data.capabilities & WPA_CAPABILITY_OCVC) &&
+	if (wpa_auth->conf.ocv && (data.capabilities & WPA_CAPABILITY_OCVC) &&
 	    !(data.capabilities & WPA_CAPABILITY_MFPC)) {
-		wpa_printf(MSG_DEBUG,
-			   "Management frame protection required with OCV, but client did not enable it");
-		return WPA_MGMT_FRAME_PROTECTION_VIOLATION;
+		/* Some legacy MFP incapable STAs wrongly copy OCVC bit from
+		 * AP RSN capabilities. To improve interoperability with such
+		 * legacy STAs allow connection without enabling OCV when the
+		 * workaround mode (ocv=2) is enabled.
+		 */
+		if (wpa_auth->conf.ocv == 2) {
+			wpa_printf(MSG_DEBUG,
+				   "Allow connecting MFP incapable and OCV capable STA without enabling OCV");
+			wpa_auth_set_ocv(sm, 0);
+		} else {
+			wpa_printf(MSG_DEBUG,
+				   "Management frame protection required with OCV, but client did not enable it");
+			return WPA_MGMT_FRAME_PROTECTION_VIOLATION;
+		}
+	} else {
+		wpa_auth_set_ocv(sm, (data.capabilities & WPA_CAPABILITY_OCVC) ?
+				 wpa_auth->conf.ocv : 0);
 	}
-	wpa_auth_set_ocv(sm, wpa_auth->conf.ocv &&
-			 (data.capabilities & WPA_CAPABILITY_OCVC));
 #endif /* CONFIG_OCV */
 
 	if (wpa_auth->conf.ieee80211w == NO_MGMT_FRAME_PROTECTION ||
