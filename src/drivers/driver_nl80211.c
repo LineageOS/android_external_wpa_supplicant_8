@@ -3198,7 +3198,7 @@ static int wpa_driver_do_broadcom_acs(void *priv, struct drv_acs_params
 			" %d VHT: %d BW: %d\n",
 			params->hw_mode, params->ht_enabled, params->ht40_enabled,
 			params->vht_enabled, params->ch_width);
-		ret = send_and_recv_msgs(drv, msg, NULL, NULL);
+		ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
 		if (ret) {
 			wpa_printf(MSG_ERROR, "nl80211:	Failed to invoke vendor"
 				" driver ACS function: %s\n",
