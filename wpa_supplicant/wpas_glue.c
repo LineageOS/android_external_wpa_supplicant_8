@@ -575,7 +575,8 @@ static int wpa_supplicant_add_pmkid(void *_wpa_s, void *network_ctx,
 				    const u8 *bssid, const u8 *pmkid,
 				    const u8 *fils_cache_id,
 				    const u8 *pmk, size_t pmk_len,
-				    u32 pmk_lifetime, u8 pmk_reauth_threshold)
+				    u32 pmk_lifetime, u8 pmk_reauth_threshold,
+				    int akmp)
 {
 	struct wpa_supplicant *wpa_s = _wpa_s;
 	struct wpa_ssid *ssid;
@@ -583,9 +584,22 @@ static int wpa_supplicant_add_pmkid(void *_wpa_s, void *network_ctx,
 
 	os_memset(&params, 0, sizeof(params));
 	ssid = wpas_get_network_ctx(wpa_s, network_ctx);
-	if (ssid)
+	if (ssid) {
 		wpa_msg(wpa_s, MSG_INFO, PMKSA_CACHE_ADDED MACSTR " %d",
 			MAC2STR(bssid), ssid->id);
+		if ((akmp == WPA_KEY_MGMT_FT_IEEE8021X ||
+		     akmp == WPA_KEY_MGMT_FT_IEEE8021X_SHA384) &&
+		    !ssid->ft_eap_pmksa_caching) {
+			/* Since we will not be using PMKSA caching for FT-EAP
+			 * within wpa_supplicant to avoid known interop issues
+			 * with APs, do not add this PMKID to the driver either
+			 * so that we won't be hitting those interop issues
+			 * with driver-based RSNE generation. */
+			wpa_printf(MSG_DEBUG,
+				   "FT: Do not add PMKID entry to the driver since FT-EAP PMKSA caching is not enabled in configuration");
+			return 0;
+		}
+	}
 	if (ssid && fils_cache_id) {
 		params.ssid = ssid->ssid;
 		params.ssid_len = ssid->ssid_len;
@@ -1268,6 +1282,7 @@ static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
 	if (!ssid)
 		return;
 
+#ifdef CONFIG_SAE
 	if ((bitmap & TRANSITION_DISABLE_WPA3_PERSONAL) &&
 	    wpa_key_mgmt_sae(wpa_s->key_mgmt) &&
 	    (ssid->key_mgmt & (WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_FT_SAE)) &&
@@ -1278,6 +1293,24 @@ static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
 		disable_wpa_wpa2(ssid);
 		changed = 1;
 	}
+
+	if ((bitmap & TRANSITION_DISABLE_SAE_PK) &&
+	    wpa_key_mgmt_sae(wpa_s->key_mgmt) &&
+#ifdef CONFIG_SME
+	    wpa_s->sme.sae.state == SAE_ACCEPTED &&
+	    wpa_s->sme.sae.pk &&
+#endif /* CONFIG_SME */
+	    (ssid->key_mgmt & (WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_FT_SAE)) &&
+	    (ssid->sae_pk != SAE_PK_MODE_ONLY ||
+	     ssid->ieee80211w != MGMT_FRAME_PROTECTION_REQUIRED ||
+	     (ssid->group_cipher & WPA_CIPHER_TKIP))) {
+		wpa_printf(MSG_DEBUG,
+			   "SAE-PK: SAE authentication without PK disabled based on AP notification");
+		disable_wpa_wpa2(ssid);
+		ssid->sae_pk = SAE_PK_MODE_ONLY;
+		changed = 1;
+	}
+#endif /* CONFIG_SAE */
 
 	if ((bitmap & TRANSITION_DISABLE_WPA3_ENTERPRISE) &&
 	    wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt) &&

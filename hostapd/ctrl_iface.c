@@ -47,6 +47,7 @@
 #include "ap/ap_config.h"
 #include "ap/ieee802_1x.h"
 #include "ap/wpa_auth.h"
+#include "ap/pmksa_cache_auth.h"
 #include "ap/ieee802_11.h"
 #include "ap/sta_info.h"
 #include "ap/wps_hostapd.h"
@@ -1478,12 +1479,31 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
 			   os_strcmp(cmd, "sae_pwe") == 0) {
 			if (hapd->started)
 				hostapd_setup_sae_pt(hapd->conf);
+		} else if (os_strcasecmp(cmd, "transition_disable") == 0) {
+			wpa_auth_set_transition_disable(hapd->wpa_auth,
+							hapd->conf->transition_disable);
 		}
 
 #ifdef CONFIG_TESTING_OPTIONS
 		if (os_strcmp(cmd, "ft_rsnxe_used") == 0)
 			wpa_auth_set_ft_rsnxe_used(hapd->wpa_auth,
 						   hapd->conf->ft_rsnxe_used);
+		else if (os_strcmp(cmd, "oci_freq_override_eapol_m3") == 0)
+			wpa_auth_set_ocv_override_freq(
+				hapd->wpa_auth, WPA_AUTH_OCV_OVERRIDE_EAPOL_M3,
+				atoi(value));
+		else if (os_strcmp(cmd, "oci_freq_override_eapol_g1") == 0)
+			wpa_auth_set_ocv_override_freq(
+				hapd->wpa_auth, WPA_AUTH_OCV_OVERRIDE_EAPOL_G1,
+				atoi(value));
+		else if (os_strcmp(cmd, "oci_freq_override_ft_assoc") == 0)
+			wpa_auth_set_ocv_override_freq(
+				hapd->wpa_auth, WPA_AUTH_OCV_OVERRIDE_FT_ASSOC,
+				atoi(value));
+		else if (os_strcmp(cmd, "oci_freq_override_fils_assoc") == 0)
+			wpa_auth_set_ocv_override_freq(
+				hapd->wpa_auth,
+				WPA_AUTH_OCV_OVERRIDE_FILS_ASSOC, atoi(value));
 #endif /* CONFIG_TESTING_OPTIONS */
 	}
 
@@ -1902,7 +1922,7 @@ static void hostapd_data_test_rx(void *ctx, const u8 *src_addr, const u8 *buf,
 	if (ip.ip_hl != 5 || ip.ip_v != 4 ||
 	    ntohs(ip.ip_len) > HWSIM_IP_LEN) {
 		wpa_printf(MSG_DEBUG,
-			   "test data: RX - ignore unexpect IP header");
+			   "test data: RX - ignore unexpected IP header");
 		return;
 	}
 
@@ -2437,6 +2457,19 @@ static int hostapd_ctrl_resend_group_m1(struct hostapd_data *hapd,
 }
 
 
+static int hostapd_ctrl_get_pmksa_pmk(struct hostapd_data *hapd, const u8 *addr,
+				      char *buf, size_t buflen)
+{
+	struct rsn_pmksa_cache_entry *pmksa;
+
+	pmksa = wpa_auth_pmksa_get(hapd->wpa_auth, addr, NULL);
+	if (!pmksa)
+		return -1;
+
+	return wpa_snprintf_hex(buf, buflen, pmksa->pmk, pmksa->pmk_len);
+}
+
+
 static int hostapd_ctrl_get_pmk(struct hostapd_data *hapd, const char *cmd,
 				char *buf, size_t buflen)
 {
@@ -2452,13 +2485,13 @@ static int hostapd_ctrl_get_pmk(struct hostapd_data *hapd, const char *cmd,
 	if (!sta || !sta->wpa_sm) {
 		wpa_printf(MSG_DEBUG, "No STA WPA state machine for " MACSTR,
 			   MAC2STR(addr));
-		return -1;
+		return hostapd_ctrl_get_pmksa_pmk(hapd, addr, buf, buflen);
 	}
 	pmk = wpa_auth_get_pmk(sta->wpa_sm, &pmk_len);
-	if (!pmk) {
+	if (!pmk || !pmk_len) {
 		wpa_printf(MSG_DEBUG, "No PMK stored for " MACSTR,
 			   MAC2STR(addr));
-		return -1;
+		return hostapd_ctrl_get_pmksa_pmk(hapd, addr, buf, buflen);
 	}
 
 	return wpa_snprintf_hex(buf, buflen, pmk, pmk_len);
@@ -3735,6 +3768,14 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 		if (hostapd_dpp_pkex_remove(hapd, buf + 16) < 0)
 			reply_len = -1;
 #ifdef CONFIG_DPP2
+	} else if (os_strncmp(buf, "DPP_CONTROLLER_START ", 21) == 0) {
+		if (hostapd_dpp_controller_start(hapd, buf + 20) < 0)
+			reply_len = -1;
+	} else if (os_strcmp(buf, "DPP_CONTROLLER_START") == 0) {
+		if (hostapd_dpp_controller_start(hapd, NULL) < 0)
+			reply_len = -1;
+	} else if (os_strcmp(buf, "DPP_CONTROLLER_STOP") == 0) {
+		dpp_controller_stop(hapd->iface->interfaces->dpp);
 	} else if (os_strncmp(buf, "DPP_CHIRP ", 10) == 0) {
 		if (hostapd_dpp_chirp(hapd, buf + 9) < 0)
 			reply_len = -1;

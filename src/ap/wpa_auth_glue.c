@@ -175,6 +175,11 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 		wconf->igtk_rsc_override_set = 1;
 	}
 	wconf->ft_rsnxe_used = conf->ft_rsnxe_used;
+	wconf->oci_freq_override_eapol_m3 = conf->oci_freq_override_eapol_m3;
+	wconf->oci_freq_override_eapol_g1 = conf->oci_freq_override_eapol_g1;
+	wconf->oci_freq_override_ft_assoc = conf->oci_freq_override_ft_assoc;
+	wconf->oci_freq_override_fils_assoc =
+		conf->oci_freq_override_fils_assoc;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_P2P
 	os_memcpy(wconf->ip_addr_go, conf->ip_addr_go, 4);
@@ -193,6 +198,9 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 		wconf->sae_pwe = 1;
 	else if (sae_pw_id == 1 && wconf->sae_pwe == 0)
 		wconf->sae_pwe = 2;
+#ifdef CONFIG_SAE_PK
+	wconf->sae_pk = hostapd_sae_pk_in_use(conf);
+#endif /* CONFIG_SAE_PK */
 #ifdef CONFIG_OWE
 	wconf->owe_ptk_workaround = conf->owe_ptk_workaround;
 #endif /* CONFIG_OWE */
@@ -1451,6 +1459,7 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 	size_t wpa_ie_len;
 
 	hostapd_wpa_auth_conf(hapd->conf, hapd->iconf, &_conf);
+	_conf.msg_ctx = hapd->msg_ctx;
 	if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_EAPOL_TX_STATUS)
 		_conf.tx_status = 1;
 	if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_AP_MLME)

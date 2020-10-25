@@ -959,7 +959,9 @@ static int interworking_set_hs20_params(struct wpa_supplicant *wpa_s,
 			"WPA-EAP WPA-EAP-SHA256" : "WPA-EAP";
 	if (wpa_config_set(ssid, "key_mgmt", key_mgmt, 0) < 0 ||
 	    wpa_config_set(ssid, "proto", "RSN", 0) < 0 ||
-	    wpa_config_set(ssid, "ieee80211w", "1", 0) < 0 ||
+	    wpa_config_set(ssid, "ieee80211w",
+			   wpa_s->conf->pmf == MGMT_FRAME_PROTECTION_REQUIRED ?
+			   "2" : "1", 0) < 0 ||
 	    wpa_config_set(ssid, "pairwise", "CCMP", 0) < 0)
 		return -1;
 	return 0;
@@ -2748,27 +2750,27 @@ void interworking_stop_fetch_anqp(struct wpa_supplicant *wpa_s)
 }
 
 
-int anqp_send_req(struct wpa_supplicant *wpa_s, const u8 *dst,
+int anqp_send_req(struct wpa_supplicant *wpa_s, const u8 *dst, int freq,
 		  u16 info_ids[], size_t num_ids, u32 subtypes,
 		  u32 mbo_subtypes)
 {
 	struct wpabuf *buf;
 	struct wpabuf *extra_buf = NULL;
 	int ret = 0;
-	int freq;
 	struct wpa_bss *bss;
 	int res;
 
 	bss = wpa_bss_get_bssid(wpa_s, dst);
-	if (!bss) {
+	if (!bss && !freq) {
 		wpa_printf(MSG_WARNING,
-			   "ANQP: Cannot send query to unknown BSS "
-			   MACSTR, MAC2STR(dst));
+			   "ANQP: Cannot send query without BSS freq info");
 		return -1;
 	}
 
-	wpa_bss_anqp_unshare_alloc(bss);
-	freq = bss->freq;
+	if (bss)
+		wpa_bss_anqp_unshare_alloc(bss);
+	if (bss && !freq)
+		freq = bss->freq;
 
 	wpa_msg(wpa_s, MSG_DEBUG,
 		"ANQP: Query Request to " MACSTR " for %u id(s)",
@@ -2786,6 +2788,13 @@ int anqp_send_req(struct wpa_supplicant *wpa_s, const u8 *dst,
 #ifdef CONFIG_MBO
 	if (mbo_subtypes) {
 		struct wpabuf *mbo;
+
+		if (!bss) {
+			wpa_printf(MSG_WARNING,
+				   "ANQP: Cannot send MBO query to unknown BSS "
+				   MACSTR, MAC2STR(dst));
+			return -1;
+		}
 
 		mbo = mbo_build_anqp_buf(wpa_s, bss, mbo_subtypes);
 		if (mbo) {

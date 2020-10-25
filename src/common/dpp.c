@@ -17,6 +17,7 @@
 #include "common/ieee802_11_common.h"
 #include "common/wpa_ctrl.h"
 #include "common/gas.h"
+#include "eap_common/eap_defs.h"
 #include "crypto/crypto.h"
 #include "crypto/random.h"
 #include "crypto/aes.h"
@@ -244,6 +245,7 @@ int dpp_parse_uri_chan_list(struct dpp_bootstrap_info *bi,
 		wpa_printf(MSG_DEBUG,
 			   "DPP: URI channel-list: opclass=%d channel=%d ==> freq=%d",
 			   opclass, channel, freq);
+		bi->channels_listed = true;
 		if (freq < 0) {
 			wpa_printf(MSG_DEBUG,
 				   "DPP: Ignore unknown URI channel-list channel (opclass=%d channel=%d)",
@@ -828,6 +830,7 @@ struct wpabuf * dpp_build_conf_req_helper(struct dpp_authentication *auth,
 	const char *tech = "infra";
 	const char *dpp_name;
 	struct wpabuf *buf, *json;
+	char *csr = NULL;
 
 #ifdef CONFIG_TESTING_OPTIONS
 	if (dpp_test == DPP_TEST_INVALID_CONFIG_ATTR_OBJ_CONF_REQ) {
@@ -844,6 +847,17 @@ struct wpabuf * dpp_build_conf_req_helper(struct dpp_authentication *auth,
 	len = 100 + name_len * 6 + 1 + int_array_len(opclasses) * 4;
 	if (mud_url && mud_url[0])
 		len += 10 + os_strlen(mud_url);
+#ifdef CONFIG_DPP2
+	if (auth->csr) {
+		size_t csr_len;
+
+		csr = base64_encode_no_lf(wpabuf_head(auth->csr),
+					  wpabuf_len(auth->csr), &csr_len);
+		if (!csr)
+			return NULL;
+		len += 30 + csr_len;
+	}
+#endif /* CONFIG_DPP2 */
 	json = wpabuf_alloc(len);
 	if (!json)
 		return NULL;
@@ -870,10 +884,15 @@ struct wpabuf * dpp_build_conf_req_helper(struct dpp_authentication *auth,
 			wpabuf_printf(json, "%s%u", i ? "," : "", opclasses[i]);
 		json_end_array(json);
 	}
+	if (csr) {
+		json_value_sep(json);
+		json_add_string(json, "pkcs10", csr);
+	}
 	json_end_object(json);
 
 	buf = dpp_build_conf_req(auth, wpabuf_head(json));
 	wpabuf_free(json);
+	os_free(csr);
 
 	return buf;
 }
@@ -916,6 +935,8 @@ struct dpp_configuration * dpp_configuration_alloc(const char *type)
 		conf->akm = DPP_AKM_PSK_SAE_DPP;
 	else if (bin_str_eq(type, len, "dpp"))
 		conf->akm = DPP_AKM_DPP;
+	else if (bin_str_eq(type, len, "dot1x"))
+		conf->akm = DPP_AKM_DOT1X;
 	else
 		goto fail;
 
@@ -978,6 +999,7 @@ void dpp_configuration_free(struct dpp_configuration *conf)
 		return;
 	str_clear_free(conf->passphrase);
 	os_free(conf->group_id);
+	os_free(conf->csrattrs);
 	bin_clear_free(conf, sizeof(*conf));
 }
 
@@ -988,6 +1010,7 @@ static int dpp_configuration_parse_helper(struct dpp_authentication *auth,
 	const char *pos, *end;
 	struct dpp_configuration *conf_sta = NULL, *conf_ap = NULL;
 	struct dpp_configuration *conf = NULL;
+	size_t len;
 
 	pos = os_strstr(cmd, " conf=sta-");
 	if (pos) {
@@ -1090,6 +1113,17 @@ static int dpp_configuration_parse_helper(struct dpp_authentication *auth,
 		if (val <= 0)
 			goto fail;
 		conf->netaccesskey_expiry = val;
+	}
+
+	pos = os_strstr(cmd, " csrattrs=");
+	if (pos) {
+		pos += 10;
+		end = os_strchr(pos, ' ');
+		len = end ? (size_t) (end - pos) : os_strlen(pos);
+		conf->csrattrs = os_zalloc(len + 1);
+		if (!conf->csrattrs)
+			goto fail;
+		os_memcpy(conf->csrattrs, pos, len);
 	}
 
 	if (!dpp_configuration_valid(conf))
@@ -1247,12 +1281,28 @@ void dpp_auth_deinit(struct dpp_authentication *auth)
 
 		os_free(conf->connector);
 		wpabuf_free(conf->c_sign_key);
+		wpabuf_free(conf->certbag);
+		wpabuf_free(conf->certs);
+		wpabuf_free(conf->cacert);
+		os_free(conf->server_name);
+		wpabuf_free(conf->pp_key);
 	}
 #ifdef CONFIG_DPP2
 	dpp_free_asymmetric_key(auth->conf_key_pkg);
+	os_free(auth->csrattrs);
+	wpabuf_free(auth->csr);
+	wpabuf_free(auth->priv_key);
+	wpabuf_free(auth->cacert);
+	wpabuf_free(auth->certbag);
+	os_free(auth->trusted_eap_server_name);
+	wpabuf_free(auth->conf_resp_tcp);
 #endif /* CONFIG_DPP2 */
 	wpabuf_free(auth->net_access_key);
 	dpp_bootstrap_info_free(auth->tmp_own_bi);
+	if (auth->tmp_peer_bi) {
+		dl_list_del(&auth->tmp_peer_bi->list);
+		dpp_bootstrap_info_free(auth->tmp_peer_bi);
+	}
 #ifdef CONFIG_TESTING_OPTIONS
 	os_free(auth->config_obj_override);
 	os_free(auth->discovery_override);
@@ -1480,6 +1530,15 @@ skip_groups:
 	tailroom += os_strlen(signed_conn);
 	if (incl_legacy)
 		tailroom += 1000;
+	if (akm == DPP_AKM_DOT1X) {
+		if (auth->certbag)
+			tailroom += 2 * wpabuf_len(auth->certbag);
+		if (auth->cacert)
+			tailroom += 2 * wpabuf_len(auth->cacert);
+		if (auth->trusted_eap_server_name)
+			tailroom += os_strlen(auth->trusted_eap_server_name);
+		tailroom += 1000;
+	}
 	buf = dpp_build_conf_start(auth, conf, tailroom);
 	if (!buf)
 		goto fail;
@@ -1495,6 +1554,30 @@ skip_groups:
 		dpp_build_legacy_cred_params(buf, conf);
 		json_value_sep(buf);
 	}
+	if (akm == DPP_AKM_DOT1X) {
+		json_start_object(buf, "entCreds");
+		if (!auth->certbag)
+			goto fail;
+		json_add_base64(buf, "certBag", wpabuf_head(auth->certbag),
+				wpabuf_len(auth->certbag));
+		if (auth->cacert) {
+			json_value_sep(buf);
+			json_add_base64(buf, "caCert",
+					wpabuf_head(auth->cacert),
+					wpabuf_len(auth->cacert));
+		}
+		if (auth->trusted_eap_server_name) {
+			json_value_sep(buf);
+			json_add_string(buf, "trustedEapServerName",
+					auth->trusted_eap_server_name);
+		}
+		json_value_sep(buf);
+		json_start_array(buf, "eapMethods");
+		wpabuf_printf(buf, "%d", EAP_TYPE_TLS);
+		json_end_array(buf);
+		json_end_object(buf);
+		json_value_sep(buf);
+	}
 	wpabuf_put_str(buf, "\"signedConnector\":\"");
 	wpabuf_put_str(buf, signed_conn);
 	wpabuf_put_str(buf, "\"");
@@ -1504,6 +1587,16 @@ skip_groups:
 		wpa_printf(MSG_DEBUG, "DPP: Failed to build csign JWK");
 		goto fail;
 	}
+#ifdef CONFIG_DPP2
+	if (auth->peer_version >= 2 && auth->conf->pp_key) {
+		json_value_sep(buf);
+		if (dpp_build_jwk(buf, "ppKey", auth->conf->pp_key, NULL,
+				  curve) < 0) {
+			wpa_printf(MSG_DEBUG, "DPP: Failed to build ppKey JWK");
+			goto fail;
+		}
+	}
+#endif /* CONFIG_DPP2 */
 
 	json_end_object(buf);
 	json_end_object(buf);
@@ -1554,7 +1647,7 @@ dpp_build_conf_obj_legacy(struct dpp_authentication *auth,
 
 static struct wpabuf *
 dpp_build_conf_obj(struct dpp_authentication *auth, enum dpp_netrole netrole,
-		   int idx)
+		   int idx, bool cert_req)
 {
 	struct dpp_configuration *conf = NULL;
 
@@ -1587,15 +1680,28 @@ dpp_build_conf_obj(struct dpp_authentication *auth, enum dpp_netrole netrole,
 		return NULL;
 	}
 
+	if (conf->akm == DPP_AKM_DOT1X) {
+		if (!auth->conf) {
+			wpa_printf(MSG_DEBUG,
+				   "DPP: No Configurator data available");
+			return NULL;
+		}
+		if (!cert_req && !auth->certbag) {
+			wpa_printf(MSG_DEBUG,
+				   "DPP: No certificate data available for dot1x configuration");
+			return NULL;
+		}
+		return dpp_build_conf_obj_dpp(auth, conf);
+	}
 	if (dpp_akm_dpp(conf->akm) || (auth->peer_version >= 2 && auth->conf))
 		return dpp_build_conf_obj_dpp(auth, conf);
 	return dpp_build_conf_obj_legacy(auth, conf);
 }
 
 
-static struct wpabuf *
+struct wpabuf *
 dpp_build_conf_resp(struct dpp_authentication *auth, const u8 *e_nonce,
-		    u16 e_nonce_len, enum dpp_netrole netrole)
+		    u16 e_nonce_len, enum dpp_netrole netrole, bool cert_req)
 {
 	struct wpabuf *conf = NULL, *conf2 = NULL, *env_data = NULL;
 	size_t clear_len, attr_len;
@@ -1605,21 +1711,33 @@ dpp_build_conf_resp(struct dpp_authentication *auth, const u8 *e_nonce,
 	size_t len[1];
 	enum dpp_status_error status;
 
+	if (auth->force_conf_resp_status != DPP_STATUS_OK) {
+		status = auth->force_conf_resp_status;
+		goto forced_status;
+	}
+
 	if (netrole == DPP_NETROLE_CONFIGURATOR) {
 #ifdef CONFIG_DPP2
 		env_data = dpp_build_enveloped_data(auth);
 #endif /* CONFIG_DPP2 */
 	} else {
-		conf = dpp_build_conf_obj(auth, netrole, 0);
+		conf = dpp_build_conf_obj(auth, netrole, 0, cert_req);
 		if (conf) {
 			wpa_hexdump_ascii(MSG_DEBUG,
 					  "DPP: configurationObject JSON",
 					  wpabuf_head(conf), wpabuf_len(conf));
-			conf2 = dpp_build_conf_obj(auth, netrole, 1);
+			conf2 = dpp_build_conf_obj(auth, netrole, 1, cert_req);
 		}
 	}
-	status = (conf || env_data) ? DPP_STATUS_OK :
-		DPP_STATUS_CONFIGURE_FAILURE;
+
+	if (conf || env_data)
+		status = DPP_STATUS_OK;
+	else if (!cert_req && netrole == DPP_NETROLE_STA && auth->conf_sta &&
+		 auth->conf_sta->akm == DPP_AKM_DOT1X && !auth->waiting_csr)
+		status = DPP_STATUS_CSR_NEEDED;
+	else
+		status = DPP_STATUS_CONFIGURE_FAILURE;
+forced_status:
 	auth->conf_resp_status = status;
 
 	/* { E-nonce, configurationObject[, sendConnStatus]}ke */
@@ -1633,6 +1751,9 @@ dpp_build_conf_resp(struct dpp_authentication *auth, const u8 *e_nonce,
 	if (auth->peer_version >= 2 && auth->send_conn_status &&
 	    netrole == DPP_NETROLE_STA)
 		clear_len += 4;
+	if (status == DPP_STATUS_CSR_NEEDED && auth->conf_sta &&
+	    auth->conf_sta->csrattrs)
+		clear_len += 4 + os_strlen(auth->conf_sta->csrattrs);
 	clear = wpabuf_alloc(clear_len);
 	attr_len = 4 + 1 + 4 + clear_len + AES_BLOCK_SIZE;
 #ifdef CONFIG_TESTING_OPTIONS
@@ -1695,10 +1816,19 @@ skip_e_nonce:
 	}
 
 	if (auth->peer_version >= 2 && auth->send_conn_status &&
-	    netrole == DPP_NETROLE_STA) {
+	    netrole == DPP_NETROLE_STA && status == DPP_STATUS_OK) {
 		wpa_printf(MSG_DEBUG, "DPP: sendConnStatus");
 		wpabuf_put_le16(clear, DPP_ATTR_SEND_CONN_STATUS);
 		wpabuf_put_le16(clear, 0);
+	}
+
+	if (status == DPP_STATUS_CSR_NEEDED && auth->conf_sta &&
+	    auth->conf_sta->csrattrs) {
+		auth->waiting_csr = true;
+		wpa_printf(MSG_DEBUG, "DPP: CSR Attributes Request");
+		wpabuf_put_le16(clear, DPP_ATTR_CSR_ATTR_REQ);
+		wpabuf_put_le16(clear, os_strlen(auth->conf_sta->csrattrs));
+		wpabuf_put_str(clear, auth->conf_sta->csrattrs);
 	}
 
 #ifdef CONFIG_TESTING_OPTIONS
@@ -1771,6 +1901,7 @@ dpp_conf_req_rx(struct dpp_authentication *auth, const u8 *attr_start,
 	struct wpabuf *resp = NULL;
 	struct json_token *root = NULL, *token;
 	enum dpp_netrole netrole;
+	struct wpabuf *cert_req = NULL;
 
 #ifdef CONFIG_TESTING_OPTIONS
 	if (dpp_test == DPP_TEST_STOP_AT_CONF_REQ) {
@@ -1879,6 +2010,7 @@ dpp_conf_req_rx(struct dpp_authentication *auth, const u8 *attr_start,
 		dpp_auth_fail(auth, "Unsupported netRole");
 		goto fail;
 	}
+	auth->e_netrole = netrole;
 
 	token = json_get_member(root, "mudurl");
 	if (token && token->type == JSON_STRING) {
@@ -1930,9 +2062,56 @@ dpp_conf_req_rx(struct dpp_authentication *auth, const u8 *attr_start,
 			txt);
 	}
 
-	resp = dpp_build_conf_resp(auth, e_nonce, e_nonce_len, netrole);
+#ifdef CONFIG_DPP2
+	cert_req = json_get_member_base64(root, "pkcs10");
+	if (cert_req) {
+		char *txt;
+		int id;
+
+		wpa_hexdump_buf(MSG_DEBUG, "DPP: CertificateRequest", cert_req);
+		if (dpp_validate_csr(auth, cert_req) < 0) {
+			wpa_printf(MSG_DEBUG, "DPP: CSR is not valid");
+			auth->force_conf_resp_status = DPP_STATUS_CSR_BAD;
+			goto cont;
+		}
+
+		if (auth->peer_bi) {
+			id = auth->peer_bi->id;
+		} else if (auth->tmp_peer_bi) {
+			id = auth->tmp_peer_bi->id;
+		} else {
+			struct dpp_bootstrap_info *bi;
+
+			bi = os_zalloc(sizeof(*bi));
+			if (!bi)
+				goto fail;
+			bi->id = dpp_next_id(auth->global);
+			dl_list_add(&auth->global->bootstrap, &bi->list);
+			auth->tmp_peer_bi = bi;
+			id = bi->id;
+		}
+
+		wpa_printf(MSG_DEBUG, "DPP: CSR is valid - forward to CA/RA");
+		txt = base64_encode_no_lf(wpabuf_head(cert_req),
+					  wpabuf_len(cert_req), NULL);
+		if (!txt)
+			goto fail;
+
+		wpa_msg(auth->msg_ctx, MSG_INFO, DPP_EVENT_CSR "peer=%d csr=%s",
+			id, txt);
+		os_free(txt);
+		auth->waiting_csr = false;
+		auth->waiting_cert = true;
+		goto fail;
+	}
+cont:
+#endif /* CONFIG_DPP2 */
+
+	resp = dpp_build_conf_resp(auth, e_nonce, e_nonce_len, netrole,
+				   cert_req);
 
 fail:
+	wpabuf_free(cert_req);
 	json_free(root);
 	os_free(unwrapped);
 	return resp;
@@ -2255,6 +2434,20 @@ static void dpp_copy_csign(struct dpp_config_obj *conf, EVP_PKEY *csign)
 }
 
 
+static void dpp_copy_ppkey(struct dpp_config_obj *conf, EVP_PKEY *ppkey)
+{
+	unsigned char *der = NULL;
+	int der_len;
+
+	der_len = i2d_PUBKEY(ppkey, &der);
+	if (der_len <= 0)
+		return;
+	wpabuf_free(conf->pp_key);
+	conf->pp_key = wpabuf_alloc_copy(der, der_len);
+	OPENSSL_free(der);
+}
+
+
 static void dpp_copy_netaccesskey(struct dpp_authentication *auth,
 				  struct dpp_config_obj *conf)
 {
@@ -2290,10 +2483,10 @@ static int dpp_parse_cred_dpp(struct dpp_authentication *auth,
 			      struct json_token *cred)
 {
 	struct dpp_signed_connector_info info;
-	struct json_token *token, *csign;
+	struct json_token *token, *csign, *ppkey;
 	int ret = -1;
-	EVP_PKEY *csign_pub = NULL;
-	const struct dpp_curve_params *key_curve = NULL;
+	EVP_PKEY *csign_pub = NULL, *pp_pub = NULL;
+	const struct dpp_curve_params *key_curve = NULL, *pp_curve = NULL;
 	const char *signed_connector;
 
 	os_memset(&info, 0, sizeof(info));
@@ -2319,6 +2512,21 @@ static int dpp_parse_cred_dpp(struct dpp_authentication *auth,
 		goto fail;
 	}
 	dpp_debug_print_key("DPP: Received C-sign-key", csign_pub);
+
+	ppkey = json_get_member(cred, "ppKey");
+	if (ppkey && ppkey->type == JSON_OBJECT) {
+		pp_pub = dpp_parse_jwk(ppkey, &pp_curve);
+		if (!pp_pub) {
+			wpa_printf(MSG_DEBUG, "DPP: Failed to parse ppKey JWK");
+			goto fail;
+		}
+		dpp_debug_print_key("DPP: Received ppKey", pp_pub);
+		if (key_curve != pp_curve) {
+			wpa_printf(MSG_DEBUG,
+				   "DPP: C-sign-key and ppKey do not use the same curve");
+			goto fail;
+		}
+	}
 
 	token = json_get_member(cred, "signedConnector");
 	if (!token || token->type != JSON_STRING) {
@@ -2350,15 +2558,70 @@ static int dpp_parse_cred_dpp(struct dpp_authentication *auth,
 	conf->connector = os_strdup(signed_connector);
 
 	dpp_copy_csign(conf, csign_pub);
+	if (pp_pub)
+		dpp_copy_ppkey(conf, pp_pub);
 	if (dpp_akm_dpp(conf->akm) || auth->peer_version >= 2)
 		dpp_copy_netaccesskey(auth, conf);
 
 	ret = 0;
 fail:
 	EVP_PKEY_free(csign_pub);
+	EVP_PKEY_free(pp_pub);
 	os_free(info.payload);
 	return ret;
 }
+
+
+#ifdef CONFIG_DPP2
+static int dpp_parse_cred_dot1x(struct dpp_authentication *auth,
+				struct dpp_config_obj *conf,
+				struct json_token *cred)
+{
+	struct json_token *ent, *name;
+
+	ent = json_get_member(cred, "entCreds");
+	if (!ent || ent->type != JSON_OBJECT) {
+		dpp_auth_fail(auth, "No entCreds in JSON");
+		return -1;
+	}
+
+	conf->certbag = json_get_member_base64(ent, "certBag");
+	if (!conf->certbag) {
+		dpp_auth_fail(auth, "No certBag in JSON");
+		return -1;
+	}
+	wpa_hexdump_buf(MSG_MSGDUMP, "DPP: Received certBag", conf->certbag);
+	conf->certs = dpp_pkcs7_certs(conf->certbag);
+	if (!conf->certs) {
+		dpp_auth_fail(auth, "No certificates in certBag");
+		return -1;
+	}
+
+	conf->cacert = json_get_member_base64(ent, "caCert");
+	if (conf->cacert)
+		wpa_hexdump_buf(MSG_MSGDUMP, "DPP: Received caCert",
+				conf->cacert);
+
+	name = json_get_member(ent, "trustedEapServerName");
+	if (name &&
+	    (name->type != JSON_STRING ||
+	     has_ctrl_char((const u8 *) name->string,
+			   os_strlen(name->string)))) {
+		dpp_auth_fail(auth,
+			      "Invalid trustedEapServerName type in JSON");
+		return -1;
+	}
+	if (name && name->string) {
+		wpa_printf(MSG_DEBUG, "DPP: Received trustedEapServerName: %s",
+			   name->string);
+		conf->server_name = os_strdup(name->string);
+		if (!conf->server_name)
+			return -1;
+	}
+
+	return 0;
+}
+#endif /* CONFIG_DPP2 */
 
 
 const char * dpp_akm_str(enum dpp_akm akm)
@@ -2376,6 +2639,8 @@ const char * dpp_akm_str(enum dpp_akm akm)
 		return "dpp+sae";
 	case DPP_AKM_PSK_SAE_DPP:
 		return "dpp+psk+sae";
+	case DPP_AKM_DOT1X:
+		return "dot1x";
 	default:
 		return "??";
 	}
@@ -2397,6 +2662,8 @@ const char * dpp_akm_selector_str(enum dpp_akm akm)
 		return "506F9A02+000FAC08";
 	case DPP_AKM_PSK_SAE_DPP:
 		return "506F9A02+000FAC08+000FAC02+000FAC06";
+	case DPP_AKM_DOT1X:
+		return "000FAC01+000FAC05";
 	default:
 		return "??";
 	}
@@ -2406,7 +2673,7 @@ const char * dpp_akm_selector_str(enum dpp_akm akm)
 static enum dpp_akm dpp_akm_from_str(const char *akm)
 {
 	const char *pos;
-	int dpp = 0, psk = 0, sae = 0;
+	int dpp = 0, psk = 0, sae = 0, dot1x = 0;
 
 	if (os_strcmp(akm, "psk") == 0)
 		return DPP_AKM_PSK;
@@ -2420,6 +2687,8 @@ static enum dpp_akm dpp_akm_from_str(const char *akm)
 		return DPP_AKM_SAE_DPP;
 	if (os_strcmp(akm, "dpp+psk+sae") == 0)
 		return DPP_AKM_PSK_SAE_DPP;
+	if (os_strcmp(akm, "dot1x") == 0)
+		return DPP_AKM_DOT1X;
 
 	pos = akm;
 	while (*pos) {
@@ -2433,6 +2702,10 @@ static enum dpp_akm dpp_akm_from_str(const char *akm)
 			psk = 1;
 		else if (os_strncasecmp(pos, "000FAC08", 8) == 0)
 			sae = 1;
+		else if (os_strncasecmp(pos, "000FAC01", 8) == 0)
+			dot1x = 1;
+		else if (os_strncasecmp(pos, "000FAC05", 8) == 0)
+			dot1x = 1;
 		pos += 8;
 		if (*pos != '+')
 			break;
@@ -2451,6 +2724,8 @@ static enum dpp_akm dpp_akm_from_str(const char *akm)
 		return DPP_AKM_SAE;
 	if (psk)
 		return DPP_AKM_PSK;
+	if (dot1x)
+		return DPP_AKM_DOT1X;
 
 	return DPP_AKM_UNKNOWN;
 }
@@ -2568,6 +2843,12 @@ static int dpp_parse_conf_obj(struct dpp_authentication *auth,
 		   (auth->peer_version >= 2 && dpp_akm_legacy(conf->akm))) {
 		if (dpp_parse_cred_dpp(auth, conf, cred) < 0)
 			goto fail;
+#ifdef CONFIG_DPP2
+	} else if (conf->akm == DPP_AKM_DOT1X) {
+		if (dpp_parse_cred_dot1x(auth, conf, cred) < 0 ||
+		    dpp_parse_cred_dpp(auth, conf, cred) < 0)
+			goto fail;
+#endif /* CONFIG_DPP2 */
 	} else {
 		wpa_printf(MSG_DEBUG, "DPP: Unsupported akm: %s",
 			   token->string);
@@ -2582,6 +2863,20 @@ fail:
 	json_free(root);
 	return ret;
 }
+
+
+#ifdef CONFIG_DPP2
+static u8 * dpp_get_csr_attrs(const u8 *attrs, size_t attrs_len, size_t *len)
+{
+	const u8 *b64;
+	u16 b64_len;
+
+	b64 = dpp_get_attr(attrs, attrs_len, DPP_ATTR_CSR_ATTR_REQ, &b64_len);
+	if (!b64)
+		return NULL;
+	return base64_decode((const char *) b64, b64_len, len);
+}
+#endif /* CONFIG_DPP2 */
 
 
 int dpp_conf_resp_rx(struct dpp_authentication *auth,
@@ -2661,6 +2956,28 @@ int dpp_conf_resp_rx(struct dpp_authentication *auth,
 	}
 	auth->conf_resp_status = status[0];
 	wpa_printf(MSG_DEBUG, "DPP: Status %u", status[0]);
+#ifdef CONFIG_DPP2
+	if (status[0] == DPP_STATUS_CSR_NEEDED) {
+		u8 *csrattrs;
+		size_t csrattrs_len;
+
+		wpa_printf(MSG_DEBUG, "DPP: Configurator requested CSR");
+
+		csrattrs = dpp_get_csr_attrs(unwrapped, unwrapped_len,
+					     &csrattrs_len);
+		if (!csrattrs) {
+			dpp_auth_fail(auth,
+				      "Missing or invalid CSR Attributes Request attribute");
+			goto fail;
+		}
+		wpa_hexdump(MSG_DEBUG, "DPP: CsrAttrs", csrattrs, csrattrs_len);
+		os_free(auth->csrattrs);
+		auth->csrattrs = csrattrs;
+		auth->csrattrs_len = csrattrs_len;
+		ret = -2;
+		goto fail;
+	}
+#endif /* CONFIG_DPP2 */
 	if (status[0] != DPP_STATUS_OK) {
 		dpp_auth_fail(auth, "Configurator rejected configuration");
 		goto fail;
@@ -3086,6 +3403,7 @@ void dpp_configurator_free(struct dpp_configurator *conf)
 	os_free(conf->kid);
 	os_free(conf->connector);
 	EVP_PKEY_free(conf->connector_key);
+	EVP_PKEY_free(conf->pp_key);
 	os_free(conf);
 }
 
@@ -3144,9 +3462,9 @@ static int dpp_configurator_gen_kid(struct dpp_configurator *conf)
 }
 
 
-struct dpp_configurator *
+static struct dpp_configurator *
 dpp_keygen_configurator(const char *curve, const u8 *privkey,
-			size_t privkey_len)
+			size_t privkey_len, const u8 *pp_key, size_t pp_key_len)
 {
 	struct dpp_configurator *conf;
 
@@ -3166,7 +3484,12 @@ dpp_keygen_configurator(const char *curve, const u8 *privkey,
 					      privkey_len);
 	else
 		conf->csign = dpp_gen_keypair(conf->curve);
-	if (!conf->csign)
+	if (pp_key)
+		conf->pp_key = dpp_set_keypair(&conf->curve, pp_key,
+					       pp_key_len);
+	else
+		conf->pp_key = dpp_gen_keypair(conf->curve);
+	if (!conf->csign || !conf->pp_key)
 		goto fail;
 	conf->own = 1;
 
@@ -3207,7 +3530,7 @@ int dpp_configurator_own_config(struct dpp_authentication *auth,
 	auth->peer_protocol_key = auth->own_protocol_key;
 	dpp_copy_csign(&auth->conf_obj[0], auth->conf->csign);
 
-	conf_obj = dpp_build_conf_obj(auth, ap, 0);
+	conf_obj = dpp_build_conf_obj(auth, ap, 0, NULL);
 	if (!conf_obj) {
 		wpabuf_free(auth->conf_obj[0].c_sign_key);
 		auth->conf_obj[0].c_sign_key = NULL;
@@ -3762,11 +4085,11 @@ static int dpp_nfc_update_bi_channel(struct dpp_bootstrap_info *own_bi,
 	u8 op_class, channel;
 	char chan[20];
 
-	if (peer_bi->num_freq == 0)
+	if (peer_bi->num_freq == 0 && !peer_bi->channels_listed)
 		return 0; /* no channel preference/constraint */
 
 	for (i = 0; i < peer_bi->num_freq; i++) {
-		if (own_bi->num_freq == 0 ||
+		if ((own_bi->num_freq == 0 && !own_bi->channels_listed) ||
 		    freq_included(own_bi->freq, own_bi->num_freq,
 				  peer_bi->freq[i])) {
 			freq = peer_bi->freq[i];
@@ -3853,14 +4176,15 @@ static unsigned int dpp_next_configurator_id(struct dpp_global *dpp)
 int dpp_configurator_add(struct dpp_global *dpp, const char *cmd)
 {
 	char *curve = NULL;
-	char *key = NULL;
-	u8 *privkey = NULL;
-	size_t privkey_len = 0;
+	char *key = NULL, *ppkey = NULL;
+	u8 *privkey = NULL, *pp_key = NULL;
+	size_t privkey_len = 0, pp_key_len = 0;
 	int ret = -1;
 	struct dpp_configurator *conf = NULL;
 
 	curve = get_param(cmd, " curve=");
 	key = get_param(cmd, " key=");
+	ppkey = get_param(cmd, " ppkey=");
 
 	if (key) {
 		privkey_len = os_strlen(key) / 2;
@@ -3870,7 +4194,16 @@ int dpp_configurator_add(struct dpp_global *dpp, const char *cmd)
 			goto fail;
 	}
 
-	conf = dpp_keygen_configurator(curve, privkey, privkey_len);
+	if (ppkey) {
+		pp_key_len = os_strlen(key) / 2;
+		pp_key = os_malloc(pp_key_len);
+		if (!pp_key ||
+		    hexstr2bin(ppkey, pp_key, pp_key_len) < 0)
+			goto fail;
+	}
+
+	conf = dpp_keygen_configurator(curve, privkey, privkey_len,
+				       pp_key, pp_key_len);
 	if (!conf)
 		goto fail;
 
@@ -3881,7 +4214,9 @@ int dpp_configurator_add(struct dpp_global *dpp, const char *cmd)
 fail:
 	os_free(curve);
 	str_clear_free(key);
+	str_clear_free(ppkey);
 	bin_clear_free(privkey, privkey_len);
+	bin_clear_free(pp_key, pp_key_len);
 	dpp_configurator_free(conf);
 	return ret;
 }
@@ -3945,12 +4280,12 @@ int dpp_configurator_from_backup(struct dpp_global *dpp,
 				 struct dpp_asymmetric_key *key)
 {
 	struct dpp_configurator *conf;
-	const EC_KEY *eckey;
-	const EC_GROUP *group;
+	const EC_KEY *eckey, *eckey_pp;
+	const EC_GROUP *group, *group_pp;
 	int nid;
 	const struct dpp_curve_params *curve;
 
-	if (!key->csign)
+	if (!key->csign || !key->pp_key)
 		return -1;
 	eckey = EVP_PKEY_get0_EC_KEY(key->csign);
 	if (!eckey)
@@ -3964,6 +4299,18 @@ int dpp_configurator_from_backup(struct dpp_global *dpp,
 		wpa_printf(MSG_INFO, "DPP: Unsupported group in c-sign-key");
 		return -1;
 	}
+	eckey_pp = EVP_PKEY_get0_EC_KEY(key->pp_key);
+	if (!eckey_pp)
+		return -1;
+	group_pp = EC_KEY_get0_group(eckey_pp);
+	if (!group_pp)
+		return -1;
+	if (EC_GROUP_get_curve_name(group) !=
+	    EC_GROUP_get_curve_name(group_pp)) {
+		wpa_printf(MSG_INFO,
+			   "DPP: Mismatch in c-sign-key and ppKey groups");
+		return -1;
+	}
 
 	conf = os_zalloc(sizeof(*conf));
 	if (!conf)
@@ -3971,6 +4318,8 @@ int dpp_configurator_from_backup(struct dpp_global *dpp,
 	conf->curve = curve;
 	conf->csign = key->csign;
 	key->csign = NULL;
+	conf->pp_key = key->pp_key;
+	key->pp_key = NULL;
 	conf->own = 1;
 	if (dpp_configurator_gen_kid(conf) < 0) {
 		dpp_configurator_free(conf);
@@ -4009,10 +4358,8 @@ struct dpp_global * dpp_global_init(struct dpp_global_config *config)
 	dpp = os_zalloc(sizeof(*dpp));
 	if (!dpp)
 		return NULL;
-	dpp->msg_ctx = config->msg_ctx;
 #ifdef CONFIG_DPP2
 	dpp->cb_ctx = config->cb_ctx;
-	dpp->process_conf_obj = config->process_conf_obj;
 	dpp->remove_bi = config->remove_bi;
 #endif /* CONFIG_DPP2 */
 
@@ -4050,6 +4397,7 @@ void dpp_global_deinit(struct dpp_global *dpp)
 
 
 #ifdef CONFIG_DPP2
+
 struct wpabuf * dpp_build_presence_announcement(struct dpp_bootstrap_info *bi)
 {
 	struct wpabuf *msg;
@@ -4066,4 +4414,17 @@ struct wpabuf * dpp_build_presence_announcement(struct dpp_bootstrap_info *bi)
 			"DPP: Presence Announcement frame attributes", msg);
 	return msg;
 }
+
+
+void dpp_notify_chirp_received(void *msg_ctx, int id, const u8 *src,
+				unsigned int freq, const u8 *hash)
+{
+	char hex[SHA256_MAC_LEN * 2 + 1];
+
+	wpa_snprintf_hex(hex, sizeof(hex), hash, SHA256_MAC_LEN);
+	wpa_msg(msg_ctx, MSG_INFO,
+		DPP_EVENT_CHIRP_RX "id=%d src=" MACSTR " freq=%u hash=%s",
+		id, MAC2STR(src), freq, hex);
+}
+
 #endif /* CONFIG_DPP2 */

@@ -43,7 +43,7 @@ struct wpa_sm_ctx {
 	int (*add_pmkid)(void *ctx, void *network_ctx, const u8 *bssid,
 			 const u8 *pmkid, const u8 *fils_cache_id,
 			 const u8 *pmk, size_t pmk_len, u32 pmk_lifetime,
-			 u8 pmk_reauth_threshold);
+			 u8 pmk_reauth_threshold, int akmp);
 	int (*remove_pmkid)(void *ctx, void *network_ctx, const u8 *bssid,
 			    const u8 *pmkid, const u8 *fils_cache_id);
 	void (*set_config_blob)(void *ctx, struct wpa_config_blob *blob);
@@ -103,11 +103,16 @@ enum wpa_sm_conf_params {
 	WPA_PARAM_MFP,
 	WPA_PARAM_OCV,
 	WPA_PARAM_SAE_PWE,
+	WPA_PARAM_SAE_PK,
 	WPA_PARAM_DENY_PTK0_REKEY,
 	WPA_PARAM_EXT_KEY_ID,
 	WPA_PARAM_USE_EXT_KEY_ID,
 	WPA_PARAM_FT_RSNXE_USED,
 	WPA_PARAM_DPP_PFS,
+	WPA_PARAM_OCI_FREQ_EAPOL,
+	WPA_PARAM_OCI_FREQ_EAPOL_G2,
+	WPA_PARAM_OCI_FREQ_FT_ASSOC,
+	WPA_PARAM_OCI_FREQ_FILS_ASSOC,
 };
 
 struct rsn_supp_config {

@@ -51,7 +51,8 @@ static u32 get_nl80211_protocol_features(struct wpa_driver_nl80211_data *drv)
 		return 0;
 	}
 
-	if (send_and_recv_msgs(drv, msg, protocol_feature_handler, &feat) == 0)
+	if (send_and_recv_msgs(drv, msg, protocol_feature_handler, &feat,
+			       NULL, NULL) == 0)
 		return feat;
 
 	return 0;
@@ -621,6 +622,10 @@ static void wiphy_info_ext_feature_flags(struct wiphy_info_data *info,
 	if (ext_feature_isset(ext_features, len,
 			      NL80211_EXT_FEATURE_CONTROL_PORT_NO_PREAUTH))
 		capa->flags2 |= WPA_DRIVER_FLAGS2_CONTROL_PORT_RX;
+	if (ext_feature_isset(
+		    ext_features, len,
+		    NL80211_EXT_FEATURE_CONTROL_PORT_OVER_NL80211_TX_STATUS))
+		capa->flags2 |= WPA_DRIVER_FLAGS2_CONTROL_PORT_TX_STATUS;
 
 	if (ext_feature_isset(ext_features, len,
 			      NL80211_EXT_FEATURE_VLAN_OFFLOAD))
@@ -1068,7 +1073,7 @@ static int wpa_driver_nl80211_get_info(struct wpa_driver_nl80211_data *drv,
 		return -1;
 	}
 
-	if (send_and_recv_msgs(drv, msg, wiphy_info_handler, info))
+	if (send_and_recv_msgs(drv, msg, wiphy_info_handler, info, NULL, NULL))
 		return -1;
 
 	if (info->auth_supported)
@@ -1174,7 +1179,8 @@ static void qca_nl80211_check_dfs_capa(struct wpa_driver_nl80211_data *drv)
 		return;
 	}
 
-	ret = send_and_recv_msgs(drv, msg, dfs_info_handler, &dfs_capability);
+	ret = send_and_recv_msgs(drv, msg, dfs_info_handler, &dfs_capability,
+				 NULL, NULL);
 	if (!ret && dfs_capability)
 		drv->capa.flags |= WPA_DRIVER_FLAGS_DFS_OFFLOAD;
 }
@@ -1261,7 +1267,8 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
 
 	os_memset(&info, 0, sizeof(info));
 	info.capa = &drv->capa;
-	ret = send_and_recv_msgs(drv, msg, features_info_handler, &info);
+	ret = send_and_recv_msgs(drv, msg, features_info_handler, &info,
+				 NULL, NULL);
 	if (ret || !info.flags)
 		return;
 
@@ -1806,6 +1813,13 @@ static void phy_info_iftype_copy(struct he_capabilities *he_capab,
 			  nla_data(tb[NL80211_BAND_IFTYPE_ATTR_HE_CAP_PPE]),
 			  len);
 	}
+
+	if (tb[NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA]) {
+		u16 capa;
+
+		capa = nla_get_u16(tb[NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA]);
+		he_capab->he_6ghz_capa = le_to_host16(capa);
+	}
 }
 
 
@@ -1948,7 +1962,10 @@ wpa_driver_nl80211_postprocess_modes(struct hostapd_hw_modes *modes,
 	for (m = 0; m < *num_modes; m++) {
 		if (!modes[m].num_channels)
 			continue;
-		if (modes[m].channels[0].freq < 4000) {
+		if (modes[m].channels[0].freq < 2000) {
+			modes[m].num_channels = 0;
+			continue;
+		} else if (modes[m].channels[0].freq < 4000) {
 			modes[m].mode = HOSTAPD_MODE_IEEE80211B;
 			for (i = 0; i < modes[m].num_rates; i++) {
 				if (modes[m].rates[i] > 200) {
@@ -2336,7 +2353,8 @@ static int nl80211_set_regulatory_flags(struct wpa_driver_nl80211_data *drv,
 		}
 	}
 
-	return send_and_recv_msgs(drv, msg, nl80211_get_reg, results);
+	return send_and_recv_msgs(drv, msg, nl80211_get_reg, results,
+				  NULL, NULL);
 }
 
 
@@ -2425,7 +2443,8 @@ nl80211_get_hw_feature_data(void *priv, u16 *num_modes, u16 *flags,
 		return NULL;
 	}
 
-	if (send_and_recv_msgs(drv, msg, phy_info_handler, &result) == 0) {
+	if (send_and_recv_msgs(drv, msg, phy_info_handler, &result,
+			       NULL, NULL) == 0) {
 		struct hostapd_hw_modes *modes;
 
 		nl80211_set_regulatory_flags(drv, &result);

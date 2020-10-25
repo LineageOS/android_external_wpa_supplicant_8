@@ -25,6 +25,9 @@ struct dpp_connection {
 	struct dpp_relay_controller *relay;
 	struct dpp_global *global;
 	struct dpp_authentication *auth;
+	void *msg_ctx;
+	void *cb_ctx;
+	int (*process_conf_obj)(void *ctx, struct dpp_authentication *auth);
 	int sock;
 	u8 mac_addr[ETH_ALEN];
 	unsigned int freq;
@@ -38,6 +41,10 @@ struct dpp_connection {
 	unsigned int on_tcp_tx_complete_gas_done:1;
 	unsigned int on_tcp_tx_complete_remove:1;
 	unsigned int on_tcp_tx_complete_auth_ok:1;
+	unsigned int gas_comeback_in_progress:1;
+	u8 gas_dialog_token;
+	char *name;
+	enum dpp_netrole netrole;
 };
 
 /* Remote Controller */
@@ -46,6 +53,7 @@ struct dpp_relay_controller {
 	struct dpp_global *global;
 	u8 pkhash[SHA256_MAC_LEN];
 	struct hostapd_ip_addr ipaddr;
+	void *msg_ctx;
 	void *cb_ctx;
 	void (*tx)(void *ctx, const u8 *addr, unsigned int freq, const u8 *msg,
 		   size_t len);
@@ -62,12 +70,18 @@ struct dpp_controller {
 	int sock;
 	struct dl_list conn; /* struct dpp_connection */
 	char *configurator_params;
+	enum dpp_netrole netrole;
+	void *msg_ctx;
+	void *cb_ctx;
+	int (*process_conf_obj)(void *ctx, struct dpp_authentication *auth);
 };
 
 static void dpp_controller_rx(int sd, void *eloop_ctx, void *sock_ctx);
 static void dpp_conn_tx_ready(int sock, void *eloop_ctx, void *sock_ctx);
 static void dpp_controller_auth_success(struct dpp_connection *conn,
 					int initiator);
+static void dpp_tcp_build_csr(void *eloop_ctx, void *timeout_ctx);
+static void dpp_tcp_gas_query_comeback(void *eloop_ctx, void *timeout_ctx);
 
 
 static void dpp_connection_free(struct dpp_connection *conn)
@@ -81,9 +95,12 @@ static void dpp_connection_free(struct dpp_connection *conn)
 	}
 	eloop_cancel_timeout(dpp_controller_conn_status_result_wait_timeout,
 			     conn, NULL);
+	eloop_cancel_timeout(dpp_tcp_build_csr, conn, NULL);
+	eloop_cancel_timeout(dpp_tcp_gas_query_comeback, conn, NULL);
 	wpabuf_free(conn->msg);
 	wpabuf_free(conn->msg_out);
 	dpp_auth_deinit(conn->auth);
+	os_free(conn->name);
 	os_free(conn);
 }
 
@@ -110,6 +127,7 @@ int dpp_relay_add_controller(struct dpp_global *dpp,
 	ctrl->global = dpp;
 	os_memcpy(&ctrl->ipaddr, config->ipaddr, sizeof(*config->ipaddr));
 	os_memcpy(ctrl->pkhash, config->pkhash, SHA256_MAC_LEN);
+	ctrl->msg_ctx = config->msg_ctx;
 	ctrl->cb_ctx = config->cb_ctx;
 	ctrl->tx = config->tx;
 	ctrl->gas_resp_tx = config->gas_resp_tx;
@@ -139,7 +157,12 @@ dpp_relay_controller_get(struct dpp_global *dpp, const u8 *pkhash)
 static void dpp_controller_gas_done(struct dpp_connection *conn)
 {
 	struct dpp_authentication *auth = conn->auth;
-	void *msg_ctx;
+
+	if (auth->waiting_csr) {
+		wpa_printf(MSG_DEBUG, "DPP: Waiting for CSR");
+		conn->on_tcp_tx_complete_gas_done = 0;
+		return;
+	}
 
 	if (auth->peer_version >= 2 &&
 	    auth->conf_resp_status == DPP_STATUS_OK) {
@@ -148,11 +171,7 @@ static void dpp_controller_gas_done(struct dpp_connection *conn)
 		return;
 	}
 
-	if (conn->ctrl)
-		msg_ctx = conn->ctrl->global->msg_ctx;
-	else
-		msg_ctx = auth->msg_ctx;
-	wpa_msg(msg_ctx, MSG_INFO, DPP_EVENT_CONF_SENT);
+	wpa_msg(conn->msg_ctx, MSG_INFO, DPP_EVENT_CONF_SENT);
 	dpp_connection_remove(conn);
 }
 
@@ -243,9 +262,11 @@ static void dpp_controller_start_gas_client(struct dpp_connection *conn)
 {
 	struct dpp_authentication *auth = conn->auth;
 	struct wpabuf *buf;
-	int netrole_ap = 0; /* TODO: make this configurable */
+	const char *dpp_name;
 
-	buf = dpp_build_conf_req_helper(auth, "Test", netrole_ap, NULL, NULL);
+	dpp_name = conn->name ? conn->name : "Test";
+	buf = dpp_build_conf_req_helper(auth, dpp_name, conn->netrole, NULL,
+					NULL);
 	if (!buf) {
 		wpa_printf(MSG_DEBUG,
 			   "DPP: No configuration request data available");
@@ -266,7 +287,7 @@ static void dpp_controller_auth_success(struct dpp_connection *conn,
 		return;
 
 	wpa_printf(MSG_DEBUG, "DPP: Authentication succeeded");
-	wpa_msg(conn->global->msg_ctx, MSG_INFO,
+	wpa_msg(conn->msg_ctx, MSG_INFO,
 		DPP_EVENT_AUTH_SUCCESS "init=%d", initiator);
 #ifdef CONFIG_TESTING_OPTIONS
 	if (dpp_test == DPP_TEST_STOP_AT_AUTH_CONF) {
@@ -356,6 +377,8 @@ dpp_relay_new_conn(struct dpp_relay_controller *ctrl, const u8 *src,
 
 	conn->global = ctrl->global;
 	conn->relay = ctrl;
+	conn->msg_ctx = ctrl->msg_ctx;
+	conn->cb_ctx = ctrl->global->cb_ctx;
 	os_memcpy(conn->mac_addr, src, ETH_ALEN);
 	conn->freq = freq;
 
@@ -608,8 +631,7 @@ static int dpp_controller_rx_auth_req(struct dpp_connection *conn,
 		return 0;
 	}
 
-	conn->auth = dpp_auth_req_rx(conn->ctrl->global,
-				     conn->ctrl->global->msg_ctx,
+	conn->auth = dpp_auth_req_rx(conn->ctrl->global, conn->msg_ctx,
 				     conn->ctrl->allowed_roles,
 				     conn->ctrl->qr_mutual,
 				     peer_bi, own_bi, -1, hdr, buf, len);
@@ -645,7 +667,7 @@ static int dpp_controller_rx_auth_resp(struct dpp_connection *conn,
 		if (auth->auth_resp_status == DPP_STATUS_RESPONSE_PENDING) {
 			wpa_printf(MSG_DEBUG,
 				   "DPP: Start wait for full response");
-			return -1;
+			return 0;
 		}
 		wpa_printf(MSG_DEBUG, "DPP: No confirm generated");
 		dpp_connection_remove(conn);
@@ -692,7 +714,7 @@ void dpp_controller_conn_status_result_wait_timeout(void *eloop_ctx,
 
 	wpa_printf(MSG_DEBUG,
 		   "DPP: Timeout while waiting for Connection Status Result");
-	wpa_msg(conn->ctrl->global->msg_ctx, MSG_INFO,
+	wpa_msg(conn->msg_ctx, MSG_INFO,
 		DPP_EVENT_CONN_STATUS_RESULT "timeout");
 	dpp_connection_remove(conn);
 }
@@ -704,7 +726,7 @@ static int dpp_controller_rx_conf_result(struct dpp_connection *conn,
 {
 	struct dpp_authentication *auth = conn->auth;
 	enum dpp_status_error status;
-	void *msg_ctx;
+	void *msg_ctx = conn->msg_ctx;
 
 	if (!conn->ctrl && (!auth || !auth->configurator))
 		return 0;
@@ -716,10 +738,6 @@ static int dpp_controller_rx_conf_result(struct dpp_connection *conn,
 			   "DPP: No DPP Configuration waiting for result - drop");
 		return -1;
 	}
-	if (conn->ctrl)
-		msg_ctx = conn->ctrl->global->msg_ctx;
-	else
-		msg_ctx = auth->msg_ctx;
 
 	status = dpp_conf_result_rx(auth, hdr, buf, len);
 	if (status == DPP_STATUS_OK && auth->send_conn_status) {
@@ -765,8 +783,7 @@ static int dpp_controller_rx_conn_status_result(struct dpp_connection *conn,
 
 	status = dpp_conn_status_result_rx(auth, hdr, buf, len,
 					   ssid, &ssid_len, &channel_list);
-	wpa_msg(conn->ctrl->global->msg_ctx, MSG_INFO,
-		DPP_EVENT_CONN_STATUS_RESULT
+	wpa_msg(conn->msg_ctx, MSG_INFO, DPP_EVENT_CONN_STATUS_RESULT
 		"result=%d ssid=%s channel_list=%s",
 		status, wpa_ssid_txt(ssid, ssid_len),
 		channel_list ? channel_list : "N/A");
@@ -796,7 +813,7 @@ static int dpp_controller_rx_presence_announcement(struct dpp_connection *conn,
 	r_bootstrap = dpp_get_attr(buf, len, DPP_ATTR_R_BOOTSTRAP_KEY_HASH,
 				   &r_bootstrap_len);
 	if (!r_bootstrap || r_bootstrap_len != SHA256_MAC_LEN) {
-		wpa_msg(dpp->msg_ctx, MSG_INFO, DPP_EVENT_FAIL
+		wpa_msg(conn->msg_ctx, MSG_INFO, DPP_EVENT_FAIL
 			"Missing or invalid required Responder Bootstrapping Key Hash attribute");
 		return -1;
 	}
@@ -809,7 +826,7 @@ static int dpp_controller_rx_presence_announcement(struct dpp_connection *conn,
 		return -1;
 	}
 
-	auth = dpp_auth_init(dpp, dpp->msg_ctx, peer_bi, NULL,
+	auth = dpp_auth_init(dpp, conn->msg_ctx, peer_bi, NULL,
 			     DPP_CAPAB_CONFIGURATOR, -1, NULL, 0);
 	if (!auth)
 		return -1;
@@ -828,11 +845,12 @@ static int dpp_controller_rx_reconfig_announcement(struct dpp_connection *conn,
 						   const u8 *hdr, const u8 *buf,
 						   size_t len)
 {
-	const u8 *csign_hash;
-	u16 csign_hash_len;
+	const u8 *csign_hash, *fcgroup, *a_nonce, *e_id;
+	u16 csign_hash_len, fcgroup_len, a_nonce_len, e_id_len;
 	struct dpp_configurator *conf;
 	struct dpp_global *dpp = conn->ctrl->global;
 	struct dpp_authentication *auth;
+	u16 group;
 
 	if (conn->auth) {
 		wpa_printf(MSG_DEBUG,
@@ -845,7 +863,7 @@ static int dpp_controller_rx_reconfig_announcement(struct dpp_connection *conn,
 	csign_hash = dpp_get_attr(buf, len, DPP_ATTR_C_SIGN_KEY_HASH,
 				  &csign_hash_len);
 	if (!csign_hash || csign_hash_len != SHA256_MAC_LEN) {
-		wpa_msg(dpp->msg_ctx, MSG_INFO, DPP_EVENT_FAIL
+		wpa_msg(conn->msg_ctx, MSG_INFO, DPP_EVENT_FAIL
 			"Missing or invalid required Configurator C-sign key Hash attribute");
 		return -1;
 	}
@@ -858,7 +876,21 @@ static int dpp_controller_rx_reconfig_announcement(struct dpp_connection *conn,
 		return -1;
 	}
 
-	auth = dpp_reconfig_init(dpp, dpp->msg_ctx, conf, 0);
+	fcgroup = dpp_get_attr(buf, len, DPP_ATTR_FINITE_CYCLIC_GROUP,
+			       &fcgroup_len);
+	if (!fcgroup || fcgroup_len != 2) {
+		wpa_msg(conn->msg_ctx, MSG_INFO, DPP_EVENT_FAIL
+			"Missing or invalid required Finite Cyclic Group attribute");
+		return -1;
+	}
+	group = WPA_GET_LE16(fcgroup);
+	wpa_printf(MSG_DEBUG, "DPP: Enrollee finite cyclic group: %u", group);
+
+	a_nonce = dpp_get_attr(buf, len, DPP_ATTR_A_NONCE, &a_nonce_len);
+	e_id = dpp_get_attr(buf, len, DPP_ATTR_E_PRIME_ID, &e_id_len);
+
+	auth = dpp_reconfig_init(dpp, conn->msg_ctx, conf, 0, group,
+				 a_nonce, a_nonce_len, e_id, e_id_len);
 	if (!auth)
 		return -1;
 	if (dpp_set_configurator(auth, conn->ctrl->configurator_params) < 0) {
@@ -965,14 +997,91 @@ static int dpp_controller_rx_action(struct dpp_connection *conn, const u8 *msg,
 }
 
 
+static int dpp_tcp_send_comeback_delay(struct dpp_connection *conn, u8 action)
+{
+	struct wpabuf *buf;
+	size_t len = 18;
+
+	if (action == WLAN_PA_GAS_COMEBACK_RESP)
+		len++;
+
+	buf = wpabuf_alloc(4 + len);
+	if (!buf)
+		return -1;
+
+	wpabuf_put_be32(buf, len);
+
+	wpabuf_put_u8(buf, action);
+	wpabuf_put_u8(buf, conn->gas_dialog_token);
+	wpabuf_put_le16(buf, WLAN_STATUS_SUCCESS);
+	if (action == WLAN_PA_GAS_COMEBACK_RESP)
+		wpabuf_put_u8(buf, 0);
+	wpabuf_put_le16(buf, 500); /* GAS Comeback Delay */
+
+	dpp_write_adv_proto(buf);
+	wpabuf_put_le16(buf, 0); /* Query Response Length */
+
+	/* Send Config Response over TCP */
+	wpa_hexdump_buf(MSG_MSGDUMP, "DPP: Outgoing TCP message", buf);
+	wpabuf_free(conn->msg_out);
+	conn->msg_out_pos = 0;
+	conn->msg_out = buf;
+	dpp_tcp_send(conn);
+	return 0;
+}
+
+
+static int dpp_tcp_send_gas_resp(struct dpp_connection *conn, u8 action,
+				 struct wpabuf *resp)
+{
+	struct wpabuf *buf;
+	size_t len;
+
+	if (!resp)
+		return -1;
+
+	len = 18 + wpabuf_len(resp);
+	if (action == WLAN_PA_GAS_COMEBACK_RESP)
+		len++;
+
+	buf = wpabuf_alloc(4 + len);
+	if (!buf) {
+		wpabuf_free(resp);
+		return -1;
+	}
+
+	wpabuf_put_be32(buf, len);
+
+	wpabuf_put_u8(buf, action);
+	wpabuf_put_u8(buf, conn->gas_dialog_token);
+	wpabuf_put_le16(buf, WLAN_STATUS_SUCCESS);
+	if (action == WLAN_PA_GAS_COMEBACK_RESP)
+		wpabuf_put_u8(buf, 0);
+	wpabuf_put_le16(buf, 0); /* GAS Comeback Delay */
+
+	dpp_write_adv_proto(buf);
+	dpp_write_gas_query(buf, resp);
+	wpabuf_free(resp);
+
+	/* Send Config Response over TCP; GAS fragmentation is taken care of by
+	 * the Relay */
+	wpa_hexdump_buf(MSG_MSGDUMP, "DPP: Outgoing TCP message", buf);
+	wpabuf_free(conn->msg_out);
+	conn->msg_out_pos = 0;
+	conn->msg_out = buf;
+	conn->on_tcp_tx_complete_gas_done = 1;
+	dpp_tcp_send(conn);
+	return 0;
+}
+
+
 static int dpp_controller_rx_gas_req(struct dpp_connection *conn, const u8 *msg,
 				     size_t len)
 {
 	const u8 *pos, *end, *next;
-	u8 dialog_token;
 	const u8 *adv_proto;
 	u16 slen;
-	struct wpabuf *resp, *buf;
+	struct wpabuf *resp;
 	struct dpp_authentication *auth = conn->auth;
 
 	if (len < 1 + 2)
@@ -990,7 +1099,7 @@ static int dpp_controller_rx_gas_req(struct dpp_connection *conn, const u8 *msg,
 	pos = msg;
 	end = msg + len;
 
-	dialog_token = *pos++;
+	conn->gas_dialog_token = *pos++;
 	adv_proto = pos++;
 	slen = *pos++;
 	if (*adv_proto != WLAN_EID_ADV_PROTO ||
@@ -1015,35 +1124,76 @@ static int dpp_controller_rx_gas_req(struct dpp_connection *conn, const u8 *msg,
 		return -1;
 
 	resp = dpp_conf_req_rx(auth, pos, slen);
-	if (!resp)
+	if (!resp && auth->waiting_cert) {
+		wpa_printf(MSG_DEBUG, "DPP: Certificate not yet ready");
+		conn->gas_comeback_in_progress = 1;
+		return dpp_tcp_send_comeback_delay(conn,
+						   WLAN_PA_GAS_INITIAL_RESP);
+	}
+
+	return dpp_tcp_send_gas_resp(conn, WLAN_PA_GAS_INITIAL_RESP, resp);
+}
+
+
+static int dpp_controller_rx_gas_comeback_req(struct dpp_connection *conn,
+					      const u8 *msg, size_t len)
+{
+	u8 dialog_token;
+	struct dpp_authentication *auth = conn->auth;
+	struct wpabuf *resp;
+
+	if (len < 1)
 		return -1;
 
-	buf = wpabuf_alloc(4 + 18 + wpabuf_len(resp));
-	if (!buf) {
-		wpabuf_free(resp);
+	wpa_printf(MSG_DEBUG,
+		   "DPP: Received DPP Configuration Request over TCP (comeback)");
+
+	if (!auth || (!conn->ctrl && !auth->configurator) ||
+	    (!auth->auth_success && !auth->reconfig_success) ||
+	    !conn->gas_comeback_in_progress) {
+		wpa_printf(MSG_DEBUG, "DPP: No matching exchange in progress");
 		return -1;
 	}
 
-	wpabuf_put_be32(buf, 18 + wpabuf_len(resp));
+	dialog_token = msg[0];
+	if (dialog_token != conn->gas_dialog_token) {
+		wpa_printf(MSG_DEBUG, "DPP: Dialog token mismatch (%u != %u)",
+			   dialog_token, conn->gas_dialog_token);
+		return -1;
+	}
 
-	wpabuf_put_u8(buf, WLAN_PA_GAS_INITIAL_RESP);
-	wpabuf_put_u8(buf, dialog_token);
-	wpabuf_put_le16(buf, WLAN_STATUS_SUCCESS);
-	wpabuf_put_le16(buf, 0); /* GAS Comeback Delay */
+	if (!auth->conf_resp_tcp) {
+		wpa_printf(MSG_DEBUG, "DPP: Certificate not yet ready");
+		return dpp_tcp_send_comeback_delay(conn,
+						   WLAN_PA_GAS_COMEBACK_RESP);
+	}
 
-	dpp_write_adv_proto(buf);
-	dpp_write_gas_query(buf, resp);
-	wpabuf_free(resp);
+	wpa_printf(MSG_DEBUG,
+		   "DPP: Configuration response is ready to be sent out");
+	resp = auth->conf_resp_tcp;
+	auth->conf_resp_tcp = NULL;
+	return dpp_tcp_send_gas_resp(conn, WLAN_PA_GAS_COMEBACK_RESP, resp);
+}
 
-	/* Send Config Response over TCP; GAS fragmentation is taken care of by
-	 * the Relay */
-	wpa_hexdump_buf(MSG_MSGDUMP, "DPP: Outgoing TCP message", buf);
-	wpabuf_free(conn->msg_out);
-	conn->msg_out_pos = 0;
-	conn->msg_out = buf;
-	conn->on_tcp_tx_complete_gas_done = 1;
-	dpp_tcp_send(conn);
-	return 0;
+
+static void dpp_tcp_build_csr(void *eloop_ctx, void *timeout_ctx)
+{
+	struct dpp_connection *conn = eloop_ctx;
+	struct dpp_authentication *auth = conn->auth;
+
+	if (!auth || !auth->csrattrs)
+		return;
+
+	wpa_printf(MSG_DEBUG, "DPP: Build CSR");
+	wpabuf_free(auth->csr);
+	/* TODO: Additional information needed for CSR based on csrAttrs */
+	auth->csr = dpp_build_csr(auth, conn->name ? conn->name : "Test");
+	if (!auth->csr) {
+		dpp_connection_remove(conn);
+		return;
+	}
+
+	dpp_controller_start_gas_client(conn);
 }
 
 
@@ -1062,14 +1212,18 @@ static int dpp_tcp_rx_gas_resp(struct dpp_connection *conn, struct wpabuf *resp)
 	else
 		res = -1;
 	wpabuf_free(resp);
+	if (res == -2) {
+		wpa_printf(MSG_DEBUG, "DPP: CSR needed");
+		eloop_register_timeout(0, 0, dpp_tcp_build_csr, conn, NULL);
+		return 0;
+	}
 	if (res < 0) {
 		wpa_printf(MSG_DEBUG, "DPP: Configuration attempt failed");
 		return -1;
 	}
 
-	if (conn->global->process_conf_obj)
-		res = conn->global->process_conf_obj(conn->global->cb_ctx,
-						     auth);
+	if (conn->process_conf_obj)
+		res = conn->process_conf_obj(conn->cb_ctx, auth);
 	else
 		res = 0;
 
@@ -1092,15 +1246,40 @@ static int dpp_tcp_rx_gas_resp(struct dpp_connection *conn, struct wpabuf *resp)
 }
 
 
+static void dpp_tcp_gas_query_comeback(void *eloop_ctx, void *timeout_ctx)
+{
+	struct dpp_connection *conn = eloop_ctx;
+	struct dpp_authentication *auth = conn->auth;
+	struct wpabuf *msg;
+
+	if (!auth)
+		return;
+
+	wpa_printf(MSG_DEBUG, "DPP: Send GAS Comeback Request");
+	msg = wpabuf_alloc(4 + 2);
+	if (!msg)
+		return;
+	wpabuf_put_be32(msg, 2);
+	wpabuf_put_u8(msg, WLAN_PA_GAS_COMEBACK_REQ);
+	wpabuf_put_u8(msg, conn->gas_dialog_token);
+	wpa_hexdump_buf(MSG_MSGDUMP, "DPP: Outgoing TCP message", msg);
+
+	wpabuf_free(conn->msg_out);
+	conn->msg_out_pos = 0;
+	conn->msg_out = msg;
+	dpp_tcp_send(conn);
+}
+
+
 static int dpp_rx_gas_resp(struct dpp_connection *conn, const u8 *msg,
-			   size_t len)
+			   size_t len, bool comeback)
 {
 	struct wpabuf *buf;
 	u8 dialog_token;
 	const u8 *pos, *end, *next, *adv_proto;
-	u16 status, slen;
+	u16 status, slen, comeback_delay;
 
-	if (len < 5 + 2)
+	if (len < 5 + 2 + (comeback ? 1 : 0))
 		return -1;
 
 	wpa_printf(MSG_DEBUG,
@@ -1116,7 +1295,10 @@ static int dpp_rx_gas_resp(struct dpp_connection *conn, const u8 *msg,
 		return -1;
 	}
 	pos += 2;
-	pos += 2; /* ignore GAS Comeback Delay */
+	if (comeback)
+		pos++; /* ignore Fragment ID */
+	comeback_delay = WPA_GET_LE16(pos);
+	pos += 2;
 
 	adv_proto = pos++;
 	slen = *pos++;
@@ -1140,6 +1322,20 @@ static int dpp_rx_gas_resp(struct dpp_connection *conn, const u8 *msg,
 	pos += 2;
 	if (slen > end - pos)
 		return -1;
+
+	if (comeback_delay) {
+		unsigned int secs, usecs;
+
+		conn->gas_dialog_token = dialog_token;
+		secs = (comeback_delay * 1024) / 1000000;
+		usecs = comeback_delay * 1024 - secs * 1000000;
+		wpa_printf(MSG_DEBUG, "DPP: Comeback delay: %u",
+			   comeback_delay);
+		eloop_cancel_timeout(dpp_tcp_gas_query_comeback, conn, NULL);
+		eloop_register_timeout(secs, usecs, dpp_tcp_gas_query_comeback,
+				       conn, NULL);
+		return 0;
+	}
 
 	buf = wpabuf_alloc(slen);
 	if (!buf)
@@ -1264,8 +1460,15 @@ static void dpp_controller_rx(int sd, void *eloop_ctx, void *sock_ctx)
 			dpp_connection_remove(conn);
 		break;
 	case WLAN_PA_GAS_INITIAL_RESP:
+	case WLAN_PA_GAS_COMEBACK_RESP:
 		if (dpp_rx_gas_resp(conn, pos + 1,
-				    wpabuf_len(conn->msg) - 1) < 0)
+				    wpabuf_len(conn->msg) - 1,
+				    *pos == WLAN_PA_GAS_COMEBACK_RESP) < 0)
+			dpp_connection_remove(conn);
+		break;
+	case WLAN_PA_GAS_COMEBACK_REQ:
+		if (dpp_controller_rx_gas_comeback_req(
+			    conn, pos + 1, wpabuf_len(conn->msg) - 1) < 0)
 			dpp_connection_remove(conn);
 		break;
 	default:
@@ -1302,7 +1505,11 @@ static void dpp_controller_tcp_cb(int sd, void *eloop_ctx, void *sock_ctx)
 
 	conn->global = ctrl->global;
 	conn->ctrl = ctrl;
+	conn->msg_ctx = ctrl->msg_ctx;
+	conn->cb_ctx = ctrl->cb_ctx;
+	conn->process_conf_obj = ctrl->process_conf_obj;
 	conn->sock = fd;
+	conn->netrole = ctrl->netrole;
 
 	if (fcntl(conn->sock, F_SETFL, O_NONBLOCK) != 0) {
 		wpa_printf(MSG_DEBUG, "DPP: fnctl(O_NONBLOCK) failed: %s",
@@ -1327,7 +1534,10 @@ fail:
 
 
 int dpp_tcp_init(struct dpp_global *dpp, struct dpp_authentication *auth,
-		 const struct hostapd_ip_addr *addr, int port)
+		 const struct hostapd_ip_addr *addr, int port, const char *name,
+		 enum dpp_netrole netrole, void *msg_ctx, void *cb_ctx,
+		 int (*process_conf_obj)(void *ctx,
+					 struct dpp_authentication *auth))
 {
 	struct dpp_connection *conn;
 	struct sockaddr_storage saddr;
@@ -1349,6 +1559,11 @@ int dpp_tcp_init(struct dpp_global *dpp, struct dpp_authentication *auth,
 		return -1;
 	}
 
+	conn->msg_ctx = msg_ctx;
+	conn->cb_ctx = cb_ctx;
+	conn->process_conf_obj = process_conf_obj;
+	conn->name = os_strdup(name ? name : "Test");
+	conn->netrole = netrole;
 	conn->global = dpp;
 	conn->auth = auth;
 	conn->sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -1418,7 +1633,11 @@ int dpp_controller_start(struct dpp_global *dpp,
 			os_strdup(config->configurator_params);
 	dl_list_init(&ctrl->conn);
 	ctrl->allowed_roles = config->allowed_roles;
-	ctrl->qr_mutual = 0;
+	ctrl->qr_mutual = config->qr_mutual;
+	ctrl->netrole = config->netrole;
+	ctrl->msg_ctx = config->msg_ctx;
+	ctrl->cb_ctx = config->cb_ctx;
+	ctrl->process_conf_obj = config->process_conf_obj;
 
 	ctrl->sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (ctrl->sock < 0)
@@ -1470,6 +1689,69 @@ void dpp_controller_stop(struct dpp_global *dpp)
 	if (dpp) {
 		dpp_controller_free(dpp->controller);
 		dpp->controller = NULL;
+	}
+}
+
+
+static bool dpp_tcp_peer_id_match(struct dpp_authentication *auth,
+				  unsigned int id)
+{
+	return auth &&
+		((auth->peer_bi && auth->peer_bi->id == id) ||
+		 (auth->tmp_peer_bi && auth->tmp_peer_bi->id == id));
+}
+
+
+static struct dpp_authentication * dpp_tcp_get_auth(struct dpp_global *dpp,
+						    unsigned int id)
+{
+	struct dpp_connection *conn;
+
+	dl_list_for_each(conn, &dpp->tcp_init, struct dpp_connection, list) {
+		if (dpp_tcp_peer_id_match(conn->auth, id))
+			return conn->auth;
+	}
+
+	return NULL;
+}
+
+
+struct dpp_authentication * dpp_controller_get_auth(struct dpp_global *dpp,
+						    unsigned int id)
+{
+	struct dpp_controller *ctrl = dpp->controller;
+	struct dpp_connection *conn;
+
+	if (!ctrl)
+		return dpp_tcp_get_auth(dpp, id);
+
+	dl_list_for_each(conn, &ctrl->conn, struct dpp_connection, list) {
+		if (dpp_tcp_peer_id_match(conn->auth, id))
+			return conn->auth;
+	}
+
+	return dpp_tcp_get_auth(dpp, id);
+}
+
+
+void dpp_controller_new_qr_code(struct dpp_global *dpp,
+				struct dpp_bootstrap_info *bi)
+{
+	struct dpp_controller *ctrl = dpp->controller;
+	struct dpp_connection *conn;
+
+	if (!ctrl)
+		return;
+
+	dl_list_for_each(conn, &ctrl->conn, struct dpp_connection, list) {
+		struct dpp_authentication *auth = conn->auth;
+
+		if (!auth->response_pending ||
+		    dpp_notify_new_qr_code(auth, bi) != 1)
+			continue;
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Sending out pending authentication response");
+		dpp_tcp_send_msg(conn, conn->auth->resp_msg);
 	}
 }
 

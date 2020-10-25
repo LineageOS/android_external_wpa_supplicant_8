@@ -952,9 +952,10 @@ SupplicantStatus StaIface::initiateAnqpQueryInternal(
 		    static_cast<std::underlying_type<
 			ISupplicantStaIface::Hs20AnqpSubtypes>::type>(type));
 	}
+
 	if (anqp_send_req(
-		wpa_s, mac_address.data(), info_elems_buf, num_info_elems,
-		sub_types_bitmask, false)) {
+		wpa_s, mac_address.data(), 0, info_elems_buf, num_info_elems,
+		sub_types_bitmask, 0)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
