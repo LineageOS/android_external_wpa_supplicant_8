@@ -62,6 +62,9 @@ public:
 	Return<void> registerCallback(
 	    const sp<ISupplicantStaNetworkCallback>& callback,
 	    registerCallback_cb _hidl_cb) override;
+	Return<void> registerCallback_1_4(
+	    const sp<V1_4::ISupplicantStaNetworkCallback>& callback,
+	    registerCallback_1_4_cb _hidl_cb) override;
 	Return<void> setSsid(
 	    const hidl_vec<uint8_t>& ssid, setSsid_cb _hidl_cb) override;
 	Return<void> setBssid(
@@ -276,6 +279,8 @@ private:
 	std::pair<SupplicantStatus, IfaceType> getTypeInternal();
 	SupplicantStatus registerCallbackInternal(
 	    const sp<ISupplicantStaNetworkCallback>& callback);
+	SupplicantStatus registerCallback_1_4Internal(
+	    const sp<V1_4::ISupplicantStaNetworkCallback>& callback);
 	SupplicantStatus setSsidInternal(const std::vector<uint8_t>& ssid);
 	SupplicantStatus setBssidInternal(const std::array<uint8_t, 6>& bssid);
 	SupplicantStatus setScanSsidInternal(bool enable);

@@ -876,3 +876,17 @@ void wpas_hidl_notify_bss_tm_status(struct wpa_supplicant *wpa_s)
 
 	hidl_manager->notifyBssTmStatus(wpa_s);
 }
+
+void wpas_hidl_notify_transition_disable(struct wpa_supplicant *wpa_s,
+					    struct wpa_ssid *ssid,
+					    u8 bitmap)
+{
+	if (!wpa_s || !ssid)
+		return;
+
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager)
+		return;
+
+	hidl_manager->notifyTransitionDisable(wpa_s, ssid, bitmap);
+}

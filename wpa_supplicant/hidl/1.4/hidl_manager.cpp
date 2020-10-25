@@ -323,6 +323,38 @@ void callWithEachNetworkCallback(
 	}
 }
 
+template <class CallbackTypeBase, class CallbackTypeDerived>
+void callWithEachNetworkCallbackDerived(
+    const std::string &ifname, int network_id,
+    const std::function<
+	android::hardware::Return<void>(android::sp<CallbackTypeDerived>)> &method,
+    const std::map<
+	const std::string, std::vector<android::sp<CallbackTypeBase>>>
+	&callbacks_map)
+{
+	if (ifname.empty())
+		return;
+
+	// Generate the key to be used to lookup the network.
+	const std::string network_key =
+	    getNetworkObjectMapKey(ifname, network_id);
+	auto network_callback_map_iter = callbacks_map.find(network_key);
+	if (network_callback_map_iter == callbacks_map.end())
+		return;
+	const auto &network_callback_list = network_callback_map_iter->second;
+	for (const auto &callback : network_callback_list) {
+		android::sp<CallbackTypeDerived> callback_derived =
+		    CallbackTypeDerived::castFrom(callback);
+		if (callback_derived == nullptr)
+			continue;
+		if (!method(callback_derived).isOk()) {
+			wpa_printf(
+			    MSG_ERROR,
+			    "Failed to invoke HIDL network callback");
+		}
+	}
+}
+
 int parseGsmAuthNetworkRequest(
     const std::string &params_str,
     std::vector<hidl_array<uint8_t, kGsmRandLenBytes>> *out_rands)
@@ -1737,6 +1769,56 @@ void HidlManager::notifyBssTmStatus(struct wpa_supplicant *wpa_s)
 #endif
 }
 
+uint32_t setTransitionDisableFlagsMask(u8 bitmap)
+{
+	uint32_t flags = 0;
+
+	if (bitmap & TRANSITION_DISABLE_WPA3_PERSONAL) {
+		flags |= V1_4::ISupplicantStaNetworkCallback::
+			TransitionDisableIndication::
+			USE_WPA3_PERSONAL;
+		bitmap &= ~TRANSITION_DISABLE_WPA3_PERSONAL;
+	}
+	if (bitmap & TRANSITION_DISABLE_SAE_PK) {
+		flags |= V1_4::ISupplicantStaNetworkCallback::
+			TransitionDisableIndication::
+			USE_SAE_PK;
+		bitmap &= ~TRANSITION_DISABLE_SAE_PK;
+	}
+	if (bitmap & TRANSITION_DISABLE_WPA3_ENTERPRISE) {
+		flags |= V1_4::ISupplicantStaNetworkCallback::
+			TransitionDisableIndication::
+			USE_WPA3_ENTERPRISE;
+		bitmap &= ~TRANSITION_DISABLE_WPA3_ENTERPRISE;
+	}
+	if (bitmap & TRANSITION_DISABLE_ENHANCED_OPEN) {
+		flags |= V1_4::ISupplicantStaNetworkCallback::
+			TransitionDisableIndication::
+			USE_ENHANCED_OPEN;
+		bitmap &= ~TRANSITION_DISABLE_ENHANCED_OPEN;
+	}
+
+	if (bitmap != 0) {
+		wpa_printf(MSG_WARNING, "Unhandled transition disable bit: 0x%x", bitmap);
+	}
+
+	return flags;
+}
+
+void HidlManager::notifyTransitionDisable(struct wpa_supplicant *wpa_s,
+    struct wpa_ssid *ssid, u8 bitmap)
+{
+	uint32_t flag = setTransitionDisableFlagsMask(bitmap);
+	const std::function<
+	    Return<void>(android::sp<V1_4::ISupplicantStaNetworkCallback>)>
+	    func = std::bind(
+		&V1_4::ISupplicantStaNetworkCallback::onTransitionDisable,
+		std::placeholders::_1, flag);
+
+	callWithEachStaNetworkCallbackDerived(wpa_s->ifname, ssid->id, func);
+}
+
+
 /**
  * Retrieve the |ISupplicantP2pIface| hidl object reference using the provided
  * ifname.
@@ -2192,6 +2274,24 @@ void HidlManager::callWithEachStaNetworkCallback(
 {
 	callWithEachNetworkCallback(
 	    ifname, network_id, method, sta_network_callbacks_map_);
+}
+
+/**
+ * Helper function to invoke the provided callback method on all the
+ * registered derived interface callback hidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required hidl method from
+ * derived |V1_x::ISupplicantIfaceCallback|.
+ */
+template <class CallbackTypeDerived>
+void HidlManager::callWithEachStaNetworkCallbackDerived(
+    const std::string &ifname, int network_id,
+    const std::function<
+	Return<void>(android::sp<CallbackTypeDerived>)> &method)
+{
+	callWithEachNetworkCallbackDerived(ifname, network_id, method, sta_network_callbacks_map_);
 }
 }  // namespace implementation
 }  // namespace V1_4

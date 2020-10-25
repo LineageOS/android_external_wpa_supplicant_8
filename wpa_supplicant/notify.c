@@ -1208,3 +1208,16 @@ void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
 
 	wpas_hidl_notify_pmk_cache_added(wpa_s, entry);
 }
+
+void wpas_notify_transition_disable(struct wpa_supplicant *wpa_s,
+				    struct wpa_ssid *ssid,
+				    u8 bitmap)
+{
+	if (!wpa_s)
+		return;
+
+	if (!ssid)
+		return;
+
+	wpas_hidl_notify_transition_disable(wpa_s, ssid, bitmap);
+}

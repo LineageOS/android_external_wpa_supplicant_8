@@ -18,6 +18,7 @@
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pNetworkCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetworkCallback.h>
+#include <android/hardware/wifi/supplicant/1.4/ISupplicantStaNetworkCallback.h>
 
 #include "p2p_iface.h"
 #include "p2p_network.h"
@@ -166,6 +167,9 @@ public:
 	void notifyPmkCacheAdded(struct wpa_supplicant *wpa_s,
 			struct rsn_pmksa_cache_entry *pmksa_entry);
 	void notifyBssTmStatus(struct wpa_supplicant *wpa_s);
+	void notifyTransitionDisable(struct wpa_supplicant *wpa_s,
+			struct wpa_ssid *ssid,
+			u8 bitmap);
 
 	// Methods called from hidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
@@ -258,6 +262,11 @@ private:
 	    const std::string &ifname, int network_id,
 	    const std::function<android::hardware::Return<void>(
 		android::sp<ISupplicantStaNetworkCallback>)> &method);
+	template <class CallbackTypeDerived>
+	void callWithEachStaNetworkCallbackDerived(
+	    const std::string &ifname, int network_id,
+	    const std::function<
+		Return<void>(android::sp<CallbackTypeDerived>)> &method);
 
 	// Singleton instance of this class.
 	static HidlManager *instance_;
