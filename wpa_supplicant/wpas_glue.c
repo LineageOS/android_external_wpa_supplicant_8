@@ -1331,6 +1331,8 @@ static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
 		changed = 1;
 	}
 
+	wpas_notify_transition_disable(wpa_s, ssid, bitmap);
+
 	if (!changed)
 		return;
 

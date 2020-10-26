@@ -156,6 +156,15 @@ Return<void> StaNetwork::registerCallback(
 	    &StaNetwork::registerCallbackInternal, _hidl_cb, callback);
 }
 
+Return<void> StaNetwork::registerCallback_1_4(
+    const sp<V1_4::ISupplicantStaNetworkCallback> &callback,
+    registerCallback_1_4_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::registerCallback_1_4Internal, _hidl_cb, callback);
+}
+
 Return<void> StaNetwork::setSsid(
     const hidl_vec<uint8_t> &ssid, setSsid_cb _hidl_cb)
 {
@@ -994,6 +1003,12 @@ std::pair<SupplicantStatus, IfaceType> StaNetwork::getTypeInternal()
 
 SupplicantStatus StaNetwork::registerCallbackInternal(
     const sp<ISupplicantStaNetworkCallback> &callback)
+{
+	return {SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"};
+}
+
+SupplicantStatus StaNetwork::registerCallback_1_4Internal(
+    const sp<V1_4::ISupplicantStaNetworkCallback> &callback)
 {
 	HidlManager *hidl_manager = HidlManager::getInstance();
 	if (!hidl_manager || hidl_manager->addStaNetworkCallbackHidlObject(
