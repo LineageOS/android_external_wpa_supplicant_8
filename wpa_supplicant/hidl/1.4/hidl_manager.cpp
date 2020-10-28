@@ -931,7 +931,7 @@ void HidlManager::notifyHs20RxSubscriptionRemediation(
 void HidlManager::notifyHs20RxDeauthImminentNotice(
     struct wpa_supplicant *wpa_s, u8 code, u16 reauth_delay, const char *url)
 {
-	if (!wpa_s || !url)
+	if (!wpa_s)
 		return;
 
 	if (sta_iface_object_map_.find(wpa_s->ifname) ==

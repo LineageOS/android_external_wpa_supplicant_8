@@ -1007,7 +1007,7 @@ void wpas_notify_hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s,
 						const char *url)
 {
 #ifdef CONFIG_HS20
-	if (!wpa_s || !url)
+	if (!wpa_s)
 		return;
 
 	wpas_hidl_notify_hs20_rx_deauth_imminent_notice(wpa_s, code, reauth_delay,
