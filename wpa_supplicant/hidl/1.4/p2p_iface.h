@@ -30,6 +30,8 @@ extern "C"
 #include "config.h"
 }
 
+#define P2P_MGMT_DEVICE_PREFIX       "p2p-dev-"
+
 namespace android {
 namespace hardware {
 namespace wifi {

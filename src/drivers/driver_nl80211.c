@@ -7689,8 +7689,10 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
 
 		drv->global->if_add_wdevid = p2pdev_info.wdev_id;
 		drv->global->if_add_wdevid_set = p2pdev_info.wdev_id_set;
-		if (!is_zero_ether_addr(p2pdev_info.macaddr))
+		if (!is_zero_ether_addr(p2pdev_info.macaddr)) {
 			os_memcpy(if_addr, p2pdev_info.macaddr, ETH_ALEN);
+			os_memcpy(drv->global->p2p_perm_addr, p2pdev_info.macaddr, ETH_ALEN);
+		}
 		wpa_printf(MSG_DEBUG, "nl80211: New P2P Device interface %s (0x%llx) created",
 			   ifname,
 			   (long long unsigned int) p2pdev_info.wdev_id);
@@ -10125,10 +10127,45 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
 	int new_addr = addr != NULL;
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	struct nl_msg *msg;
+	struct nlattr *params;
+	int ret;
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
+	wpa_printf(MSG_DEBUG, "Enter: %s", __FUNCTION__);
 
 	if (TEST_FAIL())
 		return -1;
+	if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE) {
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+		if (!addr ) {
+			addr = drv->global->p2p_perm_addr;
+		}
 
+		if (!(msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_VENDOR)) ||
+			nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_BRCM) ||
+			nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
+				BRCM_VENDOR_SUBCMD_SET_MAC) ||
+			!(params = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)) ||
+			nla_put(msg, BRCM_ATTR_DRIVER_MAC_ADDR, ETH_ALEN, addr)) {
+			wpa_printf(MSG_ERROR, "failed to put p2p randmac");
+			nl80211_nlmsg_clear(msg);
+			nlmsg_free(msg);
+			return -ENOBUFS;
+		}
+		nla_nest_end(msg, params);
+
+		ret = send_and_recv_msgs(drv, msg, NULL, (void *) -1, NULL, NULL);
+		if (ret) {
+			wpa_printf(MSG_ERROR, "nl80211: p2p set macaddr failed: ret=%d (%s)",
+				ret, strerror(-ret));
+		}
+		memcpy(bss->addr, addr, ETH_ALEN);
+		return ret;
+#else
+		return -ENOTSUP;
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
+	}
 	if (!addr)
 		addr = drv->perm_addr;
 
@@ -10138,27 +10175,26 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
 	if (linux_set_ifhwaddr(drv->global->ioctl_sock, bss->ifname, addr) < 0)
 	{
 		wpa_printf(MSG_DEBUG,
-			   "nl80211: failed to set_mac_addr for %s to " MACSTR,
-			   bss->ifname, MAC2STR(addr));
+			"nl80211: failed to set_mac_addr for %s to " MACSTR,
+			bss->ifname, MAC2STR(addr));
 		if (linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname,
-					  1) < 0) {
+			1) < 0) {
 			wpa_printf(MSG_DEBUG,
-				   "nl80211: Could not restore interface UP after failed set_mac_addr");
+				"nl80211: Could not restore interface UP after failed set_mac_addr");
 		}
 		return -1;
 	}
 
 	wpa_printf(MSG_DEBUG, "nl80211: set_mac_addr for %s to " MACSTR,
-		   bss->ifname, MAC2STR(addr));
+		bss->ifname, MAC2STR(addr));
 	drv->addr_changed = new_addr;
 	os_memcpy(bss->addr, addr, ETH_ALEN);
 
 	if (linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 1) < 0)
 	{
 		wpa_printf(MSG_DEBUG,
-			   "nl80211: Could not restore interface UP after set_mac_addr");
+			"nl80211: Could not restore interface UP after set_mac_addr");
 	}
-
 	return 0;
 }
 

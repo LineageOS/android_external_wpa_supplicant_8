@@ -10,6 +10,7 @@
 #include "hidl_manager.h"
 #include "hidl_return_util.h"
 #include "supplicant.h"
+#include "p2p_iface.h"
 
 #include <android-base/file.h>
 #include <fcntl.h>
@@ -254,6 +255,39 @@ Return<void> Supplicant::terminate()
 }
 
 std::pair<SupplicantStatus, sp<ISupplicantIface>>
+Supplicant::addP2pDevInterface(struct wpa_interface iface_params)
+{
+	char primary_ifname[IFNAMSIZ];
+	u32 primary_ifname_len =
+		strlen(iface_params.ifname) - strlen(P2P_MGMT_DEVICE_PREFIX);
+
+	if(primary_ifname_len > IFNAMSIZ) {
+		wpa_printf(MSG_DEBUG, "%s, Invalid primary iface name ", __FUNCTION__);
+		return {{SupplicantStatusCode::FAILURE_ARGS_INVALID, ""}, {}};
+	}
+
+	strncpy(primary_ifname, iface_params.ifname +
+		strlen(P2P_MGMT_DEVICE_PREFIX), primary_ifname_len);
+	wpa_printf(MSG_DEBUG, "%s, Initialize p2p-dev-wlan0 iface with"
+		"primary_iface = %s", __FUNCTION__, primary_ifname);
+	struct wpa_supplicant* wpa_s =
+		wpa_supplicant_get_iface(wpa_global_, primary_ifname);
+	if (!wpa_s) {
+		wpa_printf(MSG_DEBUG, "%s,NULL wpa_s for wlan0", __FUNCTION__);
+		return {{SupplicantStatusCode::FAILURE_IFACE_UNKNOWN, ""},
+			nullptr};
+	}
+	if (wpas_p2p_add_p2pdev_interface(
+		wpa_s, wpa_s->global->params.conf_p2p_dev) < 0) {
+		wpa_printf(MSG_INFO,
+			"Failed to enable P2P Device");
+		return {{SupplicantStatusCode::FAILURE_UNKNOWN,
+			"Enable P2P Device failed"}, {}};
+	}
+	return {{SupplicantStatusCode::SUCCESS,""}, {}};
+}
+
+std::pair<SupplicantStatus, sp<ISupplicantIface>>
 Supplicant::addInterfaceInternal(const IfaceInfo& iface_info)
 {
 	android::sp<ISupplicantIface> iface;
@@ -305,10 +339,19 @@ Supplicant::addInterfaceInternal(const IfaceInfo& iface_info)
 		}
 	}
 	iface_params.ifname = iface_info.name.c_str();
-	struct wpa_supplicant* wpa_s =
-	    wpa_supplicant_add_iface(wpa_global_, &iface_params, NULL);
-	if (!wpa_s) {
-		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
+	if (strncmp(iface_params.ifname, P2P_MGMT_DEVICE_PREFIX,
+		strlen(P2P_MGMT_DEVICE_PREFIX)) == 0) {
+		std::tie(status, iface) = addP2pDevInterface(iface_params);
+		if (status.code != SupplicantStatusCode::SUCCESS) {
+			return {{status.code,
+				status.debugMessage.c_str()}, iface};
+		}
+	} else {
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_add_iface(wpa_global_, &iface_params, NULL);
+		if (!wpa_s) {
+			return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
+		}
 	}
 	// The supplicant core creates a corresponding hidl object via
 	// HidlManager when |wpa_supplicant_add_iface| is called.
