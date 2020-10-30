@@ -81,6 +81,8 @@ private:
 	SupplicantStatus setDebugParamsInternal(
 	    ISupplicant::DebugLevel level, bool show_timestamp, bool show_keys);
 	SupplicantStatus setConcurrencyPriorityInternal(IfaceType type);
+	std::pair<SupplicantStatus, sp<ISupplicantIface>> addP2pDevInterface(
+	    struct wpa_interface iface_params);
 
 	// Raw pointer to the global structure maintained by the core.
 	struct wpa_global* wpa_global_;

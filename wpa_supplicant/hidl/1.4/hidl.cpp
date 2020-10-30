@@ -250,13 +250,13 @@ void wpas_hidl_notify_hs20_rx_subscription_remediation(
 void wpas_hidl_notify_hs20_rx_deauth_imminent_notice(
     struct wpa_supplicant *wpa_s, u8 code, u16 reauth_delay, const char *url)
 {
-	if (!wpa_s || !wpa_s->global->hidl || !url)
+	if (!wpa_s || !wpa_s->global->hidl)
 		return;
 
 	wpa_printf(
 	    MSG_DEBUG,
 	    "Notifying HS20 deauth imminent notice rx to hidl control: %s",
-	    url);
+	    url ? url : "<no URL>");
 
 	HidlManager *hidl_manager = HidlManager::getInstance();
 	if (!hidl_manager)

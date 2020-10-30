@@ -271,6 +271,7 @@ public:
 	    setGroupCipher_1_4_cb _hidl_cb) override;
 	Return<void> getGroupCipher_1_4(
 	    getGroupCipher_1_4_cb _hidl_cb) override;
+	Return<void> enableSaeH2eOnlyMode(bool enable, enableSaeH2eOnlyMode_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -412,6 +413,7 @@ private:
 	std::pair<SupplicantStatus, uint32_t> getPairwiseCipher_1_4Internal();
 	SupplicantStatus setPairwiseCipher_1_4Internal(
 	    uint32_t pairwise_cipher_mask);
+	SupplicantStatus enableSaeH2eOnlyModeInternal(bool enable);
 
 	struct wpa_ssid* retrieveNetworkPtr();
 	struct wpa_supplicant* retrieveIfacePtr();
