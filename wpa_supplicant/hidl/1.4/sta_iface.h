@@ -16,7 +16,7 @@
 #include <android-base/macros.h>
 
 #include <android/hardware/wifi/supplicant/1.4/ISupplicantStaIface.h>
-#include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIfaceCallback.h>
+#include <android/hardware/wifi/supplicant/1.4/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.3/ISupplicantStaNetwork.h>
 
 extern "C"
@@ -89,6 +89,9 @@ public:
 	    registerCallback_cb _hidl_cb) override;
 	Return<void> registerCallback_1_3(
 	    const sp<V1_3::ISupplicantStaIfaceCallback>& callback,
+	    registerCallback_cb _hidl_cb) override;
+	Return<void> registerCallback_1_4(
+	    const sp<V1_4::ISupplicantStaIfaceCallback> &callback,
 	    registerCallback_cb _hidl_cb) override;
 	Return<void> reassociate(reassociate_cb _hidl_cb) override;
 	Return<void> reconnect(reconnect_cb _hidl_cb) override;

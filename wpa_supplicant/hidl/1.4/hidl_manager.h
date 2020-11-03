@@ -102,7 +102,9 @@ public:
 	    struct wpa_supplicant *wpa_s, const char *url, u8 osu_method);
 	void notifyHs20RxDeauthImminentNotice(
 	    struct wpa_supplicant *wpa_s, u8 code, u16 reauth_delay,
-	    const char *url);
+		const char *url);
+	void notifyHs20RxTermsAndConditionsAcceptance(
+			struct wpa_supplicant *wpa_s, const char *url);
 	void notifyDisconnectReason(struct wpa_supplicant *wpa_s);
 	void notifyAssocReject(struct wpa_supplicant *wpa_s,
 	    const u8 *bssid, u8 timed_out);
@@ -249,6 +251,10 @@ private:
 	    const std::string &ifname,
 	    const std::function<android::hardware::Return<void>(
 	    android::sp<V1_3::ISupplicantStaIfaceCallback>)> &method);
+	void callWithEachStaIfaceCallback_1_4(
+	    const std::string &ifname,
+	    const std::function<android::hardware::Return<void>(
+	    android::sp<V1_4::ISupplicantStaIfaceCallback>)> &method);
 	template <class CallbackTypeDerived>
 	void callWithEachStaIfaceCallbackDerived(
 	    const std::string &ifname,

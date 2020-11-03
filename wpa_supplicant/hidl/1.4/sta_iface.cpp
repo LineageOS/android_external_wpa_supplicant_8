@@ -338,6 +338,16 @@ Return<void> StaIface::registerCallback_1_3(
 	    &StaIface::registerCallbackInternal, _hidl_cb, callback_1_3);
 }
 
+Return<void> StaIface::registerCallback_1_4(
+    const sp<V1_4::ISupplicantStaIfaceCallback> &callback,
+    registerCallback_cb _hidl_cb)
+{
+	sp<V1_4::ISupplicantStaIfaceCallback> callback_1_4 = callback;
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &StaIface::registerCallbackInternal, _hidl_cb, callback_1_4);
+}
+
 Return<void> StaIface::reassociate(reassociate_cb _hidl_cb)
 {
 	return validateAndCall(

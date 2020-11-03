@@ -1335,6 +1335,7 @@ void hs20_rx_t_c_acceptance(struct wpa_supplicant *wpa_s, const char *url)
 	}
 
 	wpa_msg(wpa_s, MSG_INFO, HS20_T_C_ACCEPTANCE "%s", url);
+	wpas_notify_hs20_rx_terms_and_conditions_acceptance(wpa_s, url);
 }
 
 
