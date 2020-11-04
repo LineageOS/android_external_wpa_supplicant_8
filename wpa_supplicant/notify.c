@@ -1011,10 +1011,19 @@ void wpas_notify_hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s,
 		return;
 
 	wpas_hidl_notify_hs20_rx_deauth_imminent_notice(wpa_s, code, reauth_delay,
-							url);
+			url);
 #endif /* CONFIG_HS20 */
 }
 
+void wpas_notify_hs20_rx_terms_and_conditions_acceptance(
+		struct wpa_supplicant *wpa_s, const char *url) {
+#ifdef CONFIG_HS20
+	if (!wpa_s || !url)
+		return;
+
+	wpas_hidl_notify_hs20_rx_terms_and_conditions_acceptance(wpa_s, url);
+#endif /* CONFIG_HS20 */
+}
 
 #ifdef CONFIG_MESH
 

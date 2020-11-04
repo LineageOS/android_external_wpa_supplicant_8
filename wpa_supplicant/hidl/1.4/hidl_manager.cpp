@@ -920,13 +920,13 @@ void HidlManager::notifyHs20RxSubscriptionRemediation(
 }
 
 /**
- * Notify all listeners about the reception of HS20 immient deauth
+ * Notify all listeners about the reception of HS20 imminent deauth
  * notification from the server.
  *
  * @param wpa_s |wpa_supplicant| struct corresponding to the interface.
  * @param code Deauth reason code sent from server.
  * @param reauth_delay Reauthentication delay in seconds sent from server.
- * @param url URL of the server.
+ * @param url URL of the server containing the reason text.
  */
 void HidlManager::notifyHs20RxDeauthImminentNotice(
     struct wpa_supplicant *wpa_s, u8 code, u16 reauth_delay, const char *url)
@@ -943,6 +943,30 @@ void HidlManager::notifyHs20RxDeauthImminentNotice(
 	    std::bind(
 		&ISupplicantStaIfaceCallback::onHs20DeauthImminentNotice,
 		std::placeholders::_1, wpa_s->bssid, code, reauth_delay, url));
+}
+
+/**
+ * Notify all listeners about the reception of HS20 terms and conditions
+ * acceptance notification from the server.
+ *
+ * @param wpa_s |wpa_supplicant| struct corresponding to the interface.
+ * @param url URL of the T&C server.
+ */
+void HidlManager::notifyHs20RxTermsAndConditionsAcceptance(
+    struct wpa_supplicant *wpa_s, const char *url)
+{
+	if (!wpa_s || !url)
+		return;
+
+	if (sta_iface_object_map_.find(wpa_s->ifname)
+			== sta_iface_object_map_.end())
+		return;
+
+	callWithEachStaIfaceCallback_1_4(wpa_s->ifname,
+			std::bind(
+					&V1_4::ISupplicantStaIfaceCallback
+					::onHs20TermsAndConditionsAcceptanceRequestedNotification,
+					std::placeholders::_1, wpa_s->bssid, url));
 }
 
 /**
@@ -2199,6 +2223,23 @@ void HidlManager::callWithEachStaIfaceCallback_1_3(
     const std::string &ifname,
     const std::function<
 	Return<void>(android::sp<V1_3::ISupplicantStaIfaceCallback>)> &method)
+{
+	callWithEachIfaceCallbackDerived(ifname, method, sta_iface_callbacks_map_);
+}
+
+/**
+ * Helper function to invoke the provided callback method on all the
+ * registered V1.4 interface callback hidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required hidl method from
+ * |V1_4::ISupplicantIfaceCallback|.
+ */
+void HidlManager::callWithEachStaIfaceCallback_1_4(
+    const std::string &ifname,
+    const std::function<
+	Return<void>(android::sp<V1_4::ISupplicantStaIfaceCallback>)> &method)
 {
 	callWithEachIfaceCallbackDerived(ifname, method, sta_iface_callbacks_map_);
 }

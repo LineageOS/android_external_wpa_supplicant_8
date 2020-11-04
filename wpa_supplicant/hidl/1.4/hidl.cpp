@@ -266,6 +266,23 @@ void wpas_hidl_notify_hs20_rx_deauth_imminent_notice(
 	    wpa_s, code, reauth_delay, url);
 }
 
+void wpas_hidl_notify_hs20_rx_terms_and_conditions_acceptance(
+		struct wpa_supplicant *wpa_s, const char *url)
+{
+	if (!wpa_s || !wpa_s->global->hidl || !url)
+		return;
+
+	wpa_printf(MSG_DEBUG,
+			"Notifying HS20 terms and conditions acceptance rx to hidl control: %s",
+			url);
+
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager)
+		return;
+
+	hidl_manager->notifyHs20RxTermsAndConditionsAcceptance(wpa_s, url);
+}
+
 void wpas_hidl_notify_disconnect_reason(struct wpa_supplicant *wpa_s)
 {
 	if (!wpa_s)

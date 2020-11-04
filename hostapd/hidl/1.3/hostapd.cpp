@@ -359,7 +359,7 @@ std::string CreateHostapdConfig(
 		if (((band & IHostapd::BandMask::BAND_5_GHZ) != 0)
 		    || ((band & IHostapd::BandMask::BAND_6_GHZ) != 0)) {
 			hw_mode_as_string = "hw_mode=any";
-			if (iface_params.V1_1.V1_0.channelParams.enableAcs) {
+			if (iface_params.V1_1.V1_0.hwModeParams.enable80211AC) {
 				ht_cap_vht_oper_chwidth_as_string =
 				    "ht_capab=[HT40+]\n"
 				    "vht_oper_chwidth=1";
@@ -371,7 +371,7 @@ std::string CreateHostapdConfig(
 		if (((band & IHostapd::BandMask::BAND_5_GHZ) != 0)
 		    || ((band & IHostapd::BandMask::BAND_6_GHZ) != 0)) {
 			hw_mode_as_string = "hw_mode=a";
-			if (iface_params.V1_1.V1_0.channelParams.enableAcs) {
+			if (iface_params.V1_1.V1_0.hwModeParams.enable80211AC) {
 				ht_cap_vht_oper_chwidth_as_string =
 				    "ht_capab=[HT40+]\n"
 				    "vht_oper_chwidth=1";
