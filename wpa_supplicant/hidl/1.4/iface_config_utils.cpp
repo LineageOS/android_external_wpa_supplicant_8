@@ -84,6 +84,8 @@ namespace supplicant {
 namespace V1_4 {
 namespace implementation {
 namespace iface_config_utils {
+using V1_0::SupplicantStatusCode;
+
 SupplicantStatus setWpsDeviceName(
     struct wpa_supplicant* wpa_s, const std::string& name)
 {

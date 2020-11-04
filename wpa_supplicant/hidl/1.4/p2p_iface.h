@@ -309,8 +309,8 @@ private:
 	    bool persistent, uint32_t freq, const std::array<uint8_t, 6>& peer_address,
 	    bool joinExistingGroup);
 	SupplicantStatus setMacRandomizationInternal(bool enable);
-	SupplicantStatus setEdmgInternal(bool enable);
-	std::pair<SupplicantStatus, bool> getEdmgInternal();
+	V1_4::SupplicantStatus setEdmgInternal(bool enable);
+	std::pair<V1_4::SupplicantStatus, bool> getEdmgInternal();
 
 	struct wpa_supplicant* retrieveIfacePtr();
 	struct wpa_supplicant* retrieveGroupIfacePtr(
