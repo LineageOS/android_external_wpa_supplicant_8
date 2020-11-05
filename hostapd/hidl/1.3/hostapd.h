@@ -71,7 +71,7 @@ public:
 	    const V1_2::IHostapd::NetworkParams& nw_params,
 	    addAccessPoint_1_2_cb _hidl_cb) override;
 	Return<void> addAccessPoint_1_3(
-	    const V1_2::IHostapd::IfaceParams& iface_params,
+	    const V1_3::IHostapd::IfaceParams& iface_params,
 	    const V1_3::IHostapd::NetworkParams& nw_params,
 	    addAccessPoint_1_3_cb _hidl_cb) override;
 	Return<void> removeAccessPoint(
@@ -102,7 +102,14 @@ private:
 	    const V1_2::IHostapd::IfaceParams& IfaceParams,
 	    const V1_2::IHostapd::NetworkParams& nw_params);
 	V1_2::HostapdStatus addAccessPointInternal_1_3(
+	    const V1_3::IHostapd::IfaceParams& IfaceParams,
+	    const V1_3::IHostapd::NetworkParams& nw_params);
+	V1_2::HostapdStatus addSingleAccessPoint(
 	    const V1_2::IHostapd::IfaceParams& IfaceParams,
+	    const V1_3::IHostapd::NetworkParams& nw_params,
+	    std::string br_name);
+	V1_2::HostapdStatus addConcurrentAccessPoints(
+	    const V1_3::IHostapd::IfaceParams& IfaceParams,
 	    const V1_3::IHostapd::NetworkParams& nw_params);
 	V1_0::HostapdStatus removeAccessPointInternal(const std::string& iface_name);
 	V1_0::HostapdStatus registerCallbackInternal(
@@ -120,6 +127,8 @@ private:
 	std::vector<sp<V1_3::IHostapdCallback>> callbacks_;
 	// Death notifier.
 	android::sp<DeathNotifier> death_notifier_;
+	// Bridge and its managed interfaces.
+	std::map<std::string, std::vector<std::string>> br_interfaces_;
 	DISALLOW_COPY_AND_ASSIGN(Hostapd);
 };
 }  // namespace implementation
