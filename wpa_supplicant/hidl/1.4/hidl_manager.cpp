@@ -17,6 +17,7 @@
 extern "C" {
 #include "scan.h"
 #include "src/eap_common/eap_sim_common.h"
+#include "list.h"
 }
 
 namespace {
@@ -821,22 +822,32 @@ void HidlManager::notifyAnqpQueryDone(
 	    sta_iface_object_map_.end())
 		return;
 
-	ISupplicantStaIfaceCallback::AnqpData hidl_anqp_data;
+	V1_4::ISupplicantStaIfaceCallback::AnqpData hidl_anqp_data;
 	ISupplicantStaIfaceCallback::Hs20AnqpData hidl_hs20_anqp_data;
 	if (std::string(result) == "SUCCESS") {
-		hidl_anqp_data.venueName =
+		hidl_anqp_data.V1_0.venueName =
 		    misc_utils::convertWpaBufToVector(anqp->venue_name);
-		hidl_anqp_data.roamingConsortium =
+		hidl_anqp_data.V1_0.roamingConsortium =
 		    misc_utils::convertWpaBufToVector(anqp->roaming_consortium);
-		hidl_anqp_data.ipAddrTypeAvailability =
+		hidl_anqp_data.V1_0.ipAddrTypeAvailability =
 		    misc_utils::convertWpaBufToVector(
 			anqp->ip_addr_type_availability);
-		hidl_anqp_data.naiRealm =
+		hidl_anqp_data.V1_0.naiRealm =
 		    misc_utils::convertWpaBufToVector(anqp->nai_realm);
-		hidl_anqp_data.anqp3gppCellularNetwork =
+		hidl_anqp_data.V1_0.anqp3gppCellularNetwork =
 		    misc_utils::convertWpaBufToVector(anqp->anqp_3gpp);
-		hidl_anqp_data.domainName =
+		hidl_anqp_data.V1_0.domainName =
 		    misc_utils::convertWpaBufToVector(anqp->domain_name);
+
+		struct wpa_bss_anqp_elem *elem;
+		dl_list_for_each(elem, &anqp->anqp_elems, struct wpa_bss_anqp_elem,
+				 list) {
+			if (elem->infoid == ANQP_VENUE_URL) {
+				hidl_anqp_data.venueUrl =
+						    misc_utils::convertWpaBufToVector(elem->payload);
+				break;
+			}
+		}
 
 		hidl_hs20_anqp_data.operatorFriendlyName =
 		    misc_utils::convertWpaBufToVector(
@@ -851,9 +862,9 @@ void HidlManager::notifyAnqpQueryDone(
 			anqp->hs20_osu_providers_list);
 	}
 
-	callWithEachStaIfaceCallback(
+	callWithEachStaIfaceCallback_1_4(
 	    wpa_s->ifname, std::bind(
-			       &ISupplicantStaIfaceCallback::onAnqpQueryDone,
+			       &V1_4::ISupplicantStaIfaceCallback::onAnqpQueryDone_1_4,
 			       std::placeholders::_1, bssid, hidl_anqp_data,
 			       hidl_hs20_anqp_data));
 }

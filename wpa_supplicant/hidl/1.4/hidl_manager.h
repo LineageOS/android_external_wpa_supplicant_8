@@ -16,7 +16,7 @@
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantP2pNetworkCallback.h>
-#include <android/hardware/wifi/supplicant/1.0/ISupplicantStaIfaceCallback.h>
+#include <android/hardware/wifi/supplicant/1.4/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetworkCallback.h>
 #include <android/hardware/wifi/supplicant/1.4/ISupplicantStaNetworkCallback.h>
 

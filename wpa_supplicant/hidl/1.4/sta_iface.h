@@ -109,9 +109,12 @@ public:
 	    initiateTdlsTeardown_cb _hidl_cb) override;
 	Return<void> initiateAnqpQuery(
 	    const hidl_array<uint8_t, 6>& mac_address,
-	    const hidl_vec<ISupplicantStaIface::AnqpInfoId>& info_elements,
+	    const hidl_vec<V1_0::ISupplicantStaIface::AnqpInfoId>& info_elements,
 	    const hidl_vec<ISupplicantStaIface::Hs20AnqpSubtypes>& sub_types,
 	    initiateAnqpQuery_cb _hidl_cb) override;
+	Return<void> initiateVenueUrlAnqpQuery(
+	    const hidl_array<uint8_t, 6>& mac_address,
+		initiateVenueUrlAnqpQuery_cb _hidl_cb) override;
 	Return<void> initiateHs20IconQuery(
 	    const hidl_array<uint8_t, 6>& mac_address,
 	    const hidl_string& file_name,
@@ -237,6 +240,8 @@ private:
 	    const std::vector<ISupplicantStaIface::AnqpInfoId>& info_elements,
 	    const std::vector<ISupplicantStaIface::Hs20AnqpSubtypes>&
 		sub_types);
+	V1_4::SupplicantStatus initiateVenueUrlAnqpQueryInternal(
+	    const std::array<uint8_t, 6>& mac_address);
 	SupplicantStatus initiateHs20IconQueryInternal(
 	    const std::array<uint8_t, 6>& mac_address,
 	    const std::string& file_name);
