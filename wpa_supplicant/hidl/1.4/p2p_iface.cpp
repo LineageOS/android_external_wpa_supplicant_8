@@ -884,14 +884,14 @@ Return<void> P2pIface::setMacRandomization(bool enable, setMacRandomization_cb _
 Return<void> P2pIface::setEdmg(bool enable, setEdmg_cb _hidl_cb)
 {
 	return validateAndCall(
-	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    this, V1_4::SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 	    &P2pIface::setEdmgInternal, _hidl_cb, enable);
 }
 
 Return<void> P2pIface::getEdmg(getEdmg_cb _hidl_cb)
 {
 	return validateAndCall(
-	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    this, V1_4::SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 	    &P2pIface::getEdmgInternal, _hidl_cb);
 }
 
@@ -1839,19 +1839,19 @@ SupplicantStatus P2pIface::setMacRandomizationInternal(bool enable)
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
 
-SupplicantStatus P2pIface::setEdmgInternal(bool enable)
+V1_4::SupplicantStatus P2pIface::setEdmgInternal(bool enable)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	wpa_printf(MSG_DEBUG, "set p2p_go_edmg to %d", enable);
 	wpa_s->conf->p2p_go_edmg = enable ? 1 : 0;
 	wpa_s->p2p_go_edmg = enable ? 1 : 0;
-	return {SupplicantStatusCode::SUCCESS, ""};
+	return {V1_4::SupplicantStatusCode::SUCCESS, ""};
 }
 
-std::pair<SupplicantStatus, bool> P2pIface::getEdmgInternal()
+std::pair<V1_4::SupplicantStatus, bool> P2pIface::getEdmgInternal()
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
-	return {{SupplicantStatusCode::SUCCESS, ""},
+	return {{V1_4::SupplicantStatusCode::SUCCESS, ""},
 		(wpa_s->p2p_go_edmg == 1)};
 }
 

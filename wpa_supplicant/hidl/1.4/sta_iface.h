@@ -92,7 +92,7 @@ public:
 	    registerCallback_cb _hidl_cb) override;
 	Return<void> registerCallback_1_4(
 	    const sp<V1_4::ISupplicantStaIfaceCallback> &callback,
-	    registerCallback_cb _hidl_cb) override;
+	    registerCallback_1_4_cb _hidl_cb) override;
 	Return<void> reassociate(reassociate_cb _hidl_cb) override;
 	Return<void> reconnect(reconnect_cb _hidl_cb) override;
 	Return<void> disconnect(disconnect_cb _hidl_cb) override;
@@ -220,6 +220,8 @@ private:
 	    const sp<V1_0::ISupplicantStaIfaceCallback>& callback);
 	SupplicantStatus registerCallbackInternal_1_1(
 	    const sp<V1_1::ISupplicantStaIfaceCallback>& callback);
+	V1_4::SupplicantStatus registerCallbackInternal_1_4(
+	    const sp<V1_4::ISupplicantStaIfaceCallback>& callback);
 	SupplicantStatus reassociateInternal();
 	SupplicantStatus reconnectInternal();
 	SupplicantStatus disconnectInternal();
@@ -288,7 +290,7 @@ private:
 			uint32_t own_bootstrap_id);
 	SupplicantStatus stopDppInitiatorInternal();
 	std::pair<SupplicantStatus, V1_3::ConnectionCapabilities> getConnectionCapabilitiesInternal();
-	std::pair<SupplicantStatus, V1_4::ConnectionCapabilities>
+	std::pair<V1_4::SupplicantStatus, V1_4::ConnectionCapabilities>
 			getConnectionCapabilitiesInternal_1_4();
 	std::pair<SupplicantStatus, uint32_t> getWpaDriverCapabilitiesInternal();
 	SupplicantStatus setMboCellularDataStatusInternal(bool available);

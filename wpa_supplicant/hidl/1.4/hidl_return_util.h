@@ -17,7 +17,6 @@ namespace supplicant {
 namespace V1_4 {
 namespace implementation {
 namespace hidl_return_util {
-using V1_0::SupplicantStatusCode;
 
 /**
  * These utility functions are used to invoke a method on the provided
@@ -30,10 +29,11 @@ using V1_0::SupplicantStatusCode;
  * provided error status and default values.
  */
 // Use for HIDL methods which return only an instance of SupplicantStatus.
-template <typename ObjT, typename WorkFuncT, typename... Args>
+template <typename ObjT, typename SupplicantStatusCodeT, typename WorkFuncT,
+    typename SupplicantStatusT, typename... Args>
 Return<void> validateAndCall(
-    ObjT* obj, SupplicantStatusCode status_code_if_invalid, WorkFuncT&& work,
-    const std::function<void(const SupplicantStatus&)>& hidl_cb, Args&&... args)
+    ObjT* obj, SupplicantStatusCodeT status_code_if_invalid, WorkFuncT&& work,
+    const std::function<void(const SupplicantStatusT&)>& hidl_cb, Args&&... args)
 {
 	if (obj->isValid()) {
 		hidl_cb((obj->*work)(std::forward<Args>(args)...));
@@ -45,16 +45,17 @@ Return<void> validateAndCall(
 
 // Use for HIDL methods which return instance of SupplicantStatus and a single
 // return value.
-template <typename ObjT, typename WorkFuncT, typename ReturnT, typename... Args>
+template <typename ObjT, typename SupplicantStatusCodeT, typename WorkFuncT,
+    typename SupplicantStatusT, typename ReturnT, typename... Args>
 Return<void> validateAndCall(
-    ObjT* obj, SupplicantStatusCode status_code_if_invalid, WorkFuncT&& work,
-    const std::function<void(const SupplicantStatus&, ReturnT)>& hidl_cb,
+    ObjT* obj, SupplicantStatusCodeT status_code_if_invalid, WorkFuncT&& work,
+    const std::function<void(const SupplicantStatusT&, ReturnT)>& hidl_cb,
     Args&&... args)
 {
 	if (obj->isValid()) {
 		const auto& ret_pair =
 		    (obj->*work)(std::forward<Args>(args)...);
-		const SupplicantStatus& status = std::get<0>(ret_pair);
+		const SupplicantStatusT& status = std::get<0>(ret_pair);
 		const auto& ret_value = std::get<1>(ret_pair);
 		hidl_cb(status, ret_value);
 	} else {
@@ -68,18 +69,18 @@ Return<void> validateAndCall(
 // Use for HIDL methods which return instance of SupplicantStatus and 2 return
 // values.
 template <
-    typename ObjT, typename WorkFuncT, typename ReturnT1, typename ReturnT2,
-    typename... Args>
+    typename ObjT, typename SupplicantStatusCodeT, typename WorkFuncT,
+    typename SupplicantStatusT, typename ReturnT1, typename ReturnT2, typename... Args>
 Return<void> validateAndCall(
-    ObjT* obj, SupplicantStatusCode status_code_if_invalid, WorkFuncT&& work,
-    const std::function<void(const SupplicantStatus&, ReturnT1, ReturnT2)>&
+    ObjT* obj, SupplicantStatusCodeT status_code_if_invalid, WorkFuncT&& work,
+    const std::function<void(const SupplicantStatusT&, ReturnT1, ReturnT2)>&
 	hidl_cb,
     Args&&... args)
 {
 	if (obj->isValid()) {
 		const auto& ret_tuple =
 		    (obj->*work)(std::forward<Args>(args)...);
-		const SupplicantStatus& status = std::get<0>(ret_tuple);
+		const SupplicantStatusT& status = std::get<0>(ret_tuple);
 		const auto& ret_value1 = std::get<1>(ret_tuple);
 		const auto& ret_value2 = std::get<2>(ret_tuple);
 		hidl_cb(status, ret_value1, ret_value2);
