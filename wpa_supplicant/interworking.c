@@ -2998,13 +2998,13 @@ static void interworking_parse_rx_anqp_resp(struct wpa_supplicant *wpa_s,
 	case ANQP_VENUE_URL:
 		wpa_msg(wpa_s, MSG_INFO, RX_ANQP MACSTR " Venue URL",
 			MAC2STR(sa));
-		anqp_add_extra(wpa_s, anqp, info_id, pos, slen);
 
 		if (!pmf_in_use(wpa_s, sa)) {
 			wpa_printf(MSG_DEBUG,
 				   "ANQP: Ignore Venue URL since PMF was not enabled");
 			break;
 		}
+		anqp_add_extra(wpa_s, anqp, info_id, pos, slen);
 		interworking_parse_venue_url(wpa_s, pos, slen);
 		break;
 	case ANQP_VENDOR_SPECIFIC:
