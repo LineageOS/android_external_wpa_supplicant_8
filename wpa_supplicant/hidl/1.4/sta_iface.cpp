@@ -692,6 +692,14 @@ Return<void> StaIface::getWpaDriverCapabilities(
 	    &StaIface::getWpaDriverCapabilitiesInternal, _hidl_cb);
 }
 
+Return<void> StaIface::getWpaDriverCapabilities_1_4(
+		getWpaDriverCapabilities_1_4_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, V1_4::SupplicantStatusCode::FAILURE_UNKNOWN,
+	    &StaIface::getWpaDriverCapabilitiesInternal_1_4, _hidl_cb);
+}
+
 Return<void> StaIface::setMboCellularDataStatus(bool available,
 		setMboCellularDataStatus_cb _hidl_cb)
 {
@@ -1535,6 +1543,12 @@ StaIface::getConnectionCapabilitiesInternal_1_4()
 std::pair<SupplicantStatus, uint32_t>
 StaIface::getWpaDriverCapabilitiesInternal()
 {
+	return {{SupplicantStatusCode::FAILURE_UNKNOWN, "deprecated"}, 0};
+}
+
+std::pair<V1_4::SupplicantStatus, uint32_t>
+StaIface::getWpaDriverCapabilitiesInternal_1_4()
+{
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	uint32_t mask = 0;
 
@@ -1548,10 +1562,13 @@ StaIface::getWpaDriverCapabilitiesInternal()
 		mask |= V1_3::WpaDriverCapabilitiesMask::OCE;
 	}
 #endif
+#ifdef CONFIG_SAE_PK
+	mask |= V1_4::WpaDriverCapabilitiesMask::SAE_PK;
+#endif
 
 	wpa_printf(MSG_DEBUG, "Driver capability mask: 0x%x", mask);
 
-	return {{SupplicantStatusCode::SUCCESS, ""}, mask};
+	return {{V1_4::SupplicantStatusCode::SUCCESS, ""}, mask};
 }
 
 SupplicantStatus StaIface::setMboCellularDataStatusInternal(bool available)
