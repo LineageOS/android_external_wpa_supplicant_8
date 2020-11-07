@@ -45,6 +45,7 @@
 #define DEFAULT_DISASSOC_IMMINENT_RSSI_THRESHOLD -75
 #define DEFAULT_OCE_SUPPORT OCE_STA
 #define DEFAULT_EXTENDED_KEY_ID 0
+#define DEFAULT_BTM_OFFLOAD 0
 
 #include "config_ssid.h"
 #include "wps/wps.h"
@@ -377,6 +378,7 @@ struct wpa_cred {
 #define CFG_CHANGED_WOWLAN_TRIGGERS BIT(18)
 #define CFG_CHANGED_DISABLE_BTM BIT(19)
 #define CFG_CHANGED_BGSCAN BIT(20)
+#define CFG_CHANGED_DISABLE_BTM_NOTIFY BIT(21)
 
 /**
  * struct wpa_config - wpa_supplicant configuration data
@@ -1451,6 +1453,14 @@ struct wpa_config {
 	 *  - Set BIT(1) to enable OCE in STA-CFON mode
 	 */
 	unsigned int oce;
+
+	/**
+	 * btm_offload - Set where to perform roaming logic
+	 *  - Set to 0 to handle fully roaming logic in supplicant
+	 *  - Set to 1 to skip roaming logic in supplicant for firmware roaming
+	 *    just parse BTM frame and notify framework
+	 */
+        int btm_offload;
 #endif /* CONFIG_MBO */
 
 	/**

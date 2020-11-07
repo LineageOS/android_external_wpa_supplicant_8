@@ -997,6 +997,13 @@ Return<void> StaNetwork::enableSaeH2eOnlyMode(bool enable, enableSaeH2eOnlyMode_
 	    &StaNetwork::enableSaeH2eOnlyModeInternal, _hidl_cb, enable);
 }
 
+Return<void> StaNetwork::enableSaePkOnlyMode(bool enable, enableSaePkOnlyMode_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, V1_4::SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+	    &StaNetwork::enableSaePkOnlyModeInternal, _hidl_cb, enable);
+}
+
 std::pair<SupplicantStatus, uint32_t> StaNetwork::getIdInternal()
 {
 	return {{SupplicantStatusCode::SUCCESS, ""}, network_id_};
@@ -2614,6 +2621,18 @@ V1_4::SupplicantStatus StaNetwork::enableSaeH2eOnlyModeInternal(bool enable)
 	wpa_s->conf->sae_pwe = enable ? SAE_PWE_H2E_ONLY_MODE : SAE_PWE_HP_H2E_BOTH;
 	resetInternalStateAfterParamsUpdate();
 	return {V1_4::SupplicantStatusCode::SUCCESS, ""};
+}
+
+V1_4::SupplicantStatus StaNetwork::enableSaePkOnlyModeInternal(bool enable)
+{
+#ifdef CONFIG_SAE_PK
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	wpa_ssid->sae_pk = enable ? SAE_PK_MODE_ONLY : SAE_PK_MODE_AUTOMATIC;
+	resetInternalStateAfterParamsUpdate();
+	return {V1_4::SupplicantStatusCode::SUCCESS, ""};
+#else
+	return {V1_4::SupplicantStatusCode::FAILURE_UNSUPPORTED, ""};
+#endif
 }
 
 }  // namespace implementation

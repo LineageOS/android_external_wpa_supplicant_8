@@ -272,6 +272,7 @@ public:
 	Return<void> getGroupCipher_1_4(
 	    getGroupCipher_1_4_cb _hidl_cb) override;
 	Return<void> enableSaeH2eOnlyMode(bool enable, enableSaeH2eOnlyMode_cb _hidl_cb) override;
+	Return<void> enableSaePkOnlyMode(bool enable, enableSaePkOnlyMode_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -414,6 +415,7 @@ private:
 	V1_4::SupplicantStatus setPairwiseCipher_1_4Internal(
 	    uint32_t pairwise_cipher_mask);
 	V1_4::SupplicantStatus enableSaeH2eOnlyModeInternal(bool enable);
+	V1_4::SupplicantStatus enableSaePkOnlyModeInternal(bool enable);
 
 	struct wpa_ssid* retrieveNetworkPtr();
 	struct wpa_supplicant* retrieveIfacePtr();

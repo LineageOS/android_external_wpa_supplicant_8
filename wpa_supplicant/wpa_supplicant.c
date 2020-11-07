@@ -3844,6 +3844,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 			 * succeed.
 			 */
 			wpas_connection_failed(wpa_s, wpa_s->pending_bssid);
+			wpa_s->assoc_status_code = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			wpas_notify_assoc_status_code(wpa_s, wpa_s->pending_bssid, 0);
 			wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 			os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
 			return;

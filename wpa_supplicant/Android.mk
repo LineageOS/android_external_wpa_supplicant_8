@@ -68,6 +68,10 @@ ifdef CONFIG_NO_ROAMING
 L_CFLAGS += -DCONFIG_NO_ROAMING
 endif
 
+ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
+L_CFLAGS += -DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS
+endif
+
 # Use Android specific directory for control interface sockets
 L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/wpa/sockets\"
 L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/wpa/sockets\"
