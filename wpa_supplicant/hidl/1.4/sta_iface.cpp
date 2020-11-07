@@ -1582,7 +1582,19 @@ SupplicantStatus StaIface::setMboCellularDataStatusInternal(bool available)
 	} else {
 		mbo_cell_capa = MBO_CELL_CAPA_NOT_AVAILABLE;
 	}
+
+#ifdef ENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS
+	char mbo_cmd[32];
+	char buf[32];
+
+	os_snprintf(mbo_cmd, sizeof(mbo_cmd), "%s %d", "MBO CELL_DATA_CAP", mbo_cell_capa);
+	if (wpa_drv_driver_cmd(wpa_s, mbo_cmd, buf, sizeof(buf)) < 0) {
+		wpa_printf(MSG_ERROR, "MBO CELL_DATA_CAP cmd failed CAP:%d", mbo_cell_capa);
+	}
+#else
 	wpas_mbo_update_cell_capa(wpa_s, mbo_cell_capa);
+#endif
+
 	return {SupplicantStatusCode::SUCCESS, ""};
 #else
 	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
