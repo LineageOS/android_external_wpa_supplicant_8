@@ -105,7 +105,8 @@ private:
 	    const V1_3::IHostapd::IfaceParams& IfaceParams,
 	    const V1_3::IHostapd::NetworkParams& nw_params);
 	V1_2::HostapdStatus addSingleAccessPoint(
-	    const V1_2::IHostapd::IfaceParams& IfaceParams,
+	    const V1_3::IHostapd::IfaceParams& IfaceParams,
+	    const V1_3::IHostapd::ChannelParams& channelParams,
 	    const V1_3::IHostapd::NetworkParams& nw_params,
 	    std::string br_name);
 	V1_2::HostapdStatus addConcurrentAccessPoints(
