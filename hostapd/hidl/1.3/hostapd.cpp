@@ -658,6 +658,9 @@ Return<void> Hostapd::removeAccessPoint(
 Return<void> Hostapd::terminate()
 {
 	wpa_printf(MSG_INFO, "Terminating...");
+	// Clear the callback to avoid IPCThreadState shutdown during the
+	// callback event.
+	callbacks_.clear();
 	eloop_terminate();
 	return Void();
 }
