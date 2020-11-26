@@ -841,7 +841,9 @@ V1_2::HostapdStatus Hostapd::addSingleAccessPoint(
 		   enum wpa_msg_type type, const char *txt,
 		   size_t len) {
 		wpa_printf(MSG_DEBUG, "Receive wpa msg : %s", txt);
-		if (os_strncmp(txt, WPA_EVENT_CHANNEL_SWITCH,
+		if (os_strncmp(txt, AP_EVENT_ENABLED,
+			       strlen(AP_EVENT_ENABLED)) == 0 ||
+		    os_strncmp(txt, WPA_EVENT_CHANNEL_SWITCH,
 			       strlen(WPA_EVENT_CHANNEL_SWITCH)) == 0) {
 		    for (const auto &callback : callbacks_) {
 			callback->onApInstanceInfoChanged(
