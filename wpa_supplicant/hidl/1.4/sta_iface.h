@@ -205,6 +205,13 @@ public:
 	    getKeyMgmtCapabilities_1_3_cb _hidl_cb) override;
 	Return<void> getWpaDriverCapabilities_1_4(
 	    getWpaDriverCapabilities_1_4_cb _hidl_cb) override;
+	Return<void> generateDppBootstrapInfoForResponder(const hidl_array<uint8_t, 6> &mac_address,
+			const hidl_string& device_info, DppCurve curve,
+			generateDppBootstrapInfoForResponder_cb _hidl_cb) override;
+	Return<void> startDppEnrolleeResponder(uint32_t listen_channel,
+			startDppEnrolleeResponder_cb _hidl_cb) override;
+	Return<void> stopDppResponder(uint32_t own_bootstrap_id,
+			stopDppResponder_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -303,6 +310,12 @@ private:
 	SupplicantStatus setMboCellularDataStatusInternal(bool available);
 	std::pair<SupplicantStatus, uint32_t> getKeyMgmtCapabilitiesInternal_1_3();
 	std::pair<V1_4::SupplicantStatus, uint32_t> getWpaDriverCapabilitiesInternal_1_4();
+	std::pair<V1_4::SupplicantStatus, V1_4::DppResponderBootstrapInfo>
+			generateDppBootstrapInfoForResponderInternal(
+			const std::array<uint8_t, 6>& mac_address, const std::string& device_info,
+			DppCurve curve);
+	V1_4::SupplicantStatus startDppEnrolleeResponderInternal(uint32_t listen_channel);
+	V1_4::SupplicantStatus stopDppResponderInternal(uint32_t own_bootstrap_id);
 
 	struct wpa_supplicant* retrieveIfacePtr();
 

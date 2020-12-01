@@ -40,6 +40,8 @@ using android::hardware::wifi::supplicant::V1_4::ISupplicantStaIface;
 using android::hardware::wifi::supplicant::V1_4::ConnectionCapabilities;
 using android::hardware::wifi::supplicant::V1_4::LegacyMode;
 using android::hardware::wifi::supplicant::V1_4::implementation::HidlManager;
+using android::hardware::wifi::supplicant::V1_4::DppResponderBootstrapInfo;
+using android::hardware::wifi::supplicant::V1_4::DppCurve;
 
 constexpr uint32_t kMaxAnqpElems = 100;
 constexpr char kGetMacAddress[] = "MACADDR";
@@ -216,6 +218,65 @@ uint32_t convertWpaKeyMgmtCapabilitiesToHidl (
 	}
 #endif /* CONFIG_FILS */
 	return mask;
+}
+
+const std::string getDppListenChannel(struct wpa_supplicant *wpa_s, int32_t *listen_channel)
+{
+	struct hostapd_hw_modes *mode;
+	int chan44 = 0, chan149 = 0;
+	*listen_channel = 0;
+
+	/* Check if device support 2.4GHz band*/
+	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes,
+			HOSTAPD_MODE_IEEE80211G, 0);
+	if (mode) {
+		*listen_channel = 6;
+		return "81/6";
+	}
+	/* Check if device support 5GHz band */
+	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes,
+			HOSTAPD_MODE_IEEE80211A, 0);
+	if (mode) {
+		for (int i = 0; i < mode->num_channels; i++) {
+			struct hostapd_channel_data *chan = &mode->channels[i];
+
+			if (chan->flag & (HOSTAPD_CHAN_DISABLED |
+					  HOSTAPD_CHAN_RADAR))
+				continue;
+			if (chan->freq == 5220)
+				chan44 = 1;
+			if (chan->freq == 5745)
+				chan149 = 1;
+		}
+		if (chan149) {
+			*listen_channel = 149;
+			return "124/149";
+		} else if (chan44) {
+			*listen_channel = 44;
+			return "115/44";
+		}
+	}
+
+	return "";
+}
+
+const std::string convertCurveTypeToName(DppCurve curve)
+{
+	switch (curve) {
+	case DppCurve::PRIME256V1:
+		return "prime256v1";
+	case DppCurve::SECP384R1:
+		return "secp384r1";
+	case DppCurve::SECP521R1:
+		return "secp521r1";
+	case DppCurve::BRAINPOOLP256R1:
+		return "brainpoolP256r1";
+	case DppCurve::BRAINPOOLP384R1:
+		return "brainpoolP384r1";
+	case DppCurve::BRAINPOOLP512R1:
+		return "brainpoolP512r1";
+	}
+	WPA_ASSERT(false);
 }
 
 }  // namespace
@@ -682,6 +743,31 @@ Return<void> StaIface::stopDppInitiator(stopDppInitiator_cb _hidl_cb)
 	return validateAndCall(
 	    this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 	    &StaIface::stopDppInitiatorInternal, _hidl_cb);
+}
+
+Return<void> StaIface::generateDppBootstrapInfoForResponder(
+		const hidl_array<uint8_t, 6> &mac_address, const hidl_string& device_info,
+		DppCurve curve, generateDppBootstrapInfoForResponder_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, V1_4::SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &StaIface::generateDppBootstrapInfoForResponderInternal, _hidl_cb, mac_address,
+	    device_info, curve);
+}
+
+Return<void> StaIface::startDppEnrolleeResponder(
+		uint32_t listen_channel, startDppEnrolleeResponder_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, V1_4::SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &StaIface::startDppEnrolleeResponderInternal, _hidl_cb, listen_channel);
+}
+
+Return<void> StaIface::stopDppResponder(uint32_t own_bootstrap_id, stopDppResponder_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, V1_4::SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &StaIface::stopDppResponderInternal, _hidl_cb, own_bootstrap_id);
 }
 
 Return<void> StaIface::getWpaDriverCapabilities(
@@ -1475,6 +1561,111 @@ SupplicantStatus StaIface::stopDppInitiatorInternal()
 	return {SupplicantStatusCode::SUCCESS, ""};
 #else
 	return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+#endif
+}
+
+std::pair<V1_4::SupplicantStatus, DppResponderBootstrapInfo>
+StaIface::generateDppBootstrapInfoForResponderInternal(const std::array<uint8_t, 6> &mac_address,
+		const std::string& device_info, DppCurve curve)
+{
+#ifdef CONFIG_DPP
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	std::string cmd = "type=qrcode";
+	int32_t id;
+	int32_t listen_channel = 0;
+	struct DppResponderBootstrapInfo bootstrap_info;
+	const char *uri;
+	std::string listen_channel_str;
+	std::string mac_addr_str;
+	char buf[3] = {0};
+
+	cmd += (device_info.empty()) ? "" : " info=" + device_info;
+
+	listen_channel_str = getDppListenChannel(wpa_s, &listen_channel);
+	if (listen_channel == 0) {
+		wpa_printf(MSG_ERROR, "StaIface: Failed to derive DPP listen channel");
+		return {{V1_4::SupplicantStatusCode::FAILURE_UNKNOWN, ""}, bootstrap_info};
+	}
+	cmd += " chan=" + listen_channel_str;
+
+	cmd += " mac=";
+	for (int i = 0;i < 6;i++) {
+		snprintf(buf, sizeof(buf), "%02x", mac_address[i]);
+		mac_addr_str.append(buf);
+	}
+	cmd += mac_addr_str;
+
+	cmd += " curve=" + convertCurveTypeToName(curve);
+
+	id = dpp_bootstrap_gen(wpa_s->dpp, cmd.c_str());
+	wpa_printf(MSG_DEBUG,
+		   "DPP generate bootstrap QR code command: %s id: %d", cmd.c_str(), id);
+	if (id > 0) {
+		uri = dpp_bootstrap_get_uri(wpa_s->dpp, id);
+		if (uri) {
+			wpa_printf(MSG_DEBUG, "DPP Bootstrap info: id: %d "
+				   "listen_channel: %d uri: %s", id, listen_channel, uri);
+			bootstrap_info.bootstrapId = id;
+			bootstrap_info.listenChannel = listen_channel;
+			bootstrap_info.uri = uri;
+			return {{V1_4::SupplicantStatusCode::SUCCESS, ""}, bootstrap_info};
+		}
+	}
+	return {{V1_4::SupplicantStatusCode::FAILURE_UNKNOWN, ""}, bootstrap_info};
+#else
+	return {{V1_4::SupplicantStatusCode::FAILURE_UNSUPPORTED, ""}, bootstrap_info};
+#endif
+}
+
+V1_4::SupplicantStatus StaIface::startDppEnrolleeResponderInternal(uint32_t listen_channel)
+{
+#ifdef CONFIG_DPP
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	std::string cmd = "";
+	uint32_t freq = (listen_channel <= 14 ? 2407 : 5000) + listen_channel * 5;
+
+	/* Report received configuration to HIDL and create an internal profile */
+	wpa_s->conf->dpp_config_processing = 1;
+
+	cmd += std::to_string(freq);
+	cmd += " role=enrollee netrole=sta";
+
+	wpa_printf(MSG_DEBUG,
+		   "DPP Enrollee Responder command: %s", cmd.c_str());
+
+	if (wpas_dpp_listen(wpa_s, cmd.c_str()) == 0) {
+		return {V1_4::SupplicantStatusCode::SUCCESS, ""};
+	}
+	return {V1_4::SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+#else
+	return {V1_4::SupplicantStatusCode::FAILURE_UNSUPPORTED, ""};
+#endif
+}
+
+V1_4::SupplicantStatus StaIface::stopDppResponderInternal(uint32_t own_bootstrap_id)
+{
+#ifdef CONFIG_DPP
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	std::string bootstrap_id_str;
+
+	if (own_bootstrap_id == 0) {
+		bootstrap_id_str = "*";
+	}
+	else {
+		bootstrap_id_str = std::to_string(own_bootstrap_id);
+	}
+
+	wpa_printf(MSG_DEBUG, "DPP Stop DPP Responder id: %d ", own_bootstrap_id);
+	wpas_dpp_stop(wpa_s);
+	wpas_dpp_listen_stop(wpa_s);
+
+	if (dpp_bootstrap_remove(wpa_s->dpp, bootstrap_id_str.c_str()) < 0) {
+		wpa_printf(MSG_ERROR, "StaIface: dpp_bootstrap_remove failed");
+	}
+
+	return {V1_4::SupplicantStatusCode::SUCCESS, ""};
+#else
+	return {V1_4::SupplicantStatusCode::FAILURE_UNSUPPORTED, ""};
 #endif
 }
 
