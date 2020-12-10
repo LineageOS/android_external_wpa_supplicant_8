@@ -180,6 +180,8 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 	wconf->oci_freq_override_ft_assoc = conf->oci_freq_override_ft_assoc;
 	wconf->oci_freq_override_fils_assoc =
 		conf->oci_freq_override_fils_assoc;
+	wconf->skip_send_eapol = iconf->skip_send_eapol;
+	wconf->enable_eapol_large_timeout = iconf->enable_eapol_large_timeout;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_P2P
 	os_memcpy(wconf->ip_addr_go, conf->ip_addr_go, 4);

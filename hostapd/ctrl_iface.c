@@ -1504,6 +1504,10 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
 			wpa_auth_set_ocv_override_freq(
 				hapd->wpa_auth,
 				WPA_AUTH_OCV_OVERRIDE_FILS_ASSOC, atoi(value));
+		else if (os_strcasecmp(cmd, "skip_send_eapol") == 0)
+			wpa_auth_set_skip_send_eapol(hapd->wpa_auth, atoi(value));
+		else if (os_strcasecmp(cmd, "enable_eapol_large_timeout") == 0)
+			wpa_auth_set_enable_eapol_large_timeout(hapd->wpa_auth, atoi(value));
 #endif /* CONFIG_TESTING_OPTIONS */
 	}
 

@@ -252,6 +252,8 @@ struct hostapd_config * hostapd_config_defaults(void)
 	conf->ignore_reassoc_probability = 0.0;
 	conf->corrupt_gtk_rekey_mic_probability = 0.0;
 	conf->ecsa_ie_only = 0;
+	conf->skip_send_eapol = 0;
+	conf->enable_eapol_large_timeout = 0;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	conf->acs = 0;

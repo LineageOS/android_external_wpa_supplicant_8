@@ -240,6 +240,8 @@ struct wpa_auth_config {
 	unsigned int gtk_rsc_override_set:1;
 	unsigned int igtk_rsc_override_set:1;
 	int ft_rsnxe_used;
+	unsigned int skip_send_eapol:1;
+	unsigned int enable_eapol_large_timeout:1;
 #endif /* CONFIG_TESTING_OPTIONS */
 	unsigned int oci_freq_override_eapol_m3;
 	unsigned int oci_freq_override_eapol_g1;
@@ -542,5 +544,9 @@ enum wpa_auth_ocv_override_frame {
 void wpa_auth_set_ocv_override_freq(struct wpa_authenticator *wpa_auth,
 				    enum wpa_auth_ocv_override_frame frame,
 				    unsigned int freq);
+void wpa_auth_set_skip_send_eapol(struct wpa_authenticator *wpa_auth,
+				     u8 val);
+void wpa_auth_set_enable_eapol_large_timeout(struct wpa_authenticator *wpa_auth,
+				     u8 val);
 
 #endif /* WPA_AUTH_H */

@@ -1005,6 +1005,8 @@ struct hostapd_config {
 	double ignore_reassoc_probability;
 	double corrupt_gtk_rekey_mic_probability;
 	int ecsa_ie_only;
+	unsigned int skip_send_eapol;
+	unsigned int enable_eapol_large_timeout;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_ACS

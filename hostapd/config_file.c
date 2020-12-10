@@ -4184,6 +4184,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->oci_freq_override_fils_assoc = atoi(pos);
 	} else if (os_strcmp(buf, "oci_freq_override_wnm_sleep") == 0) {
 		bss->oci_freq_override_wnm_sleep = atoi(pos);
+	} else if (os_strcmp(buf, "skip_send_eapol") == 0) {
+		conf->skip_send_eapol = atoi(pos);
+	} else if (os_strcmp(buf, "enable_eapol_large_timeout") == 0) {
+		conf->enable_eapol_large_timeout = atoi(pos);
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_SAE
 	} else if (os_strcmp(buf, "sae_password") == 0) {

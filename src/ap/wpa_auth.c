@@ -188,6 +188,10 @@ wpa_auth_send_eapol(struct wpa_authenticator *wpa_auth, const u8 *addr,
 {
 	if (!wpa_auth->cb->send_eapol)
 		return -1;
+#ifdef CONFIG_TESTING_OPTIONS
+	if (wpa_auth->conf.skip_send_eapol)
+		return 0;
+#endif
 	return wpa_auth->cb->send_eapol(wpa_auth->cb_ctx, addr, data, data_len,
 					encrypt);
 }
@@ -1663,7 +1667,7 @@ void __wpa_send_eapol(struct wpa_authenticator *wpa_auth,
 
 	wpa_auth_set_eapol(wpa_auth, sm->addr, WPA_EAPOL_inc_EapolFramesTx, 1);
 	wpa_auth_send_eapol(wpa_auth, sm->addr, (u8 *) hdr, len,
-			    sm->pairwise_set);
+			sm->pairwise_set);
 	os_free(hdr);
 }
 
@@ -1698,6 +1702,11 @@ static void wpa_send_eapol(struct wpa_authenticator *wpa_auth,
 #ifdef TEST_FUZZ
 	timeout_ms = 1;
 #endif /* TEST_FUZZ */
+#ifdef CONFIG_TESTING_OPTIONS
+	if(wpa_auth->conf.enable_eapol_large_timeout) {
+		timeout_ms = 50 * 1000;
+	}
+#endif
 	wpa_printf(MSG_DEBUG,
 		   "WPA: Use EAPOL-Key timeout of %u ms (retry counter %u)",
 		   timeout_ms, ctr);
@@ -5611,5 +5620,20 @@ void wpa_auth_set_ocv_override_freq(struct wpa_authenticator *wpa_auth,
 		break;
 	}
 }
+
+void wpa_auth_set_skip_send_eapol(struct wpa_authenticator *wpa_auth,
+				     u8 val)
+{
+	if (wpa_auth)
+		wpa_auth->conf.skip_send_eapol = val;
+}
+
+void wpa_auth_set_enable_eapol_large_timeout(struct wpa_authenticator *wpa_auth,
+				     u8 val)
+{
+	if (wpa_auth)
+		wpa_auth->conf.enable_eapol_large_timeout = val;
+}
+
 
 #endif /* CONFIG_TESTING_OPTIONS */
