@@ -545,6 +545,23 @@ Bandwidth getBandwidth(struct hostapd_config *iconf)
 	}
 }
 
+bool forceStaDisconnection(struct hostapd_data* hapd,
+			   const std::array<uint8_t, 6>& client_address,
+			   const uint16_t reason_code) {
+	struct sta_info *sta;
+	for (sta = hapd->sta_list; sta; sta = sta->next) {
+		int res;
+		res = memcmp(sta->addr, client_address.data(), ETH_ALEN);
+		if (res == 0) {
+			wpa_printf(MSG_INFO, "Force client:" MACSTR " disconnect with reason: %d",
+			    MAC2STR(client_address.data()), reason_code);
+			ap_sta_disconnect(hapd, sta, sta->addr, reason_code);
+			return true;
+		}
+	}
+	return false;
+}
+
 // hostapd core functions accept "C" style function pointers, so use global
 // functions to pass to the hostapd core function and store the corresponding
 // std::function methods to be invoked.
@@ -911,20 +928,29 @@ V1_2::HostapdStatus Hostapd::forceClientDisconnectInternal(const std::string& if
     const std::array<uint8_t, 6>& client_address, V1_2::Ieee80211ReasonCode reason_code)
 {
 	struct hostapd_data *hapd = hostapd_get_iface(interfaces_, iface_name.c_str());
-	struct sta_info *sta;
+	bool result;
+	if (!hapd) {
+	    for (auto const& iface : br_interfaces_) {
+		if (iface.first == iface_name) {
+		    for (auto const& instance : iface.second) {
+			hapd = hostapd_get_iface(interfaces_, instance.c_str());
+			if (hapd) {
+				result = forceStaDisconnection(hapd, client_address,
+							       (uint16_t) reason_code);
+				if (result) break;
+			}
+		    }
+		}
+	    }
+	} else {
+		result = forceStaDisconnection(hapd, client_address, (uint16_t) reason_code);
+	}
 	if (!hapd) {
 		wpa_printf(MSG_ERROR, "Interface %s doesn't exist", iface_name.c_str());
 		return {V1_2::HostapdStatusCode::FAILURE_IFACE_UNKNOWN, ""};
 	}
-	for (sta = hapd->sta_list; sta; sta = sta->next) {
-		int res;
-		res = memcmp(sta->addr, client_address.data(), ETH_ALEN);
-		if (res == 0) {
-			wpa_printf(MSG_INFO, "Force client:" MACSTR " disconnect with reason: %d",
-			    MAC2STR(client_address.data()), (uint16_t) reason_code);
-			ap_sta_disconnect(hapd, sta, sta->addr, (uint16_t) reason_code);
-			return {V1_2::HostapdStatusCode::SUCCESS, ""};
-		}
+	if (result) {
+		return {V1_2::HostapdStatusCode::SUCCESS, ""};
 	}
 	return {V1_2::HostapdStatusCode::FAILURE_CLIENT_UNKNOWN, ""};
 }
