@@ -252,6 +252,20 @@ int getOpClassForChannel(int channel, int band, bool support11n, bool support11a
 		return 0;
 	}
 
+	if ((band & IHostapd::BandMask::BAND_60_GHZ) != 0) {
+		if (1 <= channel && channel <= 8) {
+			return 180;
+		} else if (9 <= channel && channel <= 15) {
+			return 181;
+		} else if (17 <= channel && channel <= 22) {
+			return 182;
+		} else if (25 <= channel && channel <= 29) {
+			return 183;
+		}
+		// Error
+		return 0;
+	}
+
 	return 0;
 }
 
@@ -287,8 +301,9 @@ std::string CreateHostapdConfig(
 
 	// Encryption config string
 	uint32_t band = 0;
-	band |= channelParams.V1_2.bandMask;
+	band |= channelParams.bandMask;
 	bool is_6Ghz_band_only = band == static_cast<uint32_t>(IHostapd::BandMask::BAND_6_GHZ);
+	bool is_60Ghz_band_only = band == static_cast<uint32_t>(IHostapd::BandMask::BAND_60_GHZ);
 	std::string encryption_config_as_string;
 	switch (nw_params.V1_2.encryptionType) {
 	case IHostapd::EncryptionType::NONE:
@@ -305,8 +320,9 @@ std::string CreateHostapdConfig(
 		}
 		encryption_config_as_string = StringPrintf(
 		    "wpa=3\n"
-		    "wpa_pairwise=TKIP CCMP\n"
+		    "wpa_pairwise=%s\n"
 		    "wpa_passphrase=%s",
+		    is_60Ghz_band_only ? "GCMP" : "TKIP CCMP",
 		    nw_params.V1_2.passphrase.c_str());
 		break;
 	case IHostapd::EncryptionType::WPA2:
@@ -320,8 +336,9 @@ std::string CreateHostapdConfig(
 		}
 		encryption_config_as_string = StringPrintf(
 		    "wpa=2\n"
-		    "rsn_pairwise=CCMP\n"
+		    "rsn_pairwise=%s\n"
 		    "wpa_passphrase=%s",
+		    is_60Ghz_band_only ? "GCMP" : "CCMP",
 		    nw_params.V1_2.passphrase.c_str());
 		break;
 	case IHostapd::EncryptionType::WPA3_SAE_TRANSITION:
@@ -335,12 +352,13 @@ std::string CreateHostapdConfig(
 		}
 		encryption_config_as_string = StringPrintf(
 		    "wpa=2\n"
-		    "rsn_pairwise=CCMP\n"
+		    "rsn_pairwise=%s\n"
 		    "wpa_key_mgmt=WPA-PSK SAE\n"
 		    "ieee80211w=1\n"
 		    "sae_require_mfp=1\n"
 		    "wpa_passphrase=%s\n"
 		    "sae_password=%s",
+		    is_60Ghz_band_only ? "GCMP" : "CCMP",
 		    nw_params.V1_2.passphrase.c_str(),
 		    nw_params.V1_2.passphrase.c_str());
 		break;
@@ -350,12 +368,13 @@ std::string CreateHostapdConfig(
 		}
 		encryption_config_as_string = StringPrintf(
 		    "wpa=2\n"
-		    "rsn_pairwise=CCMP\n"
+		    "rsn_pairwise=%s\n"
 		    "wpa_key_mgmt=SAE\n"
 		    "ieee80211w=2\n"
 		    "sae_require_mfp=2\n"
 		    "sae_pwe=%d\n"
 		    "sae_password=%s",
+		    is_60Ghz_band_only ? "GCMP" : "CCMP",
 		    is_6Ghz_band_only ? 1 : 2,
 		    nw_params.V1_2.passphrase.c_str());
 		break;
@@ -402,8 +421,20 @@ std::string CreateHostapdConfig(
 
 	std::string hw_mode_as_string;
 	std::string ht_cap_vht_oper_chwidth_as_string;
+	std::string enable_edmg_as_string;
+	std::string edmg_channel_as_string;
+	bool is_60Ghz_used = false;
 
-	if ((band & IHostapd::BandMask::BAND_2_GHZ) != 0) {
+	if (((band & IHostapd::BandMask::BAND_60_GHZ) != 0)) {
+		hw_mode_as_string = "hw_mode=ad";
+		if (iface_params.hwModeParams.enableEdmg) {
+			enable_edmg_as_string = "enable_edmg=1";
+			edmg_channel_as_string = StringPrintf(
+				"edmg_channel=%d",
+				channelParams.channel);
+		}
+		is_60Ghz_used = true;
+	} else if ((band & IHostapd::BandMask::BAND_2_GHZ) != 0) {
 		if (((band & IHostapd::BandMask::BAND_5_GHZ) != 0)
 		    || ((band & IHostapd::BandMask::BAND_6_GHZ) != 0)) {
 			hw_mode_as_string = "hw_mode=any";
@@ -415,24 +446,22 @@ std::string CreateHostapdConfig(
 		} else {
 			hw_mode_as_string = "hw_mode=g";
 		}
-	} else {
-		if (((band & IHostapd::BandMask::BAND_5_GHZ) != 0)
+	} else if (((band & IHostapd::BandMask::BAND_5_GHZ) != 0)
 		    || ((band & IHostapd::BandMask::BAND_6_GHZ) != 0)) {
 			hw_mode_as_string = "hw_mode=a";
-			if (iface_params.V1_2.V1_1.V1_0.hwModeParams.enable80211AC) {
-				ht_cap_vht_oper_chwidth_as_string =
-				    "ht_capab=[HT40+]\n"
-				    "vht_oper_chwidth=1";
-			}
-		} else {
-			wpa_printf(MSG_ERROR, "Invalid band");
-			return "";
+		if (iface_params.V1_2.V1_1.V1_0.hwModeParams.enable80211AC) {
+			ht_cap_vht_oper_chwidth_as_string =
+			    "ht_capab=[HT40+]\n"
+			    "vht_oper_chwidth=1";
 		}
+	} else {
+		wpa_printf(MSG_ERROR, "Invalid band");
+		return "";
 	}
 
 	std::string he_params_as_string;
 #ifdef CONFIG_IEEE80211AX
-	if (iface_params.V1_2.hwModeParams.enable80211AX) {
+	if (iface_params.V1_2.hwModeParams.enable80211AX && !is_60Ghz_used) {
 		he_params_as_string = StringPrintf(
 		    "ieee80211ax=1\n"
 		    "he_su_beamformer=%d\n"
@@ -485,6 +514,8 @@ std::string CreateHostapdConfig(
 	    "%s\n"
 #endif /* CONFIG_INTERWORKING */
 	    "%s\n"
+	    "%s\n"
+	    "%s\n"
 	    "%s\n",
 	    iface_params.V1_2.V1_1.V1_0.ifaceName.c_str(), ssid_as_string.c_str(),
 	    channel_config_as_string.c_str(),
@@ -497,7 +528,9 @@ std::string CreateHostapdConfig(
 	    access_network_params_as_string.c_str(),
 #endif /* CONFIG_INTERWORKING */
 	    encryption_config_as_string.c_str(),
-	    bridge_as_string.c_str());
+	    bridge_as_string.c_str(),
+	    enable_edmg_as_string.c_str(),
+	    edmg_channel_as_string.c_str());
 }
 
 Generation getGeneration(hostapd_hw_modes *current_mode)
@@ -514,6 +547,8 @@ Generation getGeneration(hostapd_hw_modes *current_mode)
 	case HOSTAPD_MODE_IEEE80211A:
 		return current_mode->vht_capab == 0 ?
 		       Generation::WIFI_STANDARD_11N : Generation::WIFI_STANDARD_11AC;
+	case HOSTAPD_MODE_IEEE80211AD:
+		return Generation::WIFI_STANDARD_11AD;
         // TODO: b/162484222 miss HOSTAPD_MODE_IEEE80211AX definition.
 	default:
 		return Generation::WIFI_STANDARD_UNKNOWN;
@@ -540,6 +575,14 @@ Bandwidth getBandwidth(struct hostapd_config *iconf)
 				Bandwidth::WIFI_BANDWIDTH_40 : Bandwidth::WIFI_BANDWIDTH_20;
 		}
 		return Bandwidth::WIFI_BANDWIDTH_20_NOHT;
+	case CHANWIDTH_2160MHZ:
+		return Bandwidth::WIFI_BANDWIDTH_2160;
+	case CHANWIDTH_4320MHZ:
+		return Bandwidth::WIFI_BANDWIDTH_4320;
+	case CHANWIDTH_6480MHZ:
+		return Bandwidth::WIFI_BANDWIDTH_6480;
+	case CHANWIDTH_8640MHZ:
+		return Bandwidth::WIFI_BANDWIDTH_8640;
 	default:
 		return Bandwidth::WIFI_BANDWIDTH_INVALID;
 	}
