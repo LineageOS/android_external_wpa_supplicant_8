@@ -27,6 +27,7 @@
  */
 enum brcm_nl80211_vendor_subcmds {
 	BRCM_VENDOR_SUBCMD_UNSPEC		= 0,
+	BRCM_VENDOR_SUBCMD_SET_PMK		= 4,
 	BRCM_VENDOR_SUBCMD_SET_MAC		= 6,
 	BRCM_VENDOR_SCMD_ACS			= 9,
 	BRCM_VENDOR_SCMD_MAX			= 10
@@ -65,6 +66,7 @@ enum wl_vendor_attr_acs_offload {
 
 enum brcm_wlan_vendor_attr {
 	BRCM_ATTR_DRIVER_CMD            = 0,
+	BRCM_ATTR_DRIVER_KEY_PMK        = 1,
 	BRCM_ATTR_DRIVER_MAC_ADDR	= 3,
 	BRCM_ATTR_DRIVER_AFTER_LAST     = 5,
 	BRCM_ATTR_DRIVER_MAX            = BRCM_ATTR_DRIVER_AFTER_LAST - 1,

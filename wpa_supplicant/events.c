@@ -49,6 +49,7 @@
 #include "mesh_mpm.h"
 #include "wmm_ac.h"
 #include "dpp_supplicant.h"
+#include "rsn_supp/wpa_i.h"
 
 
 #define MAX_OWE_TRANSITION_BSS_SELECT_COUNT 5
@@ -2916,6 +2917,12 @@ no_pfs:
 		p += len;
 	}
 #endif /* CONFIG_SME */
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	if ((wpa_s->key_mgmt == WPA_KEY_MGMT_FT_SAE) &&
+		wpa_ft_is_completed(wpa_s->wpa)) {
+		return 0;
+	}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 	/* Process FT when SME is in the driver */
 	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) &&
@@ -3075,6 +3082,9 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 #if defined(CONFIG_FILS) || defined(CONFIG_MBO)
 	struct wpa_bss *bss;
 #endif /* CONFIG_FILS || CONFIG_MBO */
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	struct wpa_ie_data ie;
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 #ifdef CONFIG_AP
 	if (wpa_s->ap_iface) {
@@ -3091,6 +3101,27 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 
 	eloop_cancel_timeout(wpas_network_reenabled, wpa_s, NULL);
 	wpa_s->own_reconnect_req = 0;
+
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	if (!(wpa_sm_parse_own_wpa_ie(wpa_s->wpa, &ie) < 0)) {
+		struct wpa_ft_ies parse;
+		/* Check for FT reassociation is done by the driver */
+#ifdef CONFIG_IEEE80211R
+		int use_sha384 = wpa_key_mgmt_sha384(wpa_s->wpa->key_mgmt);
+		if ((wpa_s->key_mgmt == WPA_KEY_MGMT_FT_SAE) && (wpa_s->key_mgmt == ie.key_mgmt)) {
+			if (wpa_ft_parse_ies(data->assoc_info.resp_ies,
+				data->assoc_info.resp_ies_len, &parse, use_sha384) < 0) {
+				wpa_printf(MSG_DEBUG, "Failed to parse FT IEs");
+				return;
+			}
+			if (parse.rsn_pmkid != NULL) {
+				wpa_set_ft_completed(wpa_s->wpa);
+				wpa_dbg(wpa_s, MSG_DEBUG, "Assume FT reassoc completed by the driver");
+			}
+		}
+#endif  /* CONFIG_IEEE80211R */
+	}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 	ft_completed = wpa_ft_is_completed(wpa_s->wpa);
 	if (data && wpa_supplicant_event_associnfo(wpa_s, data) < 0)
@@ -3110,6 +3141,15 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		return;
 	}
 
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	/* For driver based roaming, insert PSK during the initial association */
+	if (is_zero_ether_addr(wpa_s->bssid) &&
+		wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt)) {
+		/* In case the driver wants to handle re-assocs, pass it down the PMK. */
+		wpa_dbg(wpa_s, MSG_DEBUG, "Pass the PMK to the driver");
+		wpa_sm_install_pmk(wpa_s->wpa);
+	}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 	wpa_supplicant_set_state(wpa_s, WPA_ASSOCIATED);
 	if (os_memcmp(bssid, wpa_s->bssid, ETH_ALEN) != 0) {
 		if (os_reltime_initialized(&wpa_s->session_start)) {

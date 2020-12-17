@@ -1009,6 +1009,9 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 						drv->capa.flags |=
 							WPA_DRIVER_FLAGS_SUPPORT_HW_MODE_ANY;
 						break;
+					case BRCM_VENDOR_SUBCMD_SET_PMK:
+						drv->vendor_set_pmk = 1;
+						break;
 					default:
 						break;
 				}

@@ -3824,6 +3824,20 @@ void wpa_sm_pmksa_cache_flush(struct wpa_sm *sm, void *network_ctx)
 	pmksa_cache_flush(sm->pmksa, network_ctx, NULL, 0);
 }
 
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+void wpa_sm_install_pmk(struct wpa_sm *sm)
+{
+	/* In case the driver wants to handle re-assocs, pass it down the PMK. */
+	if (wpa_sm_set_key(sm, wpa_cipher_to_alg(sm->pairwise_cipher), NULL, 0, 0, NULL, 0,
+		(u8*)sm->pmk, sm->pmk_len, KEY_FLAG_PMK) < 0) {
+		wpa_hexdump(MSG_DEBUG, "PSK: Install PMK to the driver for driver reassociations",
+			(u8*)sm->pmk, sm->pmk_len);
+		/* No harm if the driver doesn't support. */
+		wpa_msg(sm->ctx->msg_ctx, MSG_DEBUG,
+			"WPA: Failed to set PMK to the driver");
+	}
+}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 #ifdef CONFIG_WNM
 int wpa_wnmsleep_install_key(struct wpa_sm *sm, u8 subelem_id, u8 *buf)

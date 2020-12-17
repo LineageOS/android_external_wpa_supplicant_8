@@ -3240,6 +3240,36 @@ static int issue_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+static int key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
+				  const u8 *key, size_t key_len)
+{
+	struct nl_msg *msg;
+	int ret;
+	struct nlattr *params;
+
+	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR)) ||
+	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_BRCM) ||
+	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
+				BRCM_VENDOR_SUBCMD_SET_PMK) ||
+          !(params = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)) ||
+            nla_put(msg, BRCM_ATTR_DRIVER_KEY_PMK, key_len, key)) {
+                nl80211_nlmsg_clear(msg);
+                nlmsg_free(msg);
+                return -ENOBUFS;
+	}
+	nla_nest_end(msg, params);
+
+	ret = send_and_recv_msgs(drv, msg, NULL, (void *) -1, NULL, NULL);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "nl80211: Key mgmt set key failed: ret=%d (%s)",
+			ret, strerror(-ret));
+	}
+
+	return ret;
+}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
+
 static int nl80211_set_pmk(struct wpa_driver_nl80211_data *drv,
 			   const u8 *key, size_t key_len,
 			   const u8 *addr)
@@ -3327,6 +3357,12 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
 	if (key_flag & KEY_FLAG_PMK) {
 		if (drv->capa.flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X)
 			return nl80211_set_pmk(drv, key, key_len, addr);
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+		if (drv->vendor_set_pmk) {
+			wpa_printf(MSG_INFO, "nl80211: key_mgmt_set_key with key_len %lu", key_len);
+			return key_mgmt_set_key(drv, key, key_len);
+		}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 		/* The driver does not have any offload mechanism for PMK, so
 		 * there is no need to configure this key. */
 		return 0;
