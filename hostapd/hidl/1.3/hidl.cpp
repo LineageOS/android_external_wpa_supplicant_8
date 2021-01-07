@@ -62,7 +62,9 @@ err:
 
 void hostapd_hidl_deinit(struct hapd_interfaces *interfaces)
 {
-	wpa_printf(MSG_DEBUG, "Deiniting hidl control");
+	wpa_printf(MSG_INFO, "Deiniting hidl control");
+	// Before hidl init, make sure call terminate to clear callback_
+	service->terminate();
 	eloop_unregister_read_sock(hidl_fd);
 	IPCThreadState::shutdown();
 	hidl_fd = -1;
