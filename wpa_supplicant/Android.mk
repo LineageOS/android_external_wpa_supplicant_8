@@ -41,9 +41,6 @@ L_CFLAGS += -Wno-parentheses-equality
 # Disable sign compare warnings
 L_CFLAGS += -Wno-sign-compare
 
-# TODO: move off readdir_r upstream, pull fix back (http://b/72326431).
-L_CFLAGS += -Wno-error-deprecated-declarations
-
 # Disable unused function warnings
 L_CFLAGS += -Wno-unused-function
 

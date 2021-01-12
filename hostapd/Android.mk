@@ -26,9 +26,6 @@ L_CFLAGS += -DANDROID_LOG_NAME=\"hostapd\"
 
 L_CFLAGS += -Wall -Werror
 
-# TODO: move off readdir_r upstream, pull fix back (http://b/72326431).
-L_CFLAGS += -Wno-error-deprecated-declarations
-
 # Disable unused parameter warnings
 L_CFLAGS += -Wno-unused-parameter
 
