@@ -1019,24 +1019,91 @@ void HidlManager::notifyDisconnectReason(struct wpa_supplicant *wpa_s)
  * @param bssid bssid of AP that rejected the association.
  * @param timed_out flag to indicate failure is due to timeout
  * (auth, assoc, ...) rather than explicit rejection response from the AP.
+ * @param assoc_resp_ie Association response IE.
+ * @param assoc_resp_ie_len Association response IE length.
  */
 void HidlManager::notifyAssocReject(struct wpa_supplicant *wpa_s,
-    const u8 *bssid, u8 timed_out)
+    const u8 *bssid, u8 timed_out, const u8 *assoc_resp_ie, size_t assoc_resp_ie_len)
 {
+	std::string hidl_ifname = wpa_s->ifname;
+#ifdef CONFIG_MBO
+	struct wpa_bss *reject_bss;
+#endif /* CONFIG_MBO */
+	V1_4::ISupplicantStaIfaceCallback::AssociationRejectionData hidl_assoc_reject_data = {};
+
 	if (!wpa_s)
 		return;
 
 	if (sta_iface_object_map_.find(wpa_s->ifname) ==
 	    sta_iface_object_map_.end())
 		return;
+	if (wpa_s->current_ssid) {
+		std::vector < uint8_t > hidl_ssid;
+		hidl_ssid.assign(
+		    wpa_s->current_ssid->ssid,
+		    wpa_s->current_ssid->ssid + wpa_s->current_ssid->ssid_len);
+		hidl_assoc_reject_data.ssid = hidl_ssid;
+	}
+	hidl_assoc_reject_data.bssid = bssid;
+	hidl_assoc_reject_data.statusCode = static_cast<ISupplicantStaIfaceCallback::StatusCode>(
+					    wpa_s->assoc_status_code);
+	if (timed_out) {
+		hidl_assoc_reject_data.timedOut = true;
+	}
+#ifdef CONFIG_MBO
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) {
+		reject_bss = wpa_s->current_bss;
+	} else {
+		reject_bss = wpa_bss_get_bssid(wpa_s, bssid);
+	}
+	if (reject_bss && assoc_resp_ie && assoc_resp_ie_len > 0) {
+		if (wpa_s->assoc_status_code ==
+		    WLAN_STATUS_DENIED_POOR_CHANNEL_CONDITIONS) {
+			const u8 *rssi_rej;
+			rssi_rej = mbo_get_attr_from_ies(
+				    assoc_resp_ie,
+				    assoc_resp_ie_len,
+				    OCE_ATTR_ID_RSSI_BASED_ASSOC_REJECT);
+			if (rssi_rej && rssi_rej[1] == 2) {
+				wpa_printf(MSG_INFO,
+					   "OCE: RSSI-based association rejection from "
+					   MACSTR " Delta RSSI: %u, Retry Delay: %u bss rssi: %d",
+					   MAC2STR(reject_bss->bssid),
+					   rssi_rej[2], rssi_rej[3], reject_bss->level);
+				hidl_assoc_reject_data.isOceRssiBasedAssocRejectAttrPresent = true;
+				hidl_assoc_reject_data.oceRssiBasedAssocRejectData.deltaRssi
+					    = rssi_rej[2];
+				hidl_assoc_reject_data.oceRssiBasedAssocRejectData.retryDelayS
+					    = rssi_rej[3];
+			}
+		} else if (wpa_s->assoc_status_code == WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY
+			  || wpa_s->assoc_status_code == WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA) {
+			const u8 *assoc_disallowed;
+			assoc_disallowed = mbo_get_attr_from_ies(
+						    assoc_resp_ie,
+						    assoc_resp_ie_len,
+						    MBO_ATTR_ID_ASSOC_DISALLOW);
+			if (assoc_disallowed && assoc_disallowed[1] == 1) {
+				wpa_printf(MSG_INFO,
+				    "MBO: association disallowed indication from "
+				    MACSTR " Reason: %d",
+				    MAC2STR(reject_bss->bssid),
+				    assoc_disallowed[2]);
+				hidl_assoc_reject_data.isMboAssocDisallowedReasonCodePresent = true;
+				hidl_assoc_reject_data.mboAssocDisallowedReason
+				    = static_cast<V1_4::ISupplicantStaIfaceCallback
+					    ::MboAssocDisallowedReasonCode>(assoc_disallowed[2]);
+			}
+		}
+	}
+#endif /* CONFIG_MBO */
 
-	callWithEachStaIfaceCallback(
-	    wpa_s->ifname,
-	    std::bind(
-		&ISupplicantStaIfaceCallback::onAssociationRejected,
-		std::placeholders::_1, bssid,
-		static_cast<ISupplicantStaIfaceCallback::StatusCode>(
-		    wpa_s->assoc_status_code), timed_out == 1));
+	const std::function<
+		    Return<void>(android::sp<V1_4::ISupplicantStaIfaceCallback>)>
+		    func = std::bind(
+		    &V1_4::ISupplicantStaIfaceCallback::onAssociationRejected_1_4,
+		    std::placeholders::_1, hidl_assoc_reject_data);
+	callWithEachStaIfaceCallbackDerived(hidl_ifname, func);
 }
 
 void HidlManager::notifyAuthTimeout(struct wpa_supplicant *wpa_s)
