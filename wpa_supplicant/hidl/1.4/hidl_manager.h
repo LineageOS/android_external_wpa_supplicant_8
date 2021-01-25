@@ -106,8 +106,8 @@ public:
 	void notifyHs20RxTermsAndConditionsAcceptance(
 			struct wpa_supplicant *wpa_s, const char *url);
 	void notifyDisconnectReason(struct wpa_supplicant *wpa_s);
-	void notifyAssocReject(struct wpa_supplicant *wpa_s,
-	    const u8 *bssid, u8 timed_out);
+	void notifyAssocReject(struct wpa_supplicant *wpa_s, const u8 *bssid,
+	    u8 timed_out, const u8 *assoc_resp_ie, size_t assoc_resp_ie_len);
 	void notifyAuthTimeout(struct wpa_supplicant *wpa_s);
 	void notifyBssidChanged(struct wpa_supplicant *wpa_s);
 	void notifyWpsEventFail(

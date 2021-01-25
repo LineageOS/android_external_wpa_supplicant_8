@@ -300,7 +300,7 @@ void wpas_hidl_notify_disconnect_reason(struct wpa_supplicant *wpa_s)
 }
 
 void wpas_hidl_notify_assoc_reject(struct wpa_supplicant *wpa_s,
-    const u8 *bssid, u8 timed_out)
+    const u8 *bssid, u8 timed_out, const u8 *assoc_resp_ie, size_t assoc_resp_ie_len)
 {
 	if (!wpa_s)
 		return;
@@ -313,7 +313,7 @@ void wpas_hidl_notify_assoc_reject(struct wpa_supplicant *wpa_s,
 	if (!hidl_manager)
 		return;
 
-	hidl_manager->notifyAssocReject(wpa_s, bssid, timed_out);
+	hidl_manager->notifyAssocReject(wpa_s, bssid, timed_out, assoc_resp_ie, assoc_resp_ie_len);
 }
 
 void wpas_hidl_notify_auth_timeout(struct wpa_supplicant *wpa_s)

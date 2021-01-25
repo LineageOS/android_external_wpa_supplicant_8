@@ -4526,8 +4526,8 @@ static void wpas_event_assoc_reject(struct wpa_supplicant *wpa_s,
 			data->assoc_reject.timeout_reason ?
 			data->assoc_reject.timeout_reason : "");
 	wpa_s->assoc_status_code = data->assoc_reject.status_code;
-	wpas_notify_assoc_status_code(wpa_s,
-				      bssid, data->assoc_reject.timed_out);
+	wpas_notify_assoc_status_code(wpa_s, bssid, data->assoc_reject.timed_out,
+				    data->assoc_reject.resp_ies, data->assoc_reject.resp_ies_len);
 
 #ifdef CONFIG_OWE
 	if (data->assoc_reject.status_code ==
@@ -4749,6 +4749,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			break;
 		}
 #endif /* CONFIG_TESTING_OPTIONS */
+		if (wpa_s->disconnected) {
+			wpa_printf(MSG_INFO,
+				   "Ignore unexpected EVENT_ASSOC in disconnected state");
+			break;
+		}
 		wpa_supplicant_event_assoc(wpa_s, data);
 		wpa_s->assoc_status_code = WLAN_STATUS_SUCCESS;
 		if (data &&

@@ -52,8 +52,8 @@ extern "C"
 	void wpas_hidl_notify_hs20_rx_terms_and_conditions_acceptance(
 			struct wpa_supplicant *wpa_s, const char *url);
 	void wpas_hidl_notify_disconnect_reason(struct wpa_supplicant *wpa_s);
-	void wpas_hidl_notify_assoc_reject(struct wpa_supplicant *wpa_s,
-	    const u8 *bssid, u8 timed_out);
+	void wpas_hidl_notify_assoc_reject(struct wpa_supplicant *wpa_s, const u8 *bssid,
+	    u8 timed_out, const u8 *assoc_resp_ie, size_t assoc_resp_ie_len);
 	void wpas_hidl_notify_auth_timeout(struct wpa_supplicant *wpa_s);
 	void wpas_hidl_notify_bssid_changed(struct wpa_supplicant *wpa_s);
 	void wpas_hidl_notify_wps_event_fail(
@@ -172,8 +172,8 @@ void wpas_hidl_notify_hs20_rx_terms_and_conditions_acceptance(
 		struct wpa_supplicant *wpa_s, const char *url)
 {}
 static void wpas_hidl_notify_disconnect_reason(struct wpa_supplicant *wpa_s) {}
-static void wpas_hidl_notify_assoc_reject(struct wpa_supplicant *wpa_s,
-    const u8 *bssid, u8 timed_out) {}
+static void wpas_hidl_notify_assoc_reject(struct wpa_supplicant *wpa_s, const u8 *bssid,
+    u8 timed_out, const u8 *assoc_resp_ie, size_t assoc_resp_ie_len) {}
 static void wpas_hidl_notify_auth_timeout(struct wpa_supplicant *wpa_s) {}
 static void wpas_hidl_notify_wps_event_fail(
     struct wpa_supplicant *wpa_s, uint8_t *peer_macaddr, uint16_t config_error,
