@@ -1920,6 +1920,26 @@ void HidlManager::notifyTransitionDisable(struct wpa_supplicant *wpa_s,
 	callWithEachStaNetworkCallbackDerived(wpa_s->ifname, ssid->id, func);
 }
 
+void HidlManager::notifyNetworkNotFound(struct wpa_supplicant *wpa_s)
+{
+	std::vector<uint8_t> hidl_ssid;
+
+	if (!wpa_s->current_ssid) {
+		wpa_printf(MSG_ERROR, "Current network NULL. Drop WPA_EVENT_NETWORK_NOT_FOUND!");
+		return;
+	}
+
+	hidl_ssid.assign(
+		    wpa_s->current_ssid->ssid,
+		    wpa_s->current_ssid->ssid + wpa_s->current_ssid->ssid_len);
+
+	const std::function<
+	    Return<void>(android::sp<V1_4::ISupplicantStaIfaceCallback>)>
+	    func = std::bind(
+		&V1_4::ISupplicantStaIfaceCallback::onNetworkNotFound,
+		std::placeholders::_1, hidl_ssid);
+	callWithEachStaIfaceCallbackDerived(wpa_s->ifname, func);
+}
 
 /**
  * Retrieve the |ISupplicantP2pIface| hidl object reference using the provided

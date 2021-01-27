@@ -1231,3 +1231,11 @@ void wpas_notify_transition_disable(struct wpa_supplicant *wpa_s,
 
 	wpas_hidl_notify_transition_disable(wpa_s, ssid, bitmap);
 }
+
+void wpas_notify_network_not_found(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s)
+		return;
+
+	wpas_hidl_notify_network_not_found(wpa_s);
+}

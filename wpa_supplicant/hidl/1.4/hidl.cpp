@@ -907,3 +907,17 @@ void wpas_hidl_notify_transition_disable(struct wpa_supplicant *wpa_s,
 
 	hidl_manager->notifyTransitionDisable(wpa_s, ssid, bitmap);
 }
+
+void wpas_hidl_notify_network_not_found(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s)
+		return;
+
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notify network not found");
+
+	hidl_manager->notifyNetworkNotFound(wpa_s);
+}
