@@ -2372,6 +2372,7 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 
 			wpa_msg_ctrl(wpa_s, MSG_INFO,
 				     WPA_EVENT_NETWORK_NOT_FOUND);
+			wpas_notify_network_not_found(wpa_s);
 		}
 	}
 	return 0;
