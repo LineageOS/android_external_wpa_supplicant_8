@@ -29,7 +29,7 @@ L_CFLAGS += -DANDROID_LOG_NAME=\"wpa_supplicant\"
 L_CFLAGS += -Wall -Werror
 
 # Keep sometimes uninitialized warnings
-L_CFLAGS += -Wno-error-sometimes-uninitialized
+L_CFLAGS += -Wno-error=sometimes-uninitialized
 
 # Disable incompatible pointer type warnings
 L_CFLAGS += -Wno-incompatible-pointer-types
