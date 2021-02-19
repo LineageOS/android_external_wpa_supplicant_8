@@ -3359,7 +3359,7 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
 			return nl80211_set_pmk(drv, key, key_len, addr);
 #ifdef CONFIG_DRIVER_NL80211_BRCM
 		if (drv->vendor_set_pmk) {
-			wpa_printf(MSG_INFO, "nl80211: key_mgmt_set_key with key_len %lu", key_len);
+			wpa_printf(MSG_INFO, "nl80211: key_mgmt_set_key with key_len %lu", (unsigned long) key_len);
 			return key_mgmt_set_key(drv, key, key_len);
 		}
 #endif /* CONFIG_DRIVER_NL80211_BRCM */
