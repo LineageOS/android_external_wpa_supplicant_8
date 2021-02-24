@@ -1473,13 +1473,13 @@ static int wpa_ft_store_pmk_r1(struct wpa_authenticator *wpa_auth,
 }
 
 
-static int wpa_ft_fetch_pmk_r1(struct wpa_authenticator *wpa_auth,
-			       const u8 *spa, const u8 *pmk_r1_name,
-			       u8 *pmk_r1, size_t *pmk_r1_len, int *pairwise,
-			       struct vlan_description *vlan,
-			       const u8 **identity, size_t *identity_len,
-			       const u8 **radius_cui, size_t *radius_cui_len,
-			       int *session_timeout)
+int wpa_ft_fetch_pmk_r1(struct wpa_authenticator *wpa_auth,
+			const u8 *spa, const u8 *pmk_r1_name,
+			u8 *pmk_r1, size_t *pmk_r1_len, int *pairwise,
+			struct vlan_description *vlan,
+			const u8 **identity, size_t *identity_len,
+			const u8 **radius_cui, size_t *radius_cui_len,
+			int *session_timeout)
 {
 	struct wpa_ft_pmk_cache *cache = wpa_auth->ft_pmk_cache;
 	struct wpa_ft_pmk_r1_sa *r1;
@@ -2147,7 +2147,8 @@ int wpa_auth_derive_ptk_ft(struct wpa_state_machine *sm, struct wpa_ptk *ptk)
 
 	return wpa_pmk_r1_to_ptk(pmk_r1, pmk_r1_len, sm->SNonce, sm->ANonce,
 				 sm->addr, sm->wpa_auth->addr, sm->pmk_r1_name,
-				 ptk, ptk_name, sm->wpa_key_mgmt, sm->pairwise);
+				 ptk, ptk_name, sm->wpa_key_mgmt, sm->pairwise,
+				 0);
 }
 
 
@@ -3065,7 +3066,7 @@ static int wpa_ft_process_auth_req(struct wpa_state_machine *sm,
 	const u8 *identity, *radius_cui;
 	size_t identity_len = 0, radius_cui_len = 0;
 	int use_sha384;
-	size_t pmk_r1_len;
+	size_t pmk_r1_len, kdk_len;
 
 	*resp_ies = NULL;
 	*resp_ies_len = 0;
@@ -3195,10 +3196,18 @@ pmk_r1_derived:
 	wpa_hexdump(MSG_DEBUG, "FT: Generated ANonce",
 		    sm->ANonce, WPA_NONCE_LEN);
 
+	if (sm->wpa_auth->conf.force_kdk_derivation ||
+	    (sm->wpa_auth->conf.secure_ltf &&
+	     sm->rsnxe && sm->rsnxe_len >= 4 &&
+	     sm->rsnxe[3] & BIT(WLAN_RSNX_CAPAB_SECURE_LTF - 8)))
+		kdk_len = WPA_KDK_MAX_LEN;
+	else
+		kdk_len = 0;
+
 	if (wpa_pmk_r1_to_ptk(pmk_r1, pmk_r1_len, sm->SNonce, sm->ANonce,
 			      sm->addr, sm->wpa_auth->addr, pmk_r1_name,
 			      &sm->PTK, ptk_name, sm->wpa_key_mgmt,
-			      pairwise) < 0)
+			      pairwise, kdk_len) < 0)
 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
 
 	sm->pairwise = pairwise;

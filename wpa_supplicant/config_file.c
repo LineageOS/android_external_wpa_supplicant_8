@@ -23,105 +23,7 @@
 #include "p2p/p2p.h"
 #include "eap_peer/eap_methods.h"
 #include "eap_peer/eap.h"
-
-
-static int newline_terminated(const char *buf, size_t buflen)
-{
-	size_t len = os_strlen(buf);
-	if (len == 0)
-		return 0;
-	if (len == buflen - 1 && buf[buflen - 1] != '\r' &&
-	    buf[len - 1] != '\n')
-		return 0;
-	return 1;
-}
-
-
-static void skip_line_end(FILE *stream)
-{
-	char buf[100];
-	while (fgets(buf, sizeof(buf), stream)) {
-		buf[sizeof(buf) - 1] = '\0';
-		if (newline_terminated(buf, sizeof(buf)))
-			return;
-	}
-}
-
-
-/**
- * wpa_config_get_line - Read the next configuration file line
- * @s: Buffer for the line
- * @size: The buffer length
- * @stream: File stream to read from
- * @line: Pointer to a variable storing the file line number
- * @_pos: Buffer for the pointer to the beginning of data on the text line or
- * %NULL if not needed (returned value used instead)
- * Returns: Pointer to the beginning of data on the text line or %NULL if no
- * more text lines are available.
- *
- * This function reads the next non-empty line from the configuration file and
- * removes comments. The returned string is guaranteed to be null-terminated.
- */
-static char * wpa_config_get_line(char *s, int size, FILE *stream, int *line,
-				  char **_pos)
-{
-	char *pos, *end, *sstart;
-
-	while (fgets(s, size, stream)) {
-		(*line)++;
-		s[size - 1] = '\0';
-		if (!newline_terminated(s, size)) {
-			/*
-			 * The line was truncated - skip rest of it to avoid
-			 * confusing error messages.
-			 */
-			wpa_printf(MSG_INFO, "Long line in configuration file "
-				   "truncated");
-			skip_line_end(stream);
-		}
-		pos = s;
-
-		/* Skip white space from the beginning of line. */
-		while (*pos == ' ' || *pos == '\t' || *pos == '\r')
-			pos++;
-
-		/* Skip comment lines and empty lines */
-		if (*pos == '#' || *pos == '\n' || *pos == '\0')
-			continue;
-
-		/*
-		 * Remove # comments unless they are within a double quoted
-		 * string.
-		 */
-		sstart = os_strchr(pos, '"');
-		if (sstart)
-			sstart = os_strrchr(sstart + 1, '"');
-		if (!sstart)
-			sstart = pos;
-		end = os_strchr(sstart, '#');
-		if (end)
-			*end-- = '\0';
-		else
-			end = pos + os_strlen(pos) - 1;
-
-		/* Remove trailing white space. */
-		while (end > pos &&
-		       (*end == '\n' || *end == ' ' || *end == '\t' ||
-			*end == '\r'))
-			*end-- = '\0';
-
-		if (*pos == '\0')
-			continue;
-
-		if (_pos)
-			*_pos = pos;
-		return pos;
-	}
-
-	if (_pos)
-		*_pos = NULL;
-	return NULL;
-}
+#include "utils/config.h"
 
 
 static int wpa_config_validate_network(struct wpa_ssid *ssid, int line)
@@ -767,8 +669,8 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(scan_ssid);
 	write_bssid(f, ssid);
 	write_bssid_hint(f, ssid);
-	write_str(f, "bssid_blacklist", ssid);
-	write_str(f, "bssid_whitelist", ssid);
+	write_str(f, "bssid_ignore", ssid);
+	write_str(f, "bssid_accept", ssid);
 	write_psk(f, ssid);
 	INT(mem_only_psk);
 	STR(sae_password);
@@ -1475,8 +1377,22 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		}
 		fprintf(f, "\n");
 	}
+	if (config->initial_freq_list && config->initial_freq_list[0]) {
+		int i;
+		fprintf(f, "initial_freq_list=");
+		for (i = 0; config->initial_freq_list[i]; i++) {
+			fprintf(f, "%s%d", i > 0 ? " " : "",
+				config->initial_freq_list[i]);
+		}
+		fprintf(f, "\n");
+	}
 	if (config->scan_cur_freq != DEFAULT_SCAN_CUR_FREQ)
 		fprintf(f, "scan_cur_freq=%d\n", config->scan_cur_freq);
+
+	if (config->scan_res_valid_for_connect !=
+	    DEFAULT_SCAN_RES_VALID_FOR_CONNECT)
+		fprintf(f, "scan_res_valid_for_connect=%d\n",
+			config->scan_res_valid_for_connect);
 
 	if (config->sched_scan_interval)
 		fprintf(f, "sched_scan_interval=%u\n",
@@ -1614,6 +1530,9 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->extended_key_id != DEFAULT_EXTENDED_KEY_ID)
 		fprintf(f, "extended_key_id=%d\n",
 			config->extended_key_id);
+	if (config->wowlan_disconnect_on_deinit)
+		fprintf(f, "wowlan_disconnect_on_deinit=%d\n",
+			config->wowlan_disconnect_on_deinit);
 }
 
 #endif /* CONFIG_NO_CONFIG_WRITE */

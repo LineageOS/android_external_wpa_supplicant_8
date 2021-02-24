@@ -134,6 +134,7 @@ int hostapd_start_dfs_cac(struct hostapd_iface *iface,
 int hostapd_drv_do_acs(struct hostapd_data *hapd);
 int hostapd_drv_update_dh_ie(struct hostapd_data *hapd, const u8 *peer,
 			     u16 reason_code, const u8 *ie, size_t ielen);
+int hostapd_drv_dpp_listen(struct hostapd_data *hapd, bool enable);
 
 
 #include "drivers/driver.h"
@@ -350,12 +351,13 @@ static inline int hostapd_drv_br_set_net_param(struct hostapd_data *hapd,
 static inline int hostapd_drv_vendor_cmd(struct hostapd_data *hapd,
 					 int vendor_id, int subcmd,
 					 const u8 *data, size_t data_len,
+					 enum nested_attr nested_attr_flag,
 					 struct wpabuf *buf)
 {
 	if (hapd->driver == NULL || hapd->driver->vendor_cmd == NULL)
 		return -1;
 	return hapd->driver->vendor_cmd(hapd->drv_priv, vendor_id, subcmd, data,
-					data_len, buf);
+					data_len, nested_attr_flag, buf);
 }
 
 static inline int hostapd_drv_stop_ap(struct hostapd_data *hapd)
@@ -384,11 +386,11 @@ hostapd_drv_send_external_auth_status(struct hostapd_data *hapd,
 }
 
 static inline int
-hostapd_drv_set_band(struct hostapd_data *hapd, enum set_band band)
+hostapd_drv_set_band(struct hostapd_data *hapd, u32 band_mask)
 {
 	if (!hapd->driver || !hapd->drv_priv || !hapd->driver->set_band)
 		return -1;
-	return hapd->driver->set_band(hapd->drv_priv, band);
+	return hapd->driver->set_band(hapd->drv_priv, band_mask);
 }
 
 #endif /* AP_DRV_OPS */

@@ -14,6 +14,7 @@
 #include "common/ieee802_11_defs.h"
 #include "common/sae.h"
 #include "common/wpa_ctrl.h"
+#include "common/ptksa_cache.h"
 #include "crypto/sha1.h"
 #include "eapol_auth/eapol_auth_sm.h"
 #include "eapol_auth/eapol_auth_sm_i.h"
@@ -210,6 +211,11 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 #ifdef CONFIG_DPP2
 	wconf->dpp_pfs = conf->dpp_pfs;
 #endif /* CONFIG_DPP2 */
+#ifdef CONFIG_PASN
+#ifdef CONFIG_TESTING_OPTIONS
+	wconf->force_kdk_derivation = conf->force_kdk_derivation;
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_PASN */
 }
 
 
@@ -914,6 +920,27 @@ static int hostapd_channel_info(void *ctx, struct wpa_channel_info *ci)
 }
 
 
+#ifdef CONFIG_PASN
+
+static void hostapd_store_ptksa(void *ctx, const u8 *addr,int cipher,
+				u32 life_time, const struct wpa_ptk *ptk)
+{
+	struct hostapd_data *hapd = ctx;
+
+	ptksa_cache_add(hapd->ptksa, addr, cipher, life_time, ptk);
+}
+
+
+static void hostapd_clear_ptksa(void *ctx, const u8 *addr, int cipher)
+{
+	struct hostapd_data *hapd = ctx;
+
+	ptksa_cache_flush(hapd->ptksa, addr, cipher);
+}
+
+#endif /* CONFIG_PASN */
+
+
 static int hostapd_wpa_auth_update_vlan(void *ctx, const u8 *addr, int vlan_id)
 {
 #ifndef CONFIG_NO_VLAN
@@ -1439,6 +1466,11 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 		.send_oui = hostapd_wpa_auth_send_oui,
 		.channel_info = hostapd_channel_info,
 		.update_vlan = hostapd_wpa_auth_update_vlan,
+#ifdef CONFIG_PASN
+		.store_ptksa = hostapd_store_ptksa,
+		.clear_ptksa = hostapd_clear_ptksa,
+#endif /* CONFIG_PASN */
+
 #ifdef CONFIG_OCV
 		.get_sta_tx_params = hostapd_get_sta_tx_params,
 #endif /* CONFIG_OCV */
@@ -1482,6 +1514,22 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 	else
 		_conf.extended_key_id = 0;
 
+	if (!(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_BEACON_PROTECTION))
+		_conf.beacon_prot = 0;
+
+#ifdef CONFIG_OCV
+	if (!(hapd->iface->drv_flags2 &
+	      (WPA_DRIVER_FLAGS2_AP_SME | WPA_DRIVER_FLAGS2_OCV)))
+		_conf.ocv = 0;
+#endif /* CONFIG_OCV */
+
+	_conf.secure_ltf =
+		!!(hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF);
+	_conf.secure_rtt =
+		!!(hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_RTT);
+	_conf.prot_range_neg =
+		!!(hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG);
+
 	hapd->wpa_auth = wpa_init(hapd->own_addr, &_conf, &cb, hapd);
 	if (hapd->wpa_auth == NULL) {
 		wpa_printf(MSG_ERROR, "WPA initialization failed.");
@@ -1504,6 +1552,12 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 	if (rsn_preauth_iface_init(hapd)) {
 		wpa_printf(MSG_ERROR, "Initialization of RSN "
 			   "pre-authentication failed.");
+		return -1;
+	}
+
+	hapd->ptksa = ptksa_cache_init();
+	if (!hapd->ptksa) {
+		wpa_printf(MSG_ERROR, "Failed to allocate PTKSA cache");
 		return -1;
 	}
 
@@ -1546,6 +1600,9 @@ void hostapd_reconfig_wpa(struct hostapd_data *hapd)
 void hostapd_deinit_wpa(struct hostapd_data *hapd)
 {
 	ieee80211_tkip_countermeasures_deinit(hapd);
+	ptksa_cache_deinit(hapd->ptksa);
+	hapd->ptksa = NULL;
+
 	rsn_preauth_iface_deinit(hapd);
 	if (hapd->wpa_auth) {
 		wpa_deinit(hapd->wpa_auth);

@@ -1059,6 +1059,8 @@ void * tls_init(const struct tls_config *conf)
 	SSL_CTX_set_options(ssl, SSL_OP_NO_SSLv2);
 	SSL_CTX_set_options(ssl, SSL_OP_NO_SSLv3);
 
+	SSL_CTX_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+
 #ifdef SSL_MODE_NO_AUTO_CHAIN
 	/* Number of deployed use cases assume the default OpenSSL behavior of
 	 * auto chaining the local certificate is in use. BoringSSL removed this
@@ -4561,10 +4563,18 @@ struct wpabuf * tls_connection_decrypt(void *tls_ctx,
 		return NULL;
 	res = SSL_read(conn->ssl, wpabuf_mhead(buf), wpabuf_size(buf));
 	if (res < 0) {
-		tls_show_errors(MSG_INFO, __func__,
-				"Decryption failed - SSL_read");
-		wpabuf_free(buf);
-		return NULL;
+		int err = SSL_get_error(conn->ssl, res);
+
+		if (err == SSL_ERROR_WANT_READ) {
+			wpa_printf(MSG_DEBUG,
+				   "SSL: SSL_connect - want more data");
+			res = 0;
+		} else {
+			tls_show_errors(MSG_INFO, __func__,
+					"Decryption failed - SSL_read");
+			wpabuf_free(buf);
+			return NULL;
+		}
 	}
 	wpabuf_put(buf, res);
 
@@ -5340,6 +5350,9 @@ static void openssl_debug_dump_certificate(int i, X509 *cert)
 	EVP_PKEY *pkey;
 	ASN1_INTEGER *ser;
 	char serial_num[128];
+
+	if (!cert)
+		return;
 
 	X509_NAME_oneline(X509_get_subject_name(cert), buf, sizeof(buf));
 

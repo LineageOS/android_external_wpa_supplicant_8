@@ -83,6 +83,7 @@ OBJS += notify.o
 OBJS += bss.o
 OBJS += eap_register.o
 OBJS += ../src/utils/common.o
+OBJS += ../src/utils/config.o
 OBJS += ../src/utils/wpa_debug.o
 OBJS += ../src/utils/wpabuf.o
 OBJS += ../src/utils/bitfield.o
@@ -392,6 +393,17 @@ endif
 ifdef CONFIG_WIFI_DISPLAY
 CFLAGS += -DCONFIG_WIFI_DISPLAY
 OBJS += wifi_display.o
+endif
+
+ifdef CONFIG_PASN
+CFLAGS += -DCONFIG_PASN
+CFLAGS += -DCONFIG_PTKSA_CACHE
+NEED_HMAC_SHA256_KDF=y
+NEED_HMAC_SHA384_KDF=y
+NEED_SHA256=y
+NEED_SHA384=y
+OBJS += ../src/common/ptksa_cache.o
+OBJS += pasn_supplicant.o
 endif
 
 ifdef CONFIG_HS20
@@ -1743,6 +1755,12 @@ CFLAGS += -DCONFIG_EXT_PASSWORD_TEST
 NEED_EXT_PASSWORD=y
 endif
 
+ifdef CONFIG_EXT_PASSWORD_FILE
+OBJS += ../src/utils/ext_password_file.o
+CFLAGS += -DCONFIG_EXT_PASSWORD_FILE
+NEED_EXT_PASSWORD=y
+endif
+
 ifdef NEED_EXT_PASSWORD
 OBJS += ../src/utils/ext_password.o
 CFLAGS += -DCONFIG_EXT_PASSWORD
@@ -1785,7 +1803,7 @@ endif
 OBJS += ../src/drivers/driver_common.o
 OBJS_priv += ../src/drivers/driver_common.o
 
-OBJS += wpa_supplicant.o events.o blacklist.o wpas_glue.o scan.o
+OBJS += wpa_supplicant.o events.o bssid_ignore.o wpas_glue.o scan.o
 OBJS_t := $(OBJS) $(OBJS_l2) eapol_test.o
 OBJS_t += ../src/radius/radius_client.o
 OBJS_t += ../src/radius/radius.o

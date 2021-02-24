@@ -25,6 +25,7 @@
 #include "common/ocv.h"
 #include "common/wpa_common.h"
 #include "common/wpa_ctrl.h"
+#include "common/ptksa_cache.h"
 #include "radius/radius.h"
 #include "radius/radius_client.h"
 #include "p2p/p2p.h"
@@ -65,6 +66,23 @@ prepare_auth_resp_fils(struct hostapd_data *hapd,
 		       const u8 *msk, size_t msk_len,
 		       int *is_pub);
 #endif /* CONFIG_FILS */
+
+#ifdef CONFIG_PASN
+
+static int handle_auth_pasn_resp(struct hostapd_data *hapd,
+				 struct sta_info *sta,
+				 struct rsn_pmksa_cache_entry *pmksa,
+				 u16 status);
+#ifdef CONFIG_FILS
+
+static void pasn_fils_auth_resp(struct hostapd_data *hapd,
+				struct sta_info *sta, u16 status,
+				struct wpabuf *erp_resp,
+				const u8 *msk, size_t msk_len);
+
+#endif /* CONFIG_FILS */
+#endif /* CONFIG_PASN */
+
 static void handle_auth(struct hostapd_data *hapd,
 			const struct ieee80211_mgmt *mgmt, size_t len,
 			int rssi, int from_queue);
@@ -469,6 +487,49 @@ static void sae_set_state(struct sta_info *sta, enum sae_state state,
 }
 
 
+static const char * sae_get_password(struct hostapd_data *hapd,
+				     struct sta_info *sta,
+				     const char *rx_id,
+				     struct sae_password_entry **pw_entry,
+				     struct sae_pt **s_pt,
+				     const struct sae_pk **s_pk)
+{
+	const char *password = NULL;
+	struct sae_password_entry *pw;
+	struct sae_pt *pt = NULL;
+	const struct sae_pk *pk = NULL;
+
+	for (pw = hapd->conf->sae_passwords; pw; pw = pw->next) {
+		if (!is_broadcast_ether_addr(pw->peer_addr) &&
+		    os_memcmp(pw->peer_addr, sta->addr, ETH_ALEN) != 0)
+			continue;
+		if ((rx_id && !pw->identifier) || (!rx_id && pw->identifier))
+			continue;
+		if (rx_id && pw->identifier &&
+		    os_strcmp(rx_id, pw->identifier) != 0)
+			continue;
+		password = pw->password;
+		pt = pw->pt;
+		if (!(hapd->conf->mesh & MESH_ENABLED))
+			pk = pw->pk;
+		break;
+	}
+	if (!password) {
+		password = hapd->conf->ssid.wpa_passphrase;
+		pt = hapd->conf->ssid.pt;
+	}
+
+	if (pw_entry)
+		*pw_entry = pw;
+	if (s_pt)
+		*s_pt = pt;
+	if (s_pk)
+		*s_pk = pk;
+
+	return password;
+}
+
+
 static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 					     struct sta_info *sta, int update,
 					     int status_code)
@@ -498,25 +559,7 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 		 status_code == WLAN_STATUS_SAE_PK)
 		use_pt = 1;
 
-	for (pw = hapd->conf->sae_passwords; pw; pw = pw->next) {
-		if (!is_broadcast_ether_addr(pw->peer_addr) &&
-		    os_memcmp(pw->peer_addr, sta->addr, ETH_ALEN) != 0)
-			continue;
-		if ((rx_id && !pw->identifier) || (!rx_id && pw->identifier))
-			continue;
-		if (rx_id && pw->identifier &&
-		    os_strcmp(rx_id, pw->identifier) != 0)
-			continue;
-		password = pw->password;
-		pt = pw->pt;
-		if (!(hapd->conf->mesh & MESH_ENABLED))
-			pk = pw->pk;
-		break;
-	}
-	if (!password) {
-		password = hapd->conf->ssid.wpa_passphrase;
-		pt = hapd->conf->ssid.pt;
-	}
+	password = sae_get_password(hapd, sta, rx_id, &pw, &pt, &pk);
 	if (!password || (use_pt && !pt)) {
 		wpa_printf(MSG_DEBUG, "SAE: No password available");
 		return NULL;
@@ -1149,6 +1192,7 @@ static int sae_status_success(struct hostapd_data *hapd, u16 status_code)
 {
 	int sae_pwe = hapd->conf->sae_pwe;
 	int id_in_use;
+	bool sae_pk = false;
 
 	id_in_use = hostapd_sae_pw_id_in_use(hapd->conf);
 	if (id_in_use == 2 && sae_pwe != 3)
@@ -1156,7 +1200,8 @@ static int sae_status_success(struct hostapd_data *hapd, u16 status_code)
 	else if (id_in_use == 1 && sae_pwe == 0)
 		sae_pwe = 2;
 #ifdef CONFIG_SAE_PK
-	if (sae_pwe == 0 && hostapd_sae_pk_in_use(hapd->conf))
+	sae_pk = hostapd_sae_pk_in_use(hapd->conf);
+	if (sae_pwe == 0 && sae_pk)
 		sae_pwe = 2;
 #endif /* CONFIG_SAE_PK */
 
@@ -1164,11 +1209,11 @@ static int sae_status_success(struct hostapd_data *hapd, u16 status_code)
 		status_code == WLAN_STATUS_SUCCESS) ||
 		(sae_pwe == 1 &&
 		 (status_code == WLAN_STATUS_SAE_HASH_TO_ELEMENT ||
-		  status_code == WLAN_STATUS_SAE_PK)) ||
+		  (sae_pk && status_code == WLAN_STATUS_SAE_PK))) ||
 		(sae_pwe == 2 &&
 		 (status_code == WLAN_STATUS_SUCCESS ||
 		  status_code == WLAN_STATUS_SAE_HASH_TO_ELEMENT ||
-		  status_code == WLAN_STATUS_SAE_PK));
+		  (sae_pk && status_code == WLAN_STATUS_SAE_PK)));
 }
 
 
@@ -1232,6 +1277,7 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 	int default_groups[] = { 19, 0 };
 	const u8 *pos, *end;
 	int sta_removed = 0;
+	bool success_status;
 
 	if (!groups)
 		groups = default_groups;
@@ -1517,9 +1563,12 @@ reply:
 	}
 
 remove_sta:
+	if (auth_transaction == 1)
+		success_status = sae_status_success(hapd, status_code);
+	else
+		success_status = status_code == WLAN_STATUS_SUCCESS;
 	if (!sta_removed && sta->added_unassoc &&
-	    (resp != WLAN_STATUS_SUCCESS ||
-	     status_code != WLAN_STATUS_SUCCESS)) {
+	    (resp != WLAN_STATUS_SUCCESS || !success_status)) {
 		hostapd_drv_sta_remove(hapd, sta->addr);
 		sta->added_unassoc = 0;
 	}
@@ -2183,23 +2232,35 @@ void ieee802_11_finish_fils_auth(struct hostapd_data *hapd,
 				 struct wpabuf *erp_resp,
 				 const u8 *msk, size_t msk_len)
 {
-	struct wpabuf *data;
-	int pub = 0;
 	u16 resp;
+	u32 flags = sta->flags;
 
-	sta->flags &= ~WLAN_STA_PENDING_FILS_ERP;
+	sta->flags &= ~(WLAN_STA_PENDING_FILS_ERP |
+			WLAN_STA_PENDING_PASN_FILS_ERP);
 
-	if (!sta->fils_pending_cb)
-		return;
 	resp = success ? WLAN_STATUS_SUCCESS : WLAN_STATUS_UNSPECIFIED_FAILURE;
-	data = prepare_auth_resp_fils(hapd, sta, &resp, NULL, erp_resp,
-				      msk, msk_len, &pub);
-	if (!data) {
-		wpa_printf(MSG_DEBUG,
-			   "%s: prepare_auth_resp_fils() returned failure",
-			   __func__);
+
+	if (flags & WLAN_STA_PENDING_FILS_ERP) {
+		struct wpabuf *data;
+		int pub = 0;
+
+		if (!sta->fils_pending_cb)
+			return;
+
+		data = prepare_auth_resp_fils(hapd, sta, &resp, NULL, erp_resp,
+					      msk, msk_len, &pub);
+		if (!data) {
+			wpa_printf(MSG_DEBUG,
+				   "%s: prepare_auth_resp_fils() failure",
+				   __func__);
+		}
+		sta->fils_pending_cb(hapd, sta, resp, data, pub);
+#ifdef CONFIG_PASN
+	} else if (flags & WLAN_STA_PENDING_PASN_FILS_ERP) {
+		pasn_fils_auth_resp(hapd, sta, resp, erp_resp,
+				    msk, msk_len);
+#endif /* CONFIG_PASN */
 	}
-	sta->fils_pending_cb(hapd, sta, resp, data, pub);
 }
 
 #endif /* CONFIG_FILS */
@@ -2294,6 +2355,1065 @@ ieee802_11_set_radius_info(struct hostapd_data *hapd, struct sta_info *sta,
 }
 
 
+#ifdef CONFIG_PASN
+#ifdef CONFIG_SAE
+
+static int pasn_wd_handle_sae_commit(struct hostapd_data *hapd,
+				     struct sta_info *sta,
+				     struct wpabuf *wd)
+{
+	struct pasn_data *pasn = sta->pasn;
+	const char *password = NULL;
+	const u8 *data;
+	size_t buf_len;
+	u16 res, alg, seq, status;
+	int groups[] = { pasn->group, 0 };
+	int ret;
+
+	if (!wd)
+		return -1;
+
+	data = wpabuf_head_u8(wd);
+	buf_len = wpabuf_len(wd);
+
+	if (buf_len < 6) {
+		wpa_printf(MSG_DEBUG, "PASN: SAE buffer too short. len=%lu",
+			   buf_len);
+		return -1;
+	}
+
+	alg = WPA_GET_LE16(data);
+	seq = WPA_GET_LE16(data + 2);
+	status = WPA_GET_LE16(data + 4);
+
+	wpa_printf(MSG_DEBUG, "PASN: SAE commit: alg=%u, seq=%u, status=%u",
+		   alg, seq, status);
+
+	/* TODO: SAE H2E */
+	if (alg != WLAN_AUTH_SAE || seq != 1 || status != WLAN_STATUS_SUCCESS) {
+		wpa_printf(MSG_DEBUG, "PASN: Dropping peer SAE commit");
+		return -1;
+	}
+
+	sae_clear_data(&pasn->sae);
+	pasn->sae.state = SAE_NOTHING;
+
+	ret = sae_set_group(&pasn->sae, pasn->group);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to set SAE group");
+		return -1;
+	}
+
+	password = sae_get_password(hapd, sta, NULL, NULL, NULL, NULL);
+	if (!password) {
+		wpa_printf(MSG_DEBUG, "PASN: No SAE password found");
+		return -1;
+	}
+
+	ret = sae_prepare_commit(hapd->own_addr, sta->addr,
+				 (const u8 *) password, os_strlen(password), 0,
+				 &pasn->sae);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to prepare SAE commit");
+		return -1;
+	}
+
+	res = sae_parse_commit(&pasn->sae, data + 6, buf_len - 6, NULL, 0,
+			       groups, 0);
+	if (res != WLAN_STATUS_SUCCESS) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed parsing SAE commit");
+		return -1;
+	}
+
+	/* Process the commit message and derive the PMK */
+	ret = sae_process_commit(&pasn->sae);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "SAE: Failed to process peer commit");
+		return -1;
+	}
+
+	pasn->sae.state = SAE_COMMITTED;
+
+	return 0;
+}
+
+
+static int pasn_wd_handle_sae_confirm(struct hostapd_data *hapd,
+				      struct sta_info *sta,
+				      struct wpabuf *wd)
+{
+	struct pasn_data *pasn = sta->pasn;
+	const u8 *data;
+	size_t buf_len;
+	u16 res, alg, seq, status;
+
+	if (!wd)
+		return -1;
+
+	data = wpabuf_head_u8(wd);
+	buf_len = wpabuf_len(wd);
+
+	if (buf_len < 6) {
+		wpa_printf(MSG_DEBUG, "PASN: SAE buffer too short. len=%lu",
+			   buf_len);
+		return -1;
+	}
+
+	alg = WPA_GET_LE16(data);
+	seq = WPA_GET_LE16(data + 2);
+	status = WPA_GET_LE16(data + 4);
+
+	wpa_printf(MSG_DEBUG, "PASN: SAE confirm: alg=%u, seq=%u, status=%u",
+		   alg, seq, status);
+
+	if (alg != WLAN_AUTH_SAE || seq != 2 || status != WLAN_STATUS_SUCCESS) {
+		wpa_printf(MSG_DEBUG, "PASN: Dropping peer SAE confirm");
+		return -1;
+	}
+
+	res = sae_check_confirm(&pasn->sae, data + 6, buf_len - 6);
+	if (res != WLAN_STATUS_SUCCESS) {
+		wpa_printf(MSG_DEBUG, "PASN: SAE failed checking confirm");
+		return -1;
+	}
+
+	pasn->sae.state = SAE_ACCEPTED;
+
+	/*
+	 * TODO: Based on on IEEE P802.11az/D2.6, the PMKSA derived with
+	 * PASN/SAE should only be allowed with future PASN only. For now do not
+	 * restrict this only for PASN.
+	 */
+	wpa_auth_pmksa_add_sae(hapd->wpa_auth, sta->addr,
+			       pasn->sae.pmk, pasn->sae.pmkid);
+	return 0;
+}
+
+
+static struct wpabuf * pasn_get_sae_wd(struct hostapd_data *hapd,
+				       struct sta_info *sta)
+{
+	struct pasn_data *pasn = sta->pasn;
+	struct wpabuf *buf = NULL;
+	u8 *len_ptr;
+	size_t len;
+
+	/* Need to add the entire Authentication frame body */
+	buf = wpabuf_alloc(8 + SAE_COMMIT_MAX_LEN + 8 + SAE_CONFIRM_MAX_LEN);
+	if (!buf) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to allocate SAE buffer");
+		return NULL;
+	}
+
+	/* Need to add the entire authentication frame body for the commit */
+	len_ptr = wpabuf_put(buf, 2);
+	wpabuf_put_le16(buf, WLAN_AUTH_SAE);
+	wpabuf_put_le16(buf, 1);
+	wpabuf_put_le16(buf, WLAN_STATUS_SUCCESS);
+
+	/* Write the actual commit and update the length accordingly */
+	sae_write_commit(&pasn->sae, buf, NULL, 0);
+	len = wpabuf_len(buf);
+	WPA_PUT_LE16(len_ptr, len - 2);
+
+	/* Need to add the entire Authentication frame body for the confirm */
+	len_ptr = wpabuf_put(buf, 2);
+	wpabuf_put_le16(buf, WLAN_AUTH_SAE);
+	wpabuf_put_le16(buf, 2);
+	wpabuf_put_le16(buf, WLAN_STATUS_SUCCESS);
+
+	sae_write_confirm(&pasn->sae, buf);
+	WPA_PUT_LE16(len_ptr, wpabuf_len(buf) - len - 2);
+
+	pasn->sae.state = SAE_CONFIRMED;
+
+	return buf;
+}
+
+#endif /* CONFIG_SAE */
+
+
+#ifdef CONFIG_FILS
+
+static struct wpabuf * pasn_get_fils_wd(struct hostapd_data *hapd,
+					struct sta_info *sta)
+{
+	struct pasn_data *pasn = sta->pasn;
+	struct pasn_fils_data *fils = &pasn->fils;
+	struct wpabuf *buf = NULL;
+
+	if (!fils->erp_resp) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Missing erp_resp");
+		return NULL;
+	}
+
+	buf = wpabuf_alloc(1500);
+	if (!buf)
+		return NULL;
+
+	/* Add the authentication algorithm */
+	wpabuf_put_le16(buf, WLAN_AUTH_FILS_SK);
+
+	/* Authentication Transaction seq# */
+	wpabuf_put_le16(buf, 2);
+
+	/* Status Code */
+	wpabuf_put_le16(buf, WLAN_STATUS_SUCCESS);
+
+	/* Own RSNE */
+	wpa_pasn_add_rsne(buf, NULL, pasn->akmp, pasn->cipher);
+
+	/* FILS Nonce */
+	wpabuf_put_u8(buf, WLAN_EID_EXTENSION);
+	wpabuf_put_u8(buf, 1 + FILS_NONCE_LEN);
+	wpabuf_put_u8(buf, WLAN_EID_EXT_FILS_NONCE);
+	wpabuf_put_data(buf, fils->anonce, FILS_NONCE_LEN);
+
+	/* FILS Session */
+	wpabuf_put_u8(buf, WLAN_EID_EXTENSION);
+	wpabuf_put_u8(buf, 1 + FILS_SESSION_LEN);
+	wpabuf_put_u8(buf, WLAN_EID_EXT_FILS_SESSION);
+	wpabuf_put_data(buf, fils->session, FILS_SESSION_LEN);
+
+	/* Wrapped Data */
+	wpabuf_put_u8(buf, WLAN_EID_EXTENSION);
+	wpabuf_put_u8(buf, 1 + wpabuf_len(fils->erp_resp));
+	wpabuf_put_u8(buf, WLAN_EID_EXT_WRAPPED_DATA);
+	wpabuf_put_buf(buf, fils->erp_resp);
+
+	return buf;
+}
+
+
+static void pasn_fils_auth_resp(struct hostapd_data *hapd,
+				struct sta_info *sta, u16 status,
+				struct wpabuf *erp_resp,
+				const u8 *msk, size_t msk_len)
+{
+	struct pasn_data *pasn = sta->pasn;
+	struct pasn_fils_data *fils = &pasn->fils;
+	u8 pmk[PMK_LEN_MAX];
+	size_t pmk_len;
+	int ret;
+
+	wpa_printf(MSG_DEBUG, "PASN: FILS: Handle AS response - status=%u",
+		   status);
+
+	if (status != WLAN_STATUS_SUCCESS)
+		goto fail;
+
+	if (!pasn->secret) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Missing secret");
+		goto fail;
+	}
+
+	if (random_get_bytes(fils->anonce, FILS_NONCE_LEN) < 0) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed to get ANonce");
+		goto fail;
+	}
+
+	wpa_hexdump(MSG_DEBUG, "RSN: Generated FILS ANonce",
+		    fils->anonce, FILS_NONCE_LEN);
+
+	ret = fils_rmsk_to_pmk(pasn->akmp, msk, msk_len, fils->nonce,
+			       fils->anonce, NULL, 0, pmk, &pmk_len);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "FILS: Failed to derive PMK");
+		goto fail;
+	}
+
+	ret = pasn_pmk_to_ptk(pmk, pmk_len, sta->addr, hapd->own_addr,
+			      wpabuf_head(pasn->secret),
+			      wpabuf_len(pasn->secret),
+			      &sta->pasn->ptk, sta->pasn->akmp,
+			      sta->pasn->cipher, WPA_KDK_MAX_LEN);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed to derive PTK");
+		goto fail;
+	}
+
+	wpa_printf(MSG_DEBUG, "PASN: PTK successfully derived");
+
+	wpabuf_free(pasn->secret);
+	pasn->secret = NULL;
+
+	fils->erp_resp = erp_resp;
+	ret = handle_auth_pasn_resp(hapd, sta, NULL, WLAN_STATUS_SUCCESS);
+	fils->erp_resp = NULL;
+
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed to send response");
+		goto fail;
+	}
+
+	fils->state = PASN_FILS_STATE_COMPLETE;
+	return;
+fail:
+	ap_free_sta(hapd, sta);
+}
+
+
+static int pasn_wd_handle_fils(struct hostapd_data *hapd, struct sta_info *sta,
+			       struct wpabuf *wd)
+{
+	struct pasn_data *pasn = sta->pasn;
+	struct pasn_fils_data *fils = &pasn->fils;
+	struct ieee802_11_elems elems;
+	struct wpa_ie_data rsne_data;
+	struct wpabuf *fils_wd;
+	const u8 *data;
+	size_t buf_len;
+	u16 alg, seq, status;
+	int ret;
+
+	if (fils->state != PASN_FILS_STATE_NONE) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Not expecting wrapped data");
+		return -1;
+	}
+
+	if (!wd) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: No wrapped data");
+		return -1;
+	}
+
+	data = wpabuf_head_u8(wd);
+	buf_len = wpabuf_len(wd);
+
+	if (buf_len < 6) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Buffer too short. len=%lu",
+			   buf_len);
+		return -1;
+	}
+
+	alg = WPA_GET_LE16(data);
+	seq = WPA_GET_LE16(data + 2);
+	status = WPA_GET_LE16(data + 4);
+
+	wpa_printf(MSG_DEBUG, "PASN: FILS: alg=%u, seq=%u, status=%u",
+		   alg, seq, status);
+
+	if (alg != WLAN_AUTH_FILS_SK || seq != 1 ||
+	    status != WLAN_STATUS_SUCCESS) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: FILS: Dropping peer authentication");
+		return -1;
+	}
+
+	data += 6;
+	buf_len -= 6;
+
+	if (ieee802_11_parse_elems(data, buf_len, &elems, 1) == ParseFailed) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Could not parse elements");
+		return -1;
+	}
+
+	if (!elems.rsn_ie || !elems.fils_nonce || !elems.fils_nonce ||
+	    !elems.wrapped_data) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Missing IEs");
+		return -1;
+	}
+
+	ret = wpa_parse_wpa_ie_rsn(elems.rsn_ie - 2, elems.rsn_ie_len + 2,
+				   &rsne_data);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed parsing RNSE");
+		return -1;
+	}
+
+	ret = wpa_pasn_validate_rsne(&rsne_data);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed validating RSNE");
+		return -1;
+	}
+
+	if (rsne_data.num_pmkid) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: FILS: Not expecting PMKID in RSNE");
+		return -1;
+	}
+
+	wpa_hexdump(MSG_DEBUG, "PASN: FILS: Nonce", elems.fils_nonce,
+		    FILS_NONCE_LEN);
+	os_memcpy(fils->nonce, elems.fils_nonce, FILS_NONCE_LEN);
+
+	wpa_hexdump(MSG_DEBUG, "PASN: FILS: Session", elems.fils_session,
+		    FILS_SESSION_LEN);
+	os_memcpy(fils->session, elems.fils_session, FILS_SESSION_LEN);
+
+#ifdef CONFIG_NO_RADIUS
+	wpa_printf(MSG_DEBUG, "PASN: FILS: RADIUS is not configured. Fail");
+	return -1;
+#endif /* CONFIG_NO_RADIUS */
+
+	fils_wd = ieee802_11_defrag(&elems, WLAN_EID_EXTENSION,
+				    WLAN_EID_EXT_WRAPPED_DATA);
+
+	if (!fils_wd) {
+		wpa_printf(MSG_DEBUG, "PASN: FILS: Missing wrapped data");
+		return -1;
+	}
+
+	if (!sta->eapol_sm)
+		sta->eapol_sm = ieee802_1x_alloc_eapol_sm(hapd, sta);
+
+	wpa_printf(MSG_DEBUG,
+		   "PASN: FILS: Forward EAP-Initiate/Re-auth to AS");
+
+	ieee802_1x_encapsulate_radius(hapd, sta, wpabuf_head(fils_wd),
+				      wpabuf_len(fils_wd));
+
+	sta->flags |= WLAN_STA_PENDING_PASN_FILS_ERP;
+
+	fils->state = PASN_FILS_STATE_PENDING_AS;
+
+	/*
+	 * Calculate pending PMKID here so that we do not need to maintain a
+	 * copy of the EAP-Initiate/Reautt message.
+	 */
+	fils_pmkid_erp(pasn->akmp, wpabuf_head(fils_wd), wpabuf_len(fils_wd),
+		       fils->erp_pmkid);
+
+	wpabuf_free(fils_wd);
+	return 0;
+}
+
+#endif /* CONFIG_FILS */
+
+
+static struct wpabuf * pasn_get_wrapped_data(struct hostapd_data *hapd,
+					     struct sta_info *sta)
+{
+	switch (sta->pasn->akmp) {
+	case WPA_KEY_MGMT_PASN:
+		/* no wrapped data */
+		return NULL;
+	case WPA_KEY_MGMT_SAE:
+#ifdef CONFIG_SAE
+		return pasn_get_sae_wd(hapd, sta);
+#else /* CONFIG_SAE */
+		wpa_printf(MSG_ERROR,
+			   "PASN: SAE: Cannot derive wrapped data");
+		return NULL;
+#endif /* CONFIG_SAE */
+	case WPA_KEY_MGMT_FILS_SHA256:
+	case WPA_KEY_MGMT_FILS_SHA384:
+#ifdef CONFIG_FILS
+		return pasn_get_fils_wd(hapd, sta);
+#endif /* CONFIG_FILS */
+		/* fall through */
+	case WPA_KEY_MGMT_FT_PSK:
+	case WPA_KEY_MGMT_FT_IEEE8021X:
+	case WPA_KEY_MGMT_FT_IEEE8021X_SHA384:
+	default:
+		wpa_printf(MSG_ERROR,
+			   "PASN: TODO: Wrapped data for akmp=0x%x",
+			   sta->pasn->akmp);
+		return NULL;
+	}
+}
+
+
+static int
+pasn_derive_keys(struct hostapd_data *hapd, struct sta_info *sta,
+		 const u8 *cached_pmk, size_t cached_pmk_len,
+		 struct wpa_pasn_params_data *pasn_data,
+		 struct wpabuf *wrapped_data,
+		 struct wpabuf *secret)
+{
+	static const u8 pasn_default_pmk[] = {'P', 'M', 'K', 'z'};
+	u8 pmk[PMK_LEN_MAX];
+	u8 pmk_len;
+	int ret;
+
+	os_memset(pmk, 0, sizeof(pmk));
+	pmk_len = 0;
+
+	if (!cached_pmk || !cached_pmk_len)
+		wpa_printf(MSG_DEBUG, "PASN: No valid PMKSA entry");
+
+	if (sta->pasn->akmp == WPA_KEY_MGMT_PASN) {
+		wpa_printf(MSG_DEBUG, "PASN: Using default PMK");
+
+		pmk_len = WPA_PASN_PMK_LEN;
+		os_memcpy(pmk, pasn_default_pmk, sizeof(pasn_default_pmk));
+	} else if (cached_pmk && cached_pmk_len) {
+		wpa_printf(MSG_DEBUG, "PASN: Using PMKSA entry");
+
+		pmk_len = cached_pmk_len;
+		os_memcpy(pmk, cached_pmk, cached_pmk_len);
+	} else {
+		switch (sta->pasn->akmp) {
+#ifdef CONFIG_SAE
+		case WPA_KEY_MGMT_SAE:
+			if (sta->pasn->sae.state == SAE_COMMITTED) {
+				pmk_len = PMK_LEN;
+				os_memcpy(pmk, sta->pasn->sae.pmk, PMK_LEN);
+				break;
+			}
+#endif /* CONFIG_SAE */
+			/* fall through */
+		default:
+			/* TODO: Derive PMK based on wrapped data */
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Missing PMK derivation");
+			return -1;
+		}
+	}
+
+	ret = pasn_pmk_to_ptk(pmk, pmk_len, sta->addr, hapd->own_addr,
+			      wpabuf_head(secret), wpabuf_len(secret),
+			      &sta->pasn->ptk, sta->pasn->akmp,
+			      sta->pasn->cipher, WPA_KDK_MAX_LEN);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to derive PTK");
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "PASN: PTK successfully derived");
+	return 0;
+}
+
+
+static int handle_auth_pasn_resp(struct hostapd_data *hapd,
+				 struct sta_info *sta,
+				 struct rsn_pmksa_cache_entry *pmksa,
+				 u16 status)
+{
+	struct wpabuf *buf, *pubkey = NULL, *wrapped_data_buf = NULL;
+	u8 mic[WPA_PASN_MAX_MIC_LEN];
+	u8 mic_len, frame_len, data_len;
+	u8 *ptr;
+	const u8 *frame, *data, *rsn_ie, *rsnxe_ie;
+	u8 *data_buf = NULL;
+	size_t rsn_ie_len;
+	int ret;
+
+	wpa_printf(MSG_DEBUG, "PASN: Building frame 2: status=%u", status);
+
+	buf = wpabuf_alloc(1500);
+	if (!buf)
+		goto fail;
+
+	wpa_pasn_build_auth_header(buf, hapd->own_addr, hapd->own_addr,
+				   sta->addr, 2, status);
+
+	if (status != WLAN_STATUS_SUCCESS)
+		goto done;
+
+	if (wpa_pasn_add_rsne(buf, pmksa ? pmksa->pmkid : NULL,
+			      sta->pasn->akmp, sta->pasn->cipher) < 0)
+		goto fail;
+
+	/* No need to derive PMK if PMKSA is given */
+	if (!pmksa)
+		wrapped_data_buf = pasn_get_wrapped_data(hapd, sta);
+	else
+		sta->pasn->wrapped_data_format = WPA_PASN_WRAPPED_DATA_NO;
+
+	/* Get public key */
+	pubkey = crypto_ecdh_get_pubkey(sta->pasn->ecdh, 0);
+	pubkey = wpabuf_zeropad(pubkey,
+				crypto_ecdh_prime_len(sta->pasn->ecdh));
+	if (!pubkey) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to get pubkey");
+		goto fail;
+	}
+
+	wpa_pasn_add_parameter_ie(buf, sta->pasn->group,
+				  sta->pasn->wrapped_data_format,
+				  pubkey, NULL, 0);
+
+	if (wpa_pasn_add_wrapped_data(buf, wrapped_data_buf) < 0)
+		goto fail;
+
+	wpabuf_free(wrapped_data_buf);
+	wrapped_data_buf = NULL;
+	wpabuf_free(pubkey);
+	pubkey = NULL;
+
+	/* Add RSNXE if needed */
+	rsnxe_ie = hostapd_wpa_ie(hapd, WLAN_EID_RSNX);
+	if (rsnxe_ie)
+		wpabuf_put_data(buf, rsnxe_ie, 2 + rsnxe_ie[1]);
+
+	/* Add the mic */
+	mic_len = pasn_mic_len(sta->pasn->akmp, sta->pasn->cipher);
+	wpabuf_put_u8(buf, WLAN_EID_MIC);
+	wpabuf_put_u8(buf, mic_len);
+	ptr = wpabuf_put(buf, mic_len);
+
+	os_memset(ptr, 0, mic_len);
+
+	frame = wpabuf_head_u8(buf) + IEEE80211_HDRLEN;
+	frame_len = wpabuf_len(buf) - IEEE80211_HDRLEN;
+
+	rsn_ie = wpa_auth_get_wpa_ie(hapd->wpa_auth, &rsn_ie_len);
+	if (!rsn_ie || !rsn_ie_len)
+		goto fail;
+
+	/*
+	 * Note: wpa_auth_get_wpa_ie() might return not only the RSNE but also
+	 * MDE, etc. Thus, do not use the returned length but instead use the
+	 * length specified in the IE header.
+	 */
+	data_len = rsn_ie[1] + 2;
+	if (rsnxe_ie) {
+		data_buf = os_zalloc(rsn_ie[1] + 2 + rsnxe_ie[1] + 2);
+		if (!data_buf)
+			goto fail;
+
+		os_memcpy(data_buf, rsn_ie, rsn_ie[1] + 2);
+		os_memcpy(data_buf + rsn_ie[1] + 2, rsnxe_ie, rsnxe_ie[1] + 2);
+		data_len += rsnxe_ie[1] + 2;
+		data = data_buf;
+	} else {
+		data = rsn_ie;
+	}
+
+	ret = pasn_mic(sta->pasn->ptk.kck, sta->pasn->akmp, sta->pasn->cipher,
+		       hapd->own_addr, sta->addr, data, data_len,
+		       frame, frame_len, mic);
+	os_free(data_buf);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Frame 3: Failed MIC calculation");
+		goto fail;
+	}
+
+	os_memcpy(ptr, mic, mic_len);
+
+done:
+	wpa_printf(MSG_DEBUG,
+		   "PASN: Building frame 2: success; resp STA=" MACSTR,
+		   MAC2STR(sta->addr));
+
+	ret = hostapd_drv_send_mlme(hapd, wpabuf_head(buf), wpabuf_len(buf), 0,
+				    NULL, 0, 0);
+	if (ret)
+		wpa_printf(MSG_INFO, "send_auth_reply: Send failed");
+
+	wpabuf_free(buf);
+	return ret;
+fail:
+	wpabuf_free(wrapped_data_buf);
+	wpabuf_free(pubkey);
+	wpabuf_free(buf);
+	return -1;
+}
+
+
+static void handle_auth_pasn_1(struct hostapd_data *hapd, struct sta_info *sta,
+			       const struct ieee80211_mgmt *mgmt, size_t len)
+{
+	struct ieee802_11_elems elems;
+	struct wpa_ie_data rsn_data;
+	struct wpa_pasn_params_data pasn_params;
+	struct rsn_pmksa_cache_entry *pmksa = NULL;
+	const u8 *cached_pmk = NULL;
+	size_t cached_pmk_len = 0;
+#ifdef CONFIG_IEEE80211R_AP
+	u8 pmk_r1[PMK_LEN_MAX];
+	size_t pmk_r1_len;
+#endif /* CONFIG_IEEE80211R_AP */
+	struct wpabuf *wrapped_data = NULL, *secret = NULL;
+	const int *groups = hapd->conf->pasn_groups;
+	static const int default_groups[] = { 19, 0 };
+	u16 status = WLAN_STATUS_SUCCESS;
+	int ret;
+	bool derive_keys;
+	u32 i;
+
+	if (!groups)
+		groups = default_groups;
+
+	if (ieee802_11_parse_elems(mgmt->u.auth.variable,
+				   len - offsetof(struct ieee80211_mgmt,
+						  u.auth.variable),
+				   &elems, 0) == ParseFailed) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Failed parsing Authentication frame");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto send_resp;
+	}
+
+	ret = wpa_parse_wpa_ie_rsn(elems.rsn_ie - 2, elems.rsn_ie_len + 2,
+				   &rsn_data);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed parsing RNSE");
+		status = WLAN_STATUS_INVALID_RSNIE;
+		goto send_resp;
+	}
+
+	ret = wpa_pasn_validate_rsne(&rsn_data);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed validating RSNE");
+		status = WLAN_STATUS_INVALID_RSNIE;
+		goto send_resp;
+	}
+
+	if (!(rsn_data.key_mgmt & hapd->conf->wpa_key_mgmt) ||
+	    !(rsn_data.pairwise_cipher & hapd->conf->rsn_pairwise)) {
+		wpa_printf(MSG_DEBUG, "PASN: Mismatch in AKMP/cipher");
+		status = WLAN_STATUS_INVALID_RSNIE;
+		goto send_resp;
+	}
+
+	sta->pasn->akmp = rsn_data.key_mgmt;
+	sta->pasn->cipher = rsn_data.pairwise_cipher;
+
+	if (!elems.pasn_params || !elems.pasn_params_len) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: No PASN Parameters element found");
+		status = WLAN_STATUS_INVALID_PARAMETERS;
+		goto send_resp;
+	}
+
+	ret = wpa_pasn_parse_parameter_ie(elems.pasn_params - 3,
+					  elems.pasn_params_len + 3,
+					  false, &pasn_params);
+	if (ret) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Failed validation of PASN Parameters IE");
+		status = WLAN_STATUS_INVALID_PARAMETERS;
+		goto send_resp;
+	}
+
+	for (i = 0; groups[i] > 0 && groups[i] != pasn_params.group; i++)
+		;
+
+	if (!pasn_params.group || groups[i] != pasn_params.group) {
+		wpa_printf(MSG_DEBUG, "PASN: Requested group=%hu not allowed",
+			   pasn_params.group);
+		status = WLAN_STATUS_FINITE_CYCLIC_GROUP_NOT_SUPPORTED;
+		goto send_resp;
+	}
+
+	if (!pasn_params.pubkey || !pasn_params.pubkey_len) {
+		wpa_printf(MSG_DEBUG, "PASN: Invalid public key");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto send_resp;
+	}
+
+	sta->pasn->ecdh = crypto_ecdh_init(pasn_params.group);
+	if (!sta->pasn->ecdh) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to init ECDH");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto send_resp;
+	}
+
+	sta->pasn->group = pasn_params.group;
+
+	secret = crypto_ecdh_set_peerkey(sta->pasn->ecdh, 0,
+					 pasn_params.pubkey,
+					 pasn_params.pubkey_len);
+	if (!secret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to derive shared secret");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto send_resp;
+	}
+
+	derive_keys = true;
+	if (pasn_params.wrapped_data_format != WPA_PASN_WRAPPED_DATA_NO) {
+		wrapped_data = ieee802_11_defrag(&elems,
+						 WLAN_EID_EXTENSION,
+						 WLAN_EID_EXT_WRAPPED_DATA);
+		if (!wrapped_data) {
+			wpa_printf(MSG_DEBUG, "PASN: Missing wrapped data");
+			status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			goto send_resp;
+		}
+
+#ifdef CONFIG_SAE
+		if (sta->pasn->akmp == WPA_KEY_MGMT_SAE) {
+			ret = pasn_wd_handle_sae_commit(hapd, sta,
+							wrapped_data);
+			if (ret) {
+				wpa_printf(MSG_DEBUG,
+					   "PASN: Failed processing SAE commit");
+				status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+				goto send_resp;
+			}
+		}
+#endif /* CONFIG_SAE */
+#ifdef CONFIG_FILS
+		if (sta->pasn->akmp == WPA_KEY_MGMT_FILS_SHA256 ||
+		    sta->pasn->akmp == WPA_KEY_MGMT_FILS_SHA384) {
+			ret = pasn_wd_handle_fils(hapd, sta, wrapped_data);
+			if (ret) {
+				wpa_printf(MSG_DEBUG,
+					   "PASN: Failed processing FILS wrapped data");
+				status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+				goto send_resp;
+			}
+
+			wpa_printf(MSG_DEBUG,
+				   "PASN: FILS: Pending AS response");
+
+			/*
+			 * With PASN/FILS, keys can be derived only after a
+			 * response from the AS is processed.
+			 */
+			derive_keys = false;
+		}
+#endif /* CONFIG_FILS */
+	}
+
+	sta->pasn->wrapped_data_format = pasn_params.wrapped_data_format;
+
+	ret = pasn_auth_frame_hash(sta->pasn->akmp, sta->pasn->cipher,
+				   ((const u8 *) mgmt) + IEEE80211_HDRLEN,
+				   len - IEEE80211_HDRLEN, sta->pasn->hash);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to compute hash");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto send_resp;
+	}
+
+	if (!derive_keys) {
+		wpa_printf(MSG_DEBUG, "PASN: Storing secret");
+		sta->pasn->secret = secret;
+		wpabuf_free(wrapped_data);
+		return;
+	}
+
+	if (rsn_data.num_pmkid) {
+		if (wpa_key_mgmt_ft(sta->pasn->akmp)) {
+#ifdef CONFIG_IEEE80211R_AP
+			wpa_printf(MSG_DEBUG, "PASN: FT: Fetch PMK-R1");
+
+			ret = wpa_ft_fetch_pmk_r1(hapd->wpa_auth, sta->addr,
+						  rsn_data.pmkid,
+						  pmk_r1, &pmk_r1_len, NULL,
+						  NULL, NULL, NULL,
+						  NULL, NULL, NULL);
+			if (ret) {
+				wpa_printf(MSG_DEBUG,
+					   "PASN: FT: Failed getting PMK-R1");
+				status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+				goto send_resp;
+			}
+			cached_pmk = pmk_r1;
+			cached_pmk_len = pmk_r1_len;
+#else /* CONFIG_IEEE80211R_AP */
+			wpa_printf(MSG_DEBUG, "PASN: FT: Not supported");
+			status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			goto send_resp;
+#endif /* CONFIG_IEEE80211R_AP */
+		} else {
+			wpa_printf(MSG_DEBUG, "PASN: Try to find PMKSA entry");
+
+			pmksa = wpa_auth_pmksa_get(hapd->wpa_auth, sta->addr,
+						   rsn_data.pmkid);
+			if (pmksa) {
+				cached_pmk = pmksa->pmk;
+				cached_pmk_len = pmksa->pmk_len;
+			}
+		}
+	} else {
+		wpa_printf(MSG_DEBUG, "PASN: No PMKID specified");
+	}
+
+	ret = pasn_derive_keys(hapd, sta, cached_pmk, cached_pmk_len,
+			       &pasn_params, wrapped_data, secret);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to derive keys");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto send_resp;
+	}
+
+	ret = pasn_auth_frame_hash(sta->pasn->akmp, sta->pasn->cipher,
+				   ((const u8 *) mgmt) + IEEE80211_HDRLEN,
+				   len - IEEE80211_HDRLEN, sta->pasn->hash);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to compute hash");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+	}
+
+send_resp:
+	ret = handle_auth_pasn_resp(hapd, sta, pmksa, status);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to send response");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+	} else {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Success handling transaction == 1");
+	}
+
+	wpabuf_free(secret);
+	wpabuf_free(wrapped_data);
+
+	if (status != WLAN_STATUS_SUCCESS)
+		ap_free_sta(hapd, sta);
+}
+
+
+static void handle_auth_pasn_3(struct hostapd_data *hapd, struct sta_info *sta,
+			       const struct ieee80211_mgmt *mgmt, size_t len)
+{
+	struct ieee802_11_elems elems;
+	struct wpa_pasn_params_data pasn_params;
+	struct wpabuf *wrapped_data = NULL;
+	u8 mic[WPA_PASN_MAX_MIC_LEN], out_mic[WPA_PASN_MAX_MIC_LEN];
+	u8 mic_len;
+	int ret;
+
+	if (ieee802_11_parse_elems(mgmt->u.auth.variable,
+				   len - offsetof(struct ieee80211_mgmt,
+						  u.auth.variable),
+				   &elems, 0) == ParseFailed) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Failed parsing Authentication frame");
+		goto fail;
+	}
+
+	/* Check that the MIC IE exists. Save it and zero out the memory. */
+	mic_len = pasn_mic_len(sta->pasn->akmp, sta->pasn->cipher);
+	if (!elems.mic || elems.mic_len != mic_len) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Invalid MIC. Expecting len=%u", mic_len);
+		goto fail;
+	} else {
+		os_memcpy(mic, elems.mic, mic_len);
+		/* TODO: Clean this up.. Should not modify received frame
+		 * buffer. */
+		os_memset((u8 *) elems.mic, 0, mic_len);
+	}
+
+	if (!elems.pasn_params || !elems.pasn_params_len) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: No PASN Parameters element found");
+		goto fail;
+	}
+
+	ret = wpa_pasn_parse_parameter_ie(elems.pasn_params - 3,
+					  elems.pasn_params_len + 3,
+					  false, &pasn_params);
+	if (ret) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Failed validation of PASN Parameters IE");
+		goto fail;
+	}
+
+	if (pasn_params.pubkey || pasn_params.pubkey_len) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Public key should not be included");
+		goto fail;
+	}
+
+	/* Verify the MIC */
+	ret = pasn_mic(sta->pasn->ptk.kck, sta->pasn->akmp, sta->pasn->cipher,
+		       sta->addr, hapd->own_addr,
+		       sta->pasn->hash, mic_len * 2,
+		       (u8 *) &mgmt->u.auth,
+		       len - offsetof(struct ieee80211_mgmt, u.auth),
+		       out_mic);
+
+	wpa_hexdump_key(MSG_DEBUG, "PASN: Frame MIC", mic, mic_len);
+	if (ret || os_memcmp(mic, out_mic, mic_len) != 0) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed MIC verification");
+		goto fail;
+	}
+
+	if (pasn_params.wrapped_data_format != WPA_PASN_WRAPPED_DATA_NO) {
+		wrapped_data = ieee802_11_defrag(&elems,
+						 WLAN_EID_EXTENSION,
+						 WLAN_EID_EXT_WRAPPED_DATA);
+
+		if (!wrapped_data) {
+			wpa_printf(MSG_DEBUG, "PASN: Missing wrapped data");
+			goto fail;
+		}
+
+#ifdef CONFIG_SAE
+		if (sta->pasn->akmp == WPA_KEY_MGMT_SAE) {
+			ret = pasn_wd_handle_sae_confirm(hapd, sta,
+							 wrapped_data);
+			if (ret) {
+				wpa_printf(MSG_DEBUG,
+					   "PASN: Failed processing SAE confirm");
+				wpabuf_free(wrapped_data);
+				goto fail;
+			}
+		}
+#endif /* CONFIG_SAE */
+#ifdef CONFIG_FILS
+		if (sta->pasn->akmp == WPA_KEY_MGMT_FILS_SHA256 ||
+		    sta->pasn->akmp == WPA_KEY_MGMT_FILS_SHA384) {
+			if (wrapped_data) {
+				wpa_printf(MSG_DEBUG,
+					   "PASN: FILS: Ignore wrapped data");
+			}
+		}
+#endif /* CONFIG_FILS */
+		wpabuf_free(wrapped_data);
+	}
+
+	wpa_printf(MSG_INFO,
+		   "PASN: Success handling transaction == 3. Store PTK");
+
+	ptksa_cache_add(hapd->ptksa, sta->addr, sta->pasn->cipher, 43200,
+			&sta->pasn->ptk);
+fail:
+	ap_free_sta(hapd, sta);
+}
+
+
+static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
+			     const struct ieee80211_mgmt *mgmt, size_t len,
+			     u16 trans_seq, u16 status)
+{
+	if (hapd->conf->wpa != WPA_PROTO_RSN) {
+		wpa_printf(MSG_INFO, "PASN: RSN is not configured");
+		return;
+	}
+
+	wpa_printf(MSG_INFO, "PASN authentication: sta=" MACSTR,
+		   MAC2STR(sta->addr));
+
+	if (trans_seq == 1) {
+		if (sta->pasn) {
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Not expecting transaction == 1");
+			return;
+		}
+
+		if (status != WLAN_STATUS_SUCCESS) {
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Failure status in transaction == 1");
+			return;
+		}
+
+		sta->pasn = os_zalloc(sizeof(*sta->pasn));
+		if (!sta->pasn) {
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Failed to allocate PASN context");
+			return;
+		}
+
+		handle_auth_pasn_1(hapd, sta, mgmt, len);
+	} else if (trans_seq == 3) {
+		if (!sta->pasn) {
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Not expecting transaction == 3");
+			return;
+		}
+
+		if (status != WLAN_STATUS_SUCCESS) {
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Failure status in transaction == 3");
+			ap_free_sta_pasn(hapd, sta);
+			return;
+		}
+
+		handle_auth_pasn_3(hapd, sta, mgmt, len);
+	} else {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Invalid transaction %u - ignore", trans_seq);
+	}
+}
+
+#endif /* CONFIG_PASN */
+
+
 static void handle_auth(struct hostapd_data *hapd,
 			const struct ieee80211_mgmt *mgmt, size_t len,
 			int rssi, int from_queue)
@@ -2380,6 +3500,11 @@ static void handle_auth(struct hostapd_data *hapd,
 	       hapd->conf->fils_dh_group &&
 	       auth_alg == WLAN_AUTH_FILS_SK_PFS) ||
 #endif /* CONFIG_FILS */
+#ifdef CONFIG_PASN
+	      (hapd->conf->wpa &&
+	       (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_PASN) &&
+	       auth_alg == WLAN_AUTH_PASN) ||
+#endif /* CONFIG_PASN */
 	      ((hapd->conf->auth_algs & WPA_AUTH_ALG_SHARED) &&
 	       auth_alg == WLAN_AUTH_SHARED_KEY))) {
 		wpa_printf(MSG_INFO, "Unsupported authentication algorithm (%d)",
@@ -2389,6 +3514,9 @@ static void handle_auth(struct hostapd_data *hapd,
 	}
 
 	if (!(auth_transaction == 1 || auth_alg == WLAN_AUTH_SAE ||
+#ifdef CONFIG_PASN
+	      (auth_alg == WLAN_AUTH_PASN && auth_transaction == 3) ||
+#endif /* CONFIG_PASN */
 	      (auth_alg == WLAN_AUTH_SHARED_KEY && auth_transaction == 3))) {
 		wpa_printf(MSG_INFO, "Unknown authentication transaction number (%d)",
 			   auth_transaction);
@@ -2510,6 +3638,15 @@ static void handle_auth(struct hostapd_data *hapd,
 			return;
 		}
 #endif /* CONFIG_MESH */
+#ifdef CONFIG_PASN
+		if (auth_alg == WLAN_AUTH_PASN &&
+		    (sta->flags & WLAN_STA_ASSOC)) {
+			wpa_printf(MSG_DEBUG,
+				   "PASN: auth: Existing station: " MACSTR,
+				   MAC2STR(sta->addr));
+			return;
+		}
+#endif /* CONFIG_PASN */
 	} else {
 #ifdef CONFIG_MESH
 		if (hapd->conf->mesh & MESH_ENABLED) {
@@ -2570,11 +3707,14 @@ static void handle_auth(struct hostapd_data *hapd,
 	 * to allow the original connection work until the attempt can complete
 	 * (re)association, so that unprotected Authentication frame cannot be
 	 * used to bypass PMF protection.
+	 *
+	 * PASN authentication does not require adding/removing station to the
+	 * driver so skip this flow in case of PASN authentication.
 	 */
 	if (FULL_AP_CLIENT_STATE_SUPP(hapd->iface->drv_flags) &&
 	    (!(sta->flags & WLAN_STA_MFP) || !ap_sta_is_authorized(sta)) &&
 	    !(hapd->conf->mesh & MESH_ENABLED) &&
-	    !(sta->added_unassoc)) {
+	    !(sta->added_unassoc) && auth_alg != WLAN_AUTH_PASN) {
 		if (ap_sta_re_add(hapd, sta) < 0) {
 			resp = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
 			goto fail;
@@ -2661,6 +3801,12 @@ static void handle_auth(struct hostapd_data *hapd,
 				 handle_auth_fils_finish);
 		return;
 #endif /* CONFIG_FILS */
+#ifdef CONFIG_PASN
+	case WLAN_AUTH_PASN:
+		handle_auth_pasn(hapd, sta, mgmt, len, auth_transaction,
+				 status_code);
+		return;
+#endif /* CONFIG_PASN */
 	}
 
  fail:
@@ -3252,7 +4398,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 #endif /* CONFIG_IEEE80211AC */
 #ifdef CONFIG_IEEE80211AX
-	if (hapd->iconf->ieee80211ax) {
+	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax) {
 		resp = copy_sta_he_capab(hapd, sta, IEEE80211_MODE_AP,
 					 elems.he_capabilities,
 					 elems.he_capabilities_len);
@@ -3868,7 +5014,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 #endif /* CONFIG_IEEE80211AC */
 
 #ifdef CONFIG_IEEE80211AX
-	if (hapd->iconf->ieee80211ax) {
+	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax) {
 		p = hostapd_eid_he_capab(hapd, p, IEEE80211_MODE_AP);
 		p = hostapd_eid_he_operation(hapd, p);
 		p = hostapd_eid_spatial_reuse(hapd, p);
@@ -4882,6 +6028,31 @@ static int handle_action(struct hostapd_data *hapd,
 
 
 /**
+ * notify_mgmt_frame - Notify of Management frames on the control interface
+ * @hapd: hostapd BSS data structure (the BSS to which the Management frame was
+ * sent to)
+ * @buf: Management frame data (starting from the IEEE 802.11 header)
+ * @len: Length of frame data in octets
+ *
+ * Notify the control interface of any received Management frame.
+ */
+static void notify_mgmt_frame(struct hostapd_data *hapd, const u8 *buf,
+			      size_t len)
+{
+
+	int hex_len = len * 2 + 1;
+	char *hex = os_malloc(hex_len);
+
+	if (hex) {
+		wpa_snprintf_hex(hex, hex_len, buf, len);
+		wpa_msg_ctrl(hapd->msg_ctx, MSG_INFO,
+			     AP_MGMT_FRAME_RECEIVED "buf=%s", hex);
+		os_free(hex);
+	}
+}
+
+
+/**
  * ieee802_11_mgmt - process incoming IEEE 802.11 management frames
  * @hapd: hostapd BSS data structure (the BSS to which the management frame was
  * sent to)
@@ -4971,6 +6142,9 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
 	if (hapd->iconf->track_sta_max_num)
 		sta_track_add(hapd->iface, mgmt->sa, ssi_signal);
 
+	if (hapd->conf->notify_mgmt_frames)
+		notify_mgmt_frame(hapd, buf, len);
+
 	switch (stype) {
 	case WLAN_FC_STYPE_AUTH:
 		wpa_printf(MSG_DEBUG, "mgmt::auth");
@@ -5018,18 +6192,7 @@ static void handle_auth_cb(struct hostapd_data *hapd,
 {
 	u16 auth_alg, auth_transaction, status_code;
 	struct sta_info *sta;
-
-	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.auth)) {
-		wpa_printf(MSG_INFO, "handle_auth_cb - too short payload (len=%lu)",
-			   (unsigned long) len);
-
-		/*
-		 * Initialize status_code here because we are not able to read
-		 * it from the short payload.
-		 */
-		status_code = WLAN_STATUS_UNSPECIFIED_FAILURE;
-		goto fail;
-	}
+	bool success_status;
 
 	sta = ap_get_sta(hapd, mgmt->da);
 	if (!sta) {
@@ -5037,6 +6200,15 @@ static void handle_auth_cb(struct hostapd_data *hapd,
 			   " not found",
 			   MAC2STR(mgmt->da));
 		return;
+	}
+
+	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.auth)) {
+		wpa_printf(MSG_INFO, "handle_auth_cb - too short payload (len=%lu)",
+			   (unsigned long) len);
+		auth_alg = 0;
+		auth_transaction = 0;
+		status_code = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto fail;
 	}
 
 	auth_alg = le_to_host16(mgmt->u.auth.auth_alg);
@@ -5062,7 +6234,12 @@ static void handle_auth_cb(struct hostapd_data *hapd,
 	}
 
 fail:
-	if (status_code != WLAN_STATUS_SUCCESS && sta->added_unassoc) {
+	success_status = status_code == WLAN_STATUS_SUCCESS;
+#ifdef CONFIG_SAE
+	if (auth_alg == WLAN_AUTH_SAE && auth_transaction == 1)
+		success_status = sae_status_success(hapd, status_code);
+#endif /* CONFIG_SAE */
+	if (!success_status && sta->added_unassoc) {
 		hostapd_drv_sta_remove(hapd, sta->addr);
 		sta->added_unassoc = 0;
 	}
@@ -5589,6 +6766,118 @@ void ieee802_11_rx_from_unknown(struct hostapd_data *hapd, const u8 *src,
 		hostapd_drv_sta_deauth(
 			hapd, src,
 			WLAN_REASON_CLASS3_FRAME_FROM_NONASSOC_STA);
+}
+
+
+u8 * hostapd_eid_txpower_envelope(struct hostapd_data *hapd, u8 *eid)
+{
+	struct hostapd_iface *iface = hapd->iface;
+	struct hostapd_config *iconf = iface->conf;
+	struct hostapd_hw_modes *mode = iface->current_mode;
+	struct hostapd_channel_data *chan;
+	int dfs, i;
+	u8 channel, tx_pwr_count, local_pwr_constraint;
+	int max_tx_power;
+	u8 tx_pwr;
+
+	if (!mode)
+		return eid;
+
+	if (ieee80211_freq_to_chan(iface->freq, &channel) == NUM_HOSTAPD_MODES)
+		return eid;
+
+	for (i = 0; i < mode->num_channels; i++) {
+		if (mode->channels[i].freq == iface->freq)
+			break;
+	}
+	if (i == mode->num_channels)
+		return eid;
+
+	switch (hostapd_get_oper_chwidth(iconf)) {
+	case CHANWIDTH_USE_HT:
+		if (iconf->secondary_channel == 0) {
+			/* Max Transmit Power count = 0 (20 MHz) */
+			tx_pwr_count = 0;
+		} else {
+			/* Max Transmit Power count = 1 (20, 40 MHz) */
+			tx_pwr_count = 1;
+		}
+		break;
+	case CHANWIDTH_80MHZ:
+		/* Max Transmit Power count = 2 (20, 40, and 80 MHz) */
+		tx_pwr_count = 2;
+		break;
+	case CHANWIDTH_80P80MHZ:
+	case CHANWIDTH_160MHZ:
+		/* Max Transmit Power count = 3 (20, 40, 80, 160/80+80 MHz) */
+		tx_pwr_count = 3;
+		break;
+	default:
+		return eid;
+	}
+
+	/*
+	 * Below local_pwr_constraint logic is referred from
+	 * hostapd_eid_pwr_constraint.
+	 *
+	 * Check if DFS is required by regulatory.
+	 */
+	dfs = hostapd_is_dfs_required(hapd->iface);
+	if (dfs < 0)
+		dfs = 0;
+
+	/*
+	 * In order to meet regulations when TPC is not implemented using
+	 * a transmit power that is below the legal maximum (including any
+	 * mitigation factor) should help. In this case, indicate 3 dB below
+	 * maximum allowed transmit power.
+	 */
+	if (hapd->iconf->local_pwr_constraint == -1)
+		local_pwr_constraint = (dfs == 0) ? 0 : 3;
+	else
+		local_pwr_constraint = hapd->iconf->local_pwr_constraint;
+
+	/*
+	 * A STA that is not an AP shall use a transmit power less than or
+	 * equal to the local maximum transmit power level for the channel.
+	 * The local maximum transmit power can be calculated from the formula:
+	 * local max TX pwr = max TX pwr - local pwr constraint
+	 * Where max TX pwr is maximum transmit power level specified for
+	 * channel in Country element and local pwr constraint is specified
+	 * for channel in this Power Constraint element.
+	 */
+	chan = &mode->channels[i];
+	max_tx_power = chan->max_tx_power - local_pwr_constraint;
+
+	/*
+	 * Local Maximum Transmit power is encoded as two's complement
+	 * with a 0.5 dB step.
+	 */
+	max_tx_power *= 2; /* in 0.5 dB steps */
+	if (max_tx_power > 127) {
+		/* 63.5 has special meaning of 63.5 dBm or higher */
+		max_tx_power = 127;
+	}
+	if (max_tx_power < -128)
+		max_tx_power = -128;
+	if (max_tx_power < 0)
+		tx_pwr = 0x80 + max_tx_power + 128;
+	else
+		tx_pwr = max_tx_power;
+
+	*eid++ = WLAN_EID_TRANSMIT_POWER_ENVELOPE;
+	*eid++ = 2 + tx_pwr_count;
+
+	/*
+	 * Max Transmit Power count and
+	 * Max Transmit Power units = 0 (EIRP)
+	 */
+	*eid++ = tx_pwr_count;
+
+	for (i = 0; i <= tx_pwr_count; i++)
+		*eid++ = tx_pwr;
+
+	return eid;
 }
 
 

@@ -271,7 +271,7 @@ extern "C" {
 #define P2P_EVENT_P2PS_PROVISION_DONE "P2PS-PROV-DONE "
 
 #define INTERWORKING_AP "INTERWORKING-AP "
-#define INTERWORKING_BLACKLISTED "INTERWORKING-BLACKLISTED "
+#define INTERWORKING_EXCLUDED "INTERWORKING-BLACKLISTED "
 #define INTERWORKING_NO_MATCH "INTERWORKING-NO-MATCH "
 #define INTERWORKING_ALREADY_CONNECTED "INTERWORKING-ALREADY-CONNECTED "
 #define INTERWORKING_SELECTED "INTERWORKING-SELECTED "
@@ -404,9 +404,15 @@ extern "C" {
  * frame=<saqueryreq/saqueryresp> error=<error string> */
 #define OCV_FAILURE "OCV-FAILURE "
 
+/* Event triggered for received management frame */
+#define AP_MGMT_FRAME_RECEIVED "AP-MGMT-FRAME-RECEIVED "
+
 #ifndef BIT
 #define BIT(x) (1U << (x))
 #endif
+
+/* PASN authentication status */
+#define PASN_AUTH_STATUS "PASN-AUTH-STATUS "
 
 /* BSS command information masks */
 

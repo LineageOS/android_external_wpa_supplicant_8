@@ -531,8 +531,9 @@ struct hostapd_bss_config {
 #define TDLS_PROHIBIT BIT(0)
 #define TDLS_PROHIBIT_CHAN_SWITCH BIT(1)
 	int tdls;
-	int disable_11n;
-	int disable_11ac;
+	bool disable_11n;
+	bool disable_11ac;
+	bool disable_11ax;
 
 	/* IEEE 802.11v */
 	int time_advertisement;
@@ -729,11 +730,15 @@ struct hostapd_bss_config {
 	unsigned int fils_hlp_wait_time;
 	u16 dhcp_server_port;
 	u16 dhcp_relay_port;
+	u32 fils_discovery_min_int;
+	u32 fils_discovery_max_int;
 #endif /* CONFIG_FILS */
 
 	int multicast_to_unicast;
 
 	int broadcast_deauth;
+
+	int notify_mgmt_frames;
 
 #ifdef CONFIG_DPP
 	char *dpp_name;
@@ -861,6 +866,20 @@ struct hostapd_bss_config {
 	 */
 	u8 mka_psk_set;
 #endif /* CONFIG_MACSEC */
+
+#ifdef CONFIG_PASN
+#ifdef CONFIG_TESTING_OPTIONS
+	/*
+	 * Normally, KDK should be derived if and only if both sides support
+	 * secure LTF. Allow forcing KDK derivation for testing purposes.
+	 */
+	int force_kdk_derivation;
+#endif /* CONFIG_TESTING_OPTIONS */
+
+	int *pasn_groups;
+#endif /* CONFIG_PASN */
+
+	unsigned int unsol_bcast_probe_resp_interval;
 };
 
 /**
@@ -893,8 +912,8 @@ struct spatial_reuse {
 	u8 non_srg_obss_pd_max_offset;
 	u8 srg_obss_pd_min_offset;
 	u8 srg_obss_pd_max_offset;
-	u8 srg_obss_color_bitmap;
-	u8 srg_obss_color_partial_bitmap;
+	u8 srg_bss_color_bitmap[8];
+	u8 srg_partial_bssid_bitmap[8];
 };
 
 /**
@@ -1031,6 +1050,10 @@ struct hostapd_config {
 	u8 he_oper_chwidth;
 	u8 he_oper_centr_freq_seg0_idx;
 	u8 he_oper_centr_freq_seg1_idx;
+	u8 he_6ghz_max_mpdu;
+	u8 he_6ghz_max_ampdu_len_exp;
+	u8 he_6ghz_rx_ant_pat;
+	u8 he_6ghz_tx_ant_pat;
 #endif /* CONFIG_IEEE80211AX */
 
 	/* VHT enable/disable config from CHAN_SWITCH */
@@ -1038,8 +1061,14 @@ struct hostapd_config {
 #define CH_SWITCH_VHT_DISABLED BIT(1)
 	unsigned int ch_switch_vht_config;
 
+	/* HE enable/disable config from CHAN_SWITCH */
+#define CH_SWITCH_HE_ENABLED BIT(0)
+#define CH_SWITCH_HE_DISABLED BIT(1)
+	unsigned int ch_switch_he_config;
+
 	int rssi_reject_assoc_rssi;
 	int rssi_reject_assoc_timeout;
+	int rssi_ignore_probe_request;
 
 #ifdef CONFIG_AIRTIME_POLICY
 	enum {

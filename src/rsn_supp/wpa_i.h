@@ -14,6 +14,11 @@
 struct wpa_tdls_peer;
 struct wpa_eapol_key;
 
+struct pasn_ft_r1kh {
+	u8 bssid[ETH_ALEN];
+	u8 r1kh_id[FT_R1KH_ID_LEN];
+};
+
 /**
  * struct wpa_sm - Internal WPA state machine data
  */
@@ -73,6 +78,12 @@ struct wpa_sm {
 			     * to be used */
 	int keyidx_active; /* Key ID for the active TK */
 
+	/*
+	 * If set Key Derivation Key should be derived as part of PMK to
+	 * PTK derivation regardless of advertised capabilities.
+	 */
+	bool force_kdk_derivation;
+
 	u8 own_addr[ETH_ALEN];
 	const char *ifname;
 	const char *bridge_ifname;
@@ -95,7 +106,11 @@ struct wpa_sm {
 	int mfp; /* 0 = disabled, 1 = optional, 2 = mandatory */
 	int ocv; /* Operating Channel Validation */
 	int sae_pwe; /* SAE PWE generation options */
-	int sae_pk; /* whether SAE-PK is used */
+
+	unsigned int sae_pk:1; /* whether SAE-PK is used */
+	unsigned int secure_ltf:1;
+	unsigned int secure_rtt:1;
+	unsigned int prot_range_neg:1;
 
 	u8 *assoc_wpa_ie; /* Own WPA/RSN IE from (Re)AssocReq */
 	size_t assoc_wpa_ie_len;
@@ -146,6 +161,17 @@ struct wpa_sm {
 	u8 mdie_ft_capab; /* FT Capability and Policy from target AP MDIE */
 	u8 *assoc_resp_ies; /* MDIE and FTIE from (Re)Association Response */
 	size_t assoc_resp_ies_len;
+#ifdef CONFIG_PASN
+	/*
+	 * Currently, the WPA state machine stores the PMK-R1, PMK-R1-Name and
+	 * R1KH-ID only for the current association. As PMK-R1 is required to
+	 * perform PASN authentication with FT, store the R1KH-ID for previous
+	 * associations, which would later be used to derive the PMK-R1 as part
+	 * of the PASN authentication flow.
+	 */
+	struct pasn_ft_r1kh *pasn_r1kh;
+	unsigned int n_pasn_r1kh;
+#endif /* CONFIG_PASN */
 #endif /* CONFIG_IEEE80211R */
 
 #ifdef CONFIG_P2P
@@ -441,6 +467,14 @@ static inline void wpa_sm_transition_disable(struct wpa_sm *sm, u8 bitmap)
 		sm->ctx->transition_disable(sm->ctx->ctx, bitmap);
 }
 
+static inline void wpa_sm_store_ptk(struct wpa_sm *sm,
+				    u8 *addr, int cipher,
+				    u32 life_time, struct wpa_ptk *ptk)
+{
+	if (sm->ctx->store_ptk)
+		sm->ctx->store_ptk(sm->ctx->ctx, addr, cipher, life_time,
+				   ptk);
+}
 
 int wpa_eapol_key_send(struct wpa_sm *sm, struct wpa_ptk *ptk,
 		       int ver, const u8 *dest, u16 proto,
