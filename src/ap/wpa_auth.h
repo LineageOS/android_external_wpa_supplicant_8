@@ -259,11 +259,22 @@ struct wpa_auth_config {
 #endif /* CONFIG_FILS */
 	int sae_pwe;
 	bool sae_pk;
+
+	unsigned int secure_ltf:1;
+	unsigned int secure_rtt:1;
+	unsigned int prot_range_neg:1;
+
 	int owe_ptk_workaround;
 	u8 transition_disable;
 #ifdef CONFIG_DPP2
 	int dpp_pfs;
 #endif /* CONFIG_DPP2 */
+
+	/*
+	 * If set Key Derivation Key should be derived as part of PMK to
+	 * PTK derivation regardless of advertised capabilities.
+	 */
+	bool force_kdk_derivation;
 };
 
 typedef enum {
@@ -308,6 +319,9 @@ struct wpa_auth_callbacks {
 	int (*get_sta_tx_params)(void *ctx, const u8 *addr,
 				 int ap_max_chanwidth, int ap_seg1_idx,
 				 int *bandwidth, int *seg1_idx);
+	void (*store_ptksa)(void *ctx, const u8 *addr, int cipher,
+			    u32 life_time, const struct wpa_ptk *ptk);
+	void (*clear_ptksa)(void *ctx, const u8 *addr, int cipher);
 #ifdef CONFIG_IEEE80211R_AP
 	struct wpa_state_machine * (*add_sta)(void *ctx, const u8 *sta_addr);
 	int (*add_sta_ft)(void *ctx, const u8 *sta_addr);
@@ -461,6 +475,14 @@ void wpa_ft_rrb_oui_rx(struct wpa_authenticator *wpa_auth, const u8 *src_addr,
 void wpa_ft_push_pmk_r1(struct wpa_authenticator *wpa_auth, const u8 *addr);
 void wpa_ft_deinit(struct wpa_authenticator *wpa_auth);
 void wpa_ft_sta_deinit(struct wpa_state_machine *sm);
+int wpa_ft_fetch_pmk_r1(struct wpa_authenticator *wpa_auth,
+			const u8 *spa, const u8 *pmk_r1_name,
+			u8 *pmk_r1, size_t *pmk_r1_len, int *pairwise,
+			struct vlan_description *vlan,
+			const u8 **identity, size_t *identity_len,
+			const u8 **radius_cui, size_t *radius_cui_len,
+			int *session_timeout);
+
 #endif /* CONFIG_IEEE80211R_AP */
 
 void wpa_wnmsleep_rekey_gtk(struct wpa_state_machine *sm);
@@ -517,6 +539,8 @@ u8 * wpa_auth_write_assoc_resp_owe(struct wpa_state_machine *sm,
 u8 * wpa_auth_write_assoc_resp_fils(struct wpa_state_machine *sm,
 				    u8 *pos, size_t max_len,
 				    const u8 *req_ies, size_t req_ies_len);
+bool wpa_auth_write_fd_rsn_info(struct wpa_authenticator *wpa_auth,
+				u8 *fd_rsn_info);
 void wpa_auth_set_auth_alg(struct wpa_state_machine *sm, u16 auth_alg);
 void wpa_auth_set_dpp_z(struct wpa_state_machine *sm, const struct wpabuf *z);
 void wpa_auth_set_transition_disable(struct wpa_authenticator *wpa_auth,

@@ -442,47 +442,99 @@ static char * wpa_config_write_bssid_hint(const struct parse_data *data,
 #endif /* NO_CONFIG_WRITE */
 
 
+static int wpa_config_parse_bssid_ignore(const struct parse_data *data,
+					 struct wpa_ssid *ssid, int line,
+					 const char *value)
+{
+	return wpa_config_parse_addr_list(data, line, value,
+					  &ssid->bssid_ignore,
+					  &ssid->num_bssid_ignore,
+					  "bssid_ignore", 1, 1);
+}
+
+
+/* deprecated alias for bssid_ignore for backwards compatibility */
 static int wpa_config_parse_bssid_blacklist(const struct parse_data *data,
 					    struct wpa_ssid *ssid, int line,
 					    const char *value)
 {
 	return wpa_config_parse_addr_list(data, line, value,
-					  &ssid->bssid_blacklist,
-					  &ssid->num_bssid_blacklist,
-					  "bssid_blacklist", 1, 1);
+					  &ssid->bssid_ignore,
+					  &ssid->num_bssid_ignore,
+					  "bssid_ignore", 1, 1);
 }
 
 
 #ifndef NO_CONFIG_WRITE
+
+static char * wpa_config_write_bssid_ignore(const struct parse_data *data,
+					    struct wpa_ssid *ssid)
+{
+	return wpa_config_write_addr_list(data, ssid->bssid_ignore,
+					  ssid->num_bssid_ignore,
+					  "bssid_ignore");
+}
+
+
+/* deprecated alias for bssid_ignore for backwards compatibility */
 static char * wpa_config_write_bssid_blacklist(const struct parse_data *data,
 					       struct wpa_ssid *ssid)
 {
-	return wpa_config_write_addr_list(data, ssid->bssid_blacklist,
-					  ssid->num_bssid_blacklist,
-					  "bssid_blacklist");
+	return wpa_config_write_addr_list(data, ssid->bssid_ignore,
+					  ssid->num_bssid_ignore,
+					  "bssid_ignore");
 }
+
 #endif /* NO_CONFIG_WRITE */
 
 
+static int wpa_config_parse_bssid_accept(const struct parse_data *data,
+					 struct wpa_ssid *ssid, int line,
+					 const char *value)
+{
+	return wpa_config_parse_addr_list(data, line, value,
+					  &ssid->bssid_accept,
+					  &ssid->num_bssid_accept,
+					  "bssid_accept", 1, 1);
+}
+
+
+/* deprecated alias for bssid_accept for backwards compatibility */
 static int wpa_config_parse_bssid_whitelist(const struct parse_data *data,
 					    struct wpa_ssid *ssid, int line,
 					    const char *value)
 {
 	return wpa_config_parse_addr_list(data, line, value,
-					  &ssid->bssid_whitelist,
-					  &ssid->num_bssid_whitelist,
-					  "bssid_whitelist", 1, 1);
+					  &ssid->bssid_accept,
+					  &ssid->num_bssid_accept,
+					  "bssid_accept", 1, 1);
 }
 
 
 #ifndef NO_CONFIG_WRITE
+
+static char * wpa_config_write_bssid_accept(const struct parse_data *data,
+					    struct wpa_ssid *ssid)
+{
+	return wpa_config_write_addr_list(data, ssid->bssid_accept,
+					  ssid->num_bssid_accept,
+					  "bssid_accept");
+}
+
+
+/* deprecated alias for bssid_accept for backwards compatibility */
 static char * wpa_config_write_bssid_whitelist(const struct parse_data *data,
 					       struct wpa_ssid *ssid)
 {
-	return wpa_config_write_addr_list(data, ssid->bssid_whitelist,
-					  ssid->num_bssid_whitelist,
-					  "bssid_whitelist");
+	return wpa_config_write_addr_list(data, ssid->bssid_accept,
+					  ssid->num_bssid_accept,
+					  "bssid_accept");
 }
+
+#endif /* NO_CONFIG_WRITE */
+
+
+#ifndef NO_CONFIG_WRITE
 #endif /* NO_CONFIG_WRITE */
 
 
@@ -2362,8 +2414,10 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(scan_ssid, 0, 1) },
 	{ FUNC(bssid) },
 	{ FUNC(bssid_hint) },
-	{ FUNC(bssid_blacklist) },
-	{ FUNC(bssid_whitelist) },
+	{ FUNC(bssid_ignore) },
+	{ FUNC(bssid_accept) },
+	{ FUNC(bssid_blacklist) }, /* deprecated alias for bssid_ignore */
+	{ FUNC(bssid_whitelist) }, /* deprecated alias for bssid_accept */
 	{ FUNC_KEY(psk) },
 	{ INT(mem_only_psk) },
 	{ STR_KEY(sae_password) },
@@ -2763,8 +2817,8 @@ void wpa_config_free_ssid(struct wpa_ssid *ssid)
 	os_free(ssid->freq_list);
 	os_free(ssid->bgscan);
 	os_free(ssid->p2p_client_list);
-	os_free(ssid->bssid_blacklist);
-	os_free(ssid->bssid_whitelist);
+	os_free(ssid->bssid_ignore);
+	os_free(ssid->bssid_accept);
 #ifdef CONFIG_HT_OVERRIDES
 	os_free(ssid->ht_mcs);
 #endif /* CONFIG_HT_OVERRIDES */
@@ -2890,6 +2944,7 @@ void wpa_config_free(struct wpa_config *config)
 	os_free(config->p2p_no_go_freq.range);
 	os_free(config->autoscan);
 	os_free(config->freq_list);
+	os_free(config->initial_freq_list);
 	wpabuf_free(config->wps_nfc_dh_pubkey);
 	wpabuf_free(config->wps_nfc_dh_privkey);
 	wpabuf_free(config->wps_nfc_dev_pw);
@@ -4308,6 +4363,7 @@ struct wpa_config * wpa_config_alloc_empty(const char *ctrl_interface,
 	config->ap_isolate = DEFAULT_AP_ISOLATE;
 	config->access_network_type = DEFAULT_ACCESS_NETWORK_TYPE;
 	config->scan_cur_freq = DEFAULT_SCAN_CUR_FREQ;
+	config->scan_res_valid_for_connect = DEFAULT_SCAN_RES_VALID_FOR_CONNECT;
 	config->wmm_ac_params[0] = ac_be;
 	config->wmm_ac_params[1] = ac_bk;
 	config->wmm_ac_params[2] = ac_vi;
@@ -4470,9 +4526,7 @@ static int wpa_global_config_parse_str(const struct global_parse_data *data,
 		prev_len = 0;
 
 	/* No change to the previously configured value */
-	if ((!(*dst) && !pos) ||
-	    (*dst && pos && prev_len == len &&
-	     os_memcmp(*dst, pos, len) == 0))
+	if (*dst && prev_len == len && os_memcmp(*dst, pos, len) == 0)
 		return 1;
 
 	tmp = os_strdup(pos);
@@ -4546,6 +4600,26 @@ static int wpa_config_process_freq_list(const struct global_parse_data *data,
 	}
 	os_free(config->freq_list);
 	config->freq_list = freqs;
+	return 0;
+}
+
+
+static int
+wpa_config_process_initial_freq_list(const struct global_parse_data *data,
+				     struct wpa_config *config, int line,
+				     const char *value)
+{
+	int *freqs;
+
+	freqs = wpa_config_parse_int_array(value);
+	if (!freqs)
+		return -1;
+	if (freqs[0] == 0) {
+		os_free(freqs);
+		freqs = NULL;
+	}
+	os_free(config->initial_freq_list);
+	config->initial_freq_list = freqs;
 	return 0;
 }
 
@@ -5084,7 +5158,9 @@ static const struct global_parse_data global_fields[] = {
 	{ FUNC(ap_vendor_elements), 0 },
 	{ INT_RANGE(ignore_old_scan_res, 0, 1), 0 },
 	{ FUNC(freq_list), 0 },
+	{ FUNC(initial_freq_list), 0},
 	{ INT(scan_cur_freq), 0 },
+	{ INT(scan_res_valid_for_connect), 0},
 	{ INT(sched_scan_interval), 0 },
 	{ INT(sched_scan_start_delay), 0 },
 	{ INT(tdls_external_control), 0},
@@ -5130,6 +5206,12 @@ static const struct global_parse_data global_fields[] = {
 	{ INT_RANGE(disable_btm, 0, 1), CFG_CHANGED_DISABLE_BTM },
 	{ INT_RANGE(extended_key_id, 0, 1), 0 },
 #endif /* CONFIG_WNM */
+	{ INT_RANGE(wowlan_disconnect_on_deinit, 0, 1), 0},
+#ifdef CONFIG_PASN
+#ifdef CONFIG_TESTING_OPTIONS
+	{ INT_RANGE(force_kdk_derivation, 0, 1), 0 },
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_PASN */
 };
 
 #undef FUNC

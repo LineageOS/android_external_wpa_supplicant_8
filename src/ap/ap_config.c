@@ -131,6 +131,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 	bss->fils_hlp_wait_time = 30;
 	bss->dhcp_server_port = DHCP_SERVER_PORT;
 	bss->dhcp_relay_port = DHCP_SERVER_PORT;
+	bss->fils_discovery_min_int = 20;
 #endif /* CONFIG_FILS */
 
 	bss->broadcast_deauth = 1;
@@ -270,6 +271,10 @@ struct hostapd_config * hostapd_config_defaults(void)
 	conf->he_op.he_bss_color_disabled = 1;
 	conf->he_op.he_bss_color_partial = 0;
 	conf->he_op.he_bss_color = 1;
+	conf->he_6ghz_max_mpdu = 2;
+	conf->he_6ghz_max_ampdu_len_exp = 7;
+	conf->he_6ghz_rx_ant_pat = 1;
+	conf->he_6ghz_tx_ant_pat = 1;
 #endif /* CONFIG_IEEE80211AX */
 
 	/* The third octet of the country string uses an ASCII space character
@@ -957,6 +962,10 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 	}
 #endif /* CONFIG_AIRTIME_POLICY */
 
+#ifdef CONFIG_PASN
+	os_free(conf->pasn_groups);
+#endif /* CONFIG_PASN */
+
 	os_free(conf);
 }
 
@@ -1152,10 +1161,54 @@ static bool hostapd_sae_pk_password_without_pk(struct hostapd_bss_config *bss)
 #endif /* CONFIG_SAE_PK */
 
 
+static bool hostapd_config_check_bss_6g(struct hostapd_bss_config *bss)
+{
+	if (bss->wpa != WPA_PROTO_RSN) {
+		wpa_printf(MSG_ERROR,
+			   "Pre-RSNA security methods are not allowed in 6 GHz");
+		return false;
+	}
+
+	if (bss->ieee80211w != MGMT_FRAME_PROTECTION_REQUIRED) {
+		wpa_printf(MSG_ERROR,
+			   "Management frame protection is required in 6 GHz");
+		return false;
+	}
+
+	if (bss->wpa_key_mgmt & (WPA_KEY_MGMT_PSK |
+				 WPA_KEY_MGMT_FT_PSK |
+				 WPA_KEY_MGMT_PSK_SHA256)) {
+		wpa_printf(MSG_ERROR, "Invalid AKM suite for 6 GHz");
+		return false;
+	}
+
+	if (bss->rsn_pairwise & (WPA_CIPHER_WEP40 |
+				 WPA_CIPHER_WEP104 |
+				 WPA_CIPHER_TKIP)) {
+		wpa_printf(MSG_ERROR,
+			   "Invalid pairwise cipher suite for 6 GHz");
+		return false;
+	}
+
+	if (bss->wpa_group & (WPA_CIPHER_WEP40 |
+			      WPA_CIPHER_WEP104 |
+			      WPA_CIPHER_TKIP)) {
+		wpa_printf(MSG_ERROR, "Invalid group cipher suite for 6 GHz");
+		return false;
+	}
+
+	return true;
+}
+
+
 static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 				    struct hostapd_config *conf,
 				    int full_config)
 {
+	if (full_config && is_6ghz_op_class(conf->op_class) &&
+	    !hostapd_config_check_bss_6g(bss))
+		return -1;
+
 	if (full_config && bss->ieee802_1x && !bss->eap_server &&
 	    !bss->radius->auth_servers) {
 		wpa_printf(MSG_ERROR, "Invalid IEEE 802.1X configuration (no "
@@ -1231,7 +1284,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 
 	if (full_config && conf->ieee80211n &&
 	    conf->hw_mode == HOSTAPD_MODE_IEEE80211B) {
-		bss->disable_11n = 1;
+		bss->disable_11n = true;
 		wpa_printf(MSG_ERROR, "HT (IEEE 802.11n) in 11b mode is not "
 			   "allowed, disabling HT capabilities");
 	}
@@ -1239,7 +1292,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 #ifdef CONFIG_WEP
 	if (full_config && conf->ieee80211n &&
 	    bss->ssid.security_policy == SECURITY_STATIC_WEP) {
-		bss->disable_11n = 1;
+		bss->disable_11n = true;
 		wpa_printf(MSG_ERROR, "HT (IEEE 802.11n) with WEP is not "
 			   "allowed, disabling HT capabilities");
 	}
@@ -1250,7 +1303,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 	    !(bss->rsn_pairwise & (WPA_CIPHER_CCMP | WPA_CIPHER_GCMP |
 				   WPA_CIPHER_CCMP_256 | WPA_CIPHER_GCMP_256)))
 	{
-		bss->disable_11n = 1;
+		bss->disable_11n = true;
 		wpa_printf(MSG_ERROR, "HT (IEEE 802.11n) with WPA/WPA2 "
 			   "requires CCMP/GCMP to be enabled, disabling HT "
 			   "capabilities");
@@ -1260,7 +1313,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 #ifdef CONFIG_WEP
 	if (full_config && conf->ieee80211ac &&
 	    bss->ssid.security_policy == SECURITY_STATIC_WEP) {
-		bss->disable_11ac = 1;
+		bss->disable_11ac = true;
 		wpa_printf(MSG_ERROR,
 			   "VHT (IEEE 802.11ac) with WEP is not allowed, disabling VHT capabilities");
 	}
@@ -1271,11 +1324,32 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 	    !(bss->rsn_pairwise & (WPA_CIPHER_CCMP | WPA_CIPHER_GCMP |
 				   WPA_CIPHER_CCMP_256 | WPA_CIPHER_GCMP_256)))
 	{
-		bss->disable_11ac = 1;
+		bss->disable_11ac = true;
 		wpa_printf(MSG_ERROR,
 			   "VHT (IEEE 802.11ac) with WPA/WPA2 requires CCMP/GCMP to be enabled, disabling VHT capabilities");
 	}
 #endif /* CONFIG_IEEE80211AC */
+
+#ifdef CONFIG_IEEE80211AX
+#ifdef CONFIG_WEP
+	if (full_config && conf->ieee80211ax &&
+	    bss->ssid.security_policy == SECURITY_STATIC_WEP) {
+		bss->disable_11ax = true;
+		wpa_printf(MSG_ERROR,
+			   "HE (IEEE 802.11ax) with WEP is not allowed, disabling HE capabilities");
+	}
+#endif /* CONFIG_WEP */
+
+	if (full_config && conf->ieee80211ax && bss->wpa &&
+	    !(bss->wpa_pairwise & WPA_CIPHER_CCMP) &&
+	    !(bss->rsn_pairwise & (WPA_CIPHER_CCMP | WPA_CIPHER_GCMP |
+				   WPA_CIPHER_CCMP_256 | WPA_CIPHER_GCMP_256)))
+	{
+		bss->disable_11ax = true;
+		wpa_printf(MSG_ERROR,
+			   "HE (IEEE 802.11ax) with WPA/WPA2 requires CCMP/GCMP to be enabled, disabling HE capabilities");
+	}
+#endif /* CONFIG_IEEE80211AX */
 
 #ifdef CONFIG_WPS
 	if (full_config && bss->wps_state && bss->ignore_broadcast_ssid) {

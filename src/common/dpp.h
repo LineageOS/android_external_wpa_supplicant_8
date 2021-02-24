@@ -35,7 +35,7 @@ extern int dpp_version_override;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #define DPP_HDR_LEN (4 + 2) /* OUI, OUI Type, Crypto Suite, DPP frame type */
-#define DPP_TCP_PORT 7871
+#define DPP_TCP_PORT 8908
 
 enum dpp_public_action_frame_type {
 	DPP_PA_AUTHENTICATION_REQ = 0,
@@ -349,6 +349,7 @@ struct dpp_authentication {
 	struct wpabuf *cacert;
 	struct wpabuf *certbag;
 	void *cert_resp_ctx;
+	void *gas_server_ctx;
 #ifdef CONFIG_TESTING_OPTIONS
 	char *config_obj_override;
 	char *discovery_override;

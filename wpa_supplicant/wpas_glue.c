@@ -16,6 +16,7 @@
 #include "config.h"
 #include "l2_packet/l2_packet.h"
 #include "common/wpa_common.h"
+#include "common/ptksa_cache.h"
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
 #include "rsn_supp/pmksa_cache.h"
@@ -1343,6 +1344,15 @@ static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
 #endif /* CONFIG_NO_CONFIG_WRITE */
 }
 
+
+static void wpa_supplicant_store_ptk(void *ctx, u8 *addr, int cipher,
+				     u32 life_time, const struct wpa_ptk *ptk)
+{
+	struct wpa_supplicant *wpa_s = ctx;
+
+	ptksa_cache_add(wpa_s->ptksa, addr, cipher, life_time, ptk);
+}
+
 #endif /* CONFIG_NO_WPA */
 
 
@@ -1350,9 +1360,20 @@ int wpa_supplicant_init_wpa(struct wpa_supplicant *wpa_s)
 {
 #ifndef CONFIG_NO_WPA
 	struct wpa_sm_ctx *ctx;
+
+	wpa_s->ptksa = ptksa_cache_init();
+	if (!wpa_s->ptksa) {
+		wpa_printf(MSG_ERROR, "Failed to allocate PTKSA");
+		return -1;
+	}
+
 	ctx = os_zalloc(sizeof(*ctx));
 	if (ctx == NULL) {
 		wpa_printf(MSG_ERROR, "Failed to allocate WPA context.");
+
+		ptksa_cache_deinit(wpa_s->ptksa);
+		wpa_s->ptksa = NULL;
+
 		return -1;
 	}
 
@@ -1396,12 +1417,15 @@ int wpa_supplicant_init_wpa(struct wpa_supplicant *wpa_s)
 	ctx->fils_hlp_rx = wpa_supplicant_fils_hlp_rx;
 	ctx->channel_info = wpa_supplicant_channel_info;
 	ctx->transition_disable = wpa_supplicant_transition_disable;
+	ctx->store_ptk = wpa_supplicant_store_ptk;
 
 	wpa_s->wpa = wpa_sm_init(ctx);
 	if (wpa_s->wpa == NULL) {
-		wpa_printf(MSG_ERROR, "Failed to initialize WPA state "
-			   "machine");
+		wpa_printf(MSG_ERROR,
+			   "Failed to initialize WPA state machine");
 		os_free(ctx);
+		ptksa_cache_deinit(wpa_s->ptksa);
+		wpa_s->ptksa = NULL;
 		return -1;
 	}
 #endif /* CONFIG_NO_WPA */
@@ -1451,7 +1475,16 @@ void wpa_supplicant_rsn_supp_set_config(struct wpa_supplicant *wpa_s,
 			conf.fils_cache_id =
 				wpa_bss_get_fils_cache_id(wpa_s->current_bss);
 #endif /* CONFIG_FILS */
-		conf.beacon_prot = ssid->beacon_prot;
+		if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_BEACON_PROTECTION) ||
+		    (wpa_s->drv_flags2 &
+		     WPA_DRIVER_FLAGS2_BEACON_PROTECTION_CLIENT))
+			conf.beacon_prot = ssid->beacon_prot;
+
+#ifdef CONFIG_PASN
+#ifdef CONFIG_TESTING_OPTIONS
+		conf.force_kdk_derivation = wpa_s->conf->force_kdk_derivation;
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_PASN */
 	}
 	wpa_sm_set_config(wpa_s->wpa, ssid ? &conf : NULL);
 }

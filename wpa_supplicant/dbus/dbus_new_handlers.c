@@ -138,7 +138,9 @@ DBusMessage * wpas_dbus_error_no_memory(DBusMessage *message)
 static const char * const dont_quote[] = {
 	"key_mgmt", "proto", "pairwise", "auth_alg", "group", "eap",
 	"bssid", "scan_freq", "freq_list", "scan_ssid", "bssid_hint",
-	"bssid_blacklist", "bssid_whitelist", "group_mgmt",
+	"bssid_ignore", "bssid_accept", /* deprecated aliases */
+	"bssid_blacklist", "bssid_whitelist",
+	"group_mgmt",
 	"ignore_broadcast_ssid",
 #ifdef CONFIG_MESH
 	"mesh_basic_rates",
@@ -1011,7 +1013,7 @@ dbus_bool_t wpas_dbus_getter_global_capabilities(
 	const struct wpa_dbus_property_desc *property_desc,
 	DBusMessageIter *iter, DBusError *error, void *user_data)
 {
-	const char *capabilities[12];
+	const char *capabilities[13];
 	size_t num_items = 0;
 	struct wpa_global *global = user_data;
 	struct wpa_supplicant *wpa_s;
@@ -1062,6 +1064,9 @@ dbus_bool_t wpas_dbus_getter_global_capabilities(
 #ifdef CONFIG_OWE
 	capabilities[num_items++] = "owe";
 #endif /* CONFIG_OWE */
+#ifdef CONFIG_SUITEB192
+	capabilities[num_items++] = "suiteb192";
+#endif /* CONFIG_SUITEB192 */
 	if (ext_key_id_supported)
 		capabilities[num_items++] = "extended_key_id";
 
@@ -1697,7 +1702,8 @@ DBusMessage * wpas_dbus_handler_reassociate(DBusMessage *message,
  * Returns: NULL
  *
  * Handler function for notifying system there will be a expected disconnect.
- * This will prevent wpa_supplicant from adding blacklists upon next disconnect..
+ * This will prevent wpa_supplicant from adding the BSSID to the ignore list
+ * upon next disconnect.
  */
 DBusMessage * wpas_dbus_handler_expect_disconnect(DBusMessage *message,
 						  struct wpa_global *global)
@@ -2568,7 +2574,7 @@ wpas_dbus_handler_tdls_cancel_channel_switch(DBusMessage *message,
  * wpas_dbus_handler_save_config - Save configuration to configuration file
  * @message: Pointer to incoming dbus message
  * @wpa_s: wpa_supplicant structure for a network interface
- * Returns: NULL on Success, Otherwise errror message
+ * Returns: NULL on Success, Otherwise error message
  *
  * Handler function for "SaveConfig" method call of network interface.
  */
@@ -2868,6 +2874,12 @@ dbus_bool_t wpas_dbus_getter_capabilities(
 		    !wpa_dbus_dict_string_array_add_element(&iter_array, "sae"))
 			goto nomem;
 #endif /* CONFIG_SAE */
+
+#ifdef CONFIG_OWE
+		if ((capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_OWE) &&
+		    !wpa_dbus_dict_string_array_add_element(&iter_array, "owe"))
+			goto nomem;
+#endif /* CONFIG_OWE */
 
 		if (!wpa_dbus_dict_end_string_array(&iter_dict,
 						    &iter_dict_entry,
@@ -5073,8 +5085,8 @@ dbus_bool_t wpas_dbus_getter_bss_ies(
 		return FALSE;
 
 	return wpas_dbus_simple_array_property_getter(iter, DBUS_TYPE_BYTE,
-						      res + 1, res->ie_len,
-						      error);
+						      wpa_bss_ie_ptr(res),
+						      res->ie_len, error);
 }
 
 

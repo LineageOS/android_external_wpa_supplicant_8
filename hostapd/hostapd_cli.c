@@ -1227,14 +1227,15 @@ static int hostapd_cli_cmd_vendor(struct wpa_ctrl *ctrl, int argc, char *argv[])
 	char cmd[256];
 	int res;
 
-	if (argc < 2 || argc > 3) {
+	if (argc < 2 || argc > 4) {
 		printf("Invalid vendor command\n"
-		       "usage: <vendor id> <command id> [<hex formatted command argument>]\n");
+		       "usage: <vendor id> <command id> [<hex formatted command argument>] [nested=<0|1>]\n");
 		return -1;
 	}
 
-	res = os_snprintf(cmd, sizeof(cmd), "VENDOR %s %s %s", argv[0], argv[1],
-			  argc == 3 ? argv[2] : "");
+	res = os_snprintf(cmd, sizeof(cmd), "VENDOR %s %s %s%s%s", argv[0],
+			  argv[1], argc >= 3 ? argv[2] : "",
+			  argc == 4 ? " " : "", argc == 4 ? argv[3] : "");
 	if (os_snprintf_error(sizeof(cmd), res)) {
 		printf("Too long VENDOR command.\n");
 		return -1;
@@ -1474,6 +1475,20 @@ static int hostapd_cli_cmd_dpp_pkex_remove(struct wpa_ctrl *ctrl, int argc,
 
 #ifdef CONFIG_DPP2
 
+static int hostapd_cli_cmd_dpp_controller_start(struct wpa_ctrl *ctrl, int argc,
+						char *argv[])
+{
+	return hostapd_cli_cmd(ctrl, "DPP_CONTROLLER_START", 1, argc, argv);
+}
+
+
+static int hostapd_cli_cmd_dpp_controller_stop(struct wpa_ctrl *ctrl, int argc,
+					       char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "DPP_CONTROLLER_STOP");
+}
+
+
 static int hostapd_cli_cmd_dpp_chirp(struct wpa_ctrl *ctrl, int argc,
 				     char *argv[])
 {
@@ -1697,6 +1712,10 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	{ "dpp_pkex_remove", hostapd_cli_cmd_dpp_pkex_remove, NULL,
 	  "*|<id> = remove DPP pkex information" },
 #ifdef CONFIG_DPP2
+	{ "dpp_controller_start", hostapd_cli_cmd_dpp_controller_start, NULL,
+	  "[tcp_port=<port>] [role=..] = start DPP controller" },
+	{ "dpp_controller_stop", hostapd_cli_cmd_dpp_controller_stop, NULL,
+	  "= stop DPP controller" },
 	{ "dpp_chirp", hostapd_cli_cmd_dpp_chirp, NULL,
 	  "own=<BI ID> iter=<count> = start DPP chirp" },
 	{ "dpp_stop_chirp", hostapd_cli_cmd_dpp_stop_chirp, NULL,

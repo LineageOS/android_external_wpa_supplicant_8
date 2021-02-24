@@ -174,6 +174,9 @@ struct wpa_driver_nl80211_data {
 	unsigned int control_port_ap:1;
 	unsigned int multicast_registrations:1;
 	unsigned int no_rrm:1;
+	unsigned int get_sta_info_vendor_cmd_avail:1;
+	unsigned int fils_discovery:1;
+	unsigned int unsol_bcast_probe_resp:1;
 
 	u64 vendor_scan_cookie;
 	u64 remain_on_chan_cookie;
@@ -208,6 +211,8 @@ struct wpa_driver_nl80211_data {
 	int auth_alg;
 	u8 *auth_ie;
 	size_t auth_ie_len;
+	u8 *auth_data;
+	size_t auth_data_len;
 	u8 auth_wep_key[4][16];
 	size_t auth_wep_key_len[4];
 	int auth_wep_tx_keyidx;
@@ -223,6 +228,12 @@ struct wpa_driver_nl80211_data {
 #ifdef CONFIG_DRIVER_NL80211_BRCM
 	unsigned int vendor_set_pmk:1; /* for legacy set_pmk method before NL80211_CMD_SET_PMK */
 #endif /* CONFIG_DRIVER_NL80211_BRCM */
+#ifdef CONFIG_DRIVER_NL80211_QCA
+	bool roam_indication_done;
+	u8 *pending_roam_data;
+	size_t pending_roam_data_len;
+	struct os_reltime pending_roam_ind_time;
+#endif /* CONFIG_DRIVER_NL80211_QCA */
 };
 
 struct nl_msg;
@@ -291,6 +302,10 @@ int android_pno_start(struct i802_bss *bss,
 int android_pno_stop(struct i802_bss *bss);
 extern int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 					 size_t buf_len);
+extern int wpa_driver_nl80211_driver_event(struct wpa_driver_nl80211_data *drv,
+					   u32 vendor_id, u32 subcmd,
+					   u8 *data, size_t len);
+
 
 #ifdef ANDROID_P2P
 int wpa_driver_set_p2p_noa(void *priv, u8 count, int start, int duration);

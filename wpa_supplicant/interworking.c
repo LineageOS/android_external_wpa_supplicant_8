@@ -2482,7 +2482,7 @@ static void interworking_select_network(struct wpa_supplicant *wpa_s)
 		bss_load = cred_over_max_bss_load(wpa_s, cred, bss);
 		conn_capab = cred_conn_capab_missing(wpa_s, cred, bss);
 		wpa_msg(wpa_s, MSG_INFO, "%s" MACSTR " type=%s%s%s%s id=%d priority=%d sp_priority=%d",
-			excluded ? INTERWORKING_BLACKLISTED : INTERWORKING_AP,
+			excluded ? INTERWORKING_EXCLUDED : INTERWORKING_AP,
 			MAC2STR(bss->bssid), type,
 			bh ? " below_min_backhaul=1" : "",
 			bss_load ? " over_max_bss_load=1" : "",
@@ -2532,7 +2532,7 @@ static void interworking_select_network(struct wpa_supplicant *wpa_s)
 	    (selected_cred == NULL ||
 	     cred_prio_cmp(selected_home_cred, selected_cred) >= 0)) {
 		/* Prefer network operated by the Home SP */
-		wpa_printf(MSG_DEBUG, "Interworking: Overrided selected with selected_home");
+		wpa_printf(MSG_DEBUG, "Interworking: Overrode selected with selected_home");
 		selected = selected_home;
 		selected_cred = selected_home_cred;
 	}
@@ -2793,6 +2793,7 @@ int anqp_send_req(struct wpa_supplicant *wpa_s, const u8 *dst, int freq,
 			wpa_printf(MSG_WARNING,
 				   "ANQP: Cannot send MBO query to unknown BSS "
 				   MACSTR, MAC2STR(dst));
+			wpabuf_free(extra_buf);
 			return -1;
 		}
 
@@ -2831,7 +2832,7 @@ int anqp_send_req(struct wpa_supplicant *wpa_s, const u8 *dst, int freq,
 
 static void anqp_add_extra(struct wpa_supplicant *wpa_s,
 			   struct wpa_bss_anqp *anqp, u16 info_id,
-			   const u8 *data, size_t slen)
+			   const u8 *data, size_t slen, bool protected_response)
 {
 	struct wpa_bss_anqp_elem *tmp, *elem = NULL;
 
@@ -2856,6 +2857,7 @@ static void anqp_add_extra(struct wpa_supplicant *wpa_s,
 		wpabuf_free(elem->payload);
 	}
 
+	elem->protected_response = protected_response;
 	elem->payload = wpabuf_alloc_copy(data, slen);
 	if (!elem->payload) {
 		dl_list_del(&elem->list);
@@ -2898,6 +2900,7 @@ static void interworking_parse_rx_anqp_resp(struct wpa_supplicant *wpa_s,
 	const u8 *pos = data;
 	struct wpa_bss_anqp *anqp = NULL;
 	u8 type;
+	bool protected_response;
 
 	if (bss)
 		anqp = bss->anqp;
@@ -2998,13 +3001,15 @@ static void interworking_parse_rx_anqp_resp(struct wpa_supplicant *wpa_s,
 	case ANQP_VENUE_URL:
 		wpa_msg(wpa_s, MSG_INFO, RX_ANQP MACSTR " Venue URL",
 			MAC2STR(sa));
+		protected_response = pmf_in_use(wpa_s, sa);
+		anqp_add_extra(wpa_s, anqp, info_id, pos, slen,
+			       protected_response);
 
-		if (!pmf_in_use(wpa_s, sa)) {
+		if (!protected_response) {
 			wpa_printf(MSG_DEBUG,
 				   "ANQP: Ignore Venue URL since PMF was not enabled");
 			break;
 		}
-		anqp_add_extra(wpa_s, anqp, info_id, pos, slen);
 		interworking_parse_venue_url(wpa_s, pos, slen);
 		break;
 	case ANQP_VENDOR_SPECIFIC:
@@ -3052,7 +3057,8 @@ static void interworking_parse_rx_anqp_resp(struct wpa_supplicant *wpa_s,
 	default:
 		wpa_msg(wpa_s, MSG_DEBUG,
 			"Interworking: Unsupported ANQP Info ID %u", info_id);
-		anqp_add_extra(wpa_s, anqp, info_id, data, slen);
+		anqp_add_extra(wpa_s, anqp, info_id, data, slen,
+			       pmf_in_use(wpa_s, sa));
 		break;
 	}
 }

@@ -842,7 +842,7 @@ void HidlManager::notifyAnqpQueryDone(
 		struct wpa_bss_anqp_elem *elem;
 		dl_list_for_each(elem, &anqp->anqp_elems, struct wpa_bss_anqp_elem,
 				 list) {
-			if (elem->infoid == ANQP_VENUE_URL) {
+			if (elem->infoid == ANQP_VENUE_URL && elem->protected_response) {
 				hidl_anqp_data.venueUrl =
 						    misc_utils::convertWpaBufToVector(elem->payload);
 				break;

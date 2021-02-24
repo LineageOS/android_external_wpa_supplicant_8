@@ -425,7 +425,9 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx)
 					       * Identifiers Used Exclusively */
 		}
 #endif /* CONFIG_SAE */
-		if (hapd->conf->beacon_prot)
+		if (hapd->conf->beacon_prot &&
+		    (hapd->iface->drv_flags &
+		     WPA_DRIVER_FLAGS_BEACON_PROTECTION))
 			*pos |= 0x10; /* Bit 84 - Beacon Protection Enabled */
 		break;
 	case 11: /* Bits 88-95 */
@@ -494,7 +496,8 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid)
 	    hostapd_sae_pw_id_in_use(hapd->conf))
 		len = 11;
 #endif /* CONFIG_SAE */
-	if (len < 11 && hapd->conf->beacon_prot)
+	if (len < 11 && hapd->conf->beacon_prot &&
+	    (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_BEACON_PROTECTION))
 		len = 11;
 #ifdef CONFIG_SAE_PK
 	if (len < 12 && hapd->conf->wpa &&
@@ -1097,29 +1100,45 @@ u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len)
 {
 	u8 *pos = eid;
 	bool sae_pk = false;
+	u16 capab = 0;
+	size_t flen;
+
+	if (!(hapd->conf->wpa & WPA_PROTO_RSN))
+		return eid;
 
 #ifdef CONFIG_SAE_PK
 	sae_pk = hostapd_sae_pk_in_use(hapd->conf);
 #endif /* CONFIG_SAE_PK */
 
-	if (!(hapd->conf->wpa & WPA_PROTO_RSN) ||
-	    !wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt) ||
-	    (hapd->conf->sae_pwe != 1 && hapd->conf->sae_pwe != 2 &&
-	     !hostapd_sae_pw_id_in_use(hapd->conf) && !sae_pk) ||
-	    hapd->conf->sae_pwe == 3 ||
-	    len < 3)
-		return pos;
+	if (wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt) &&
+	    (hapd->conf->sae_pwe == 1 || hapd->conf->sae_pwe == 2 ||
+	     hostapd_sae_pw_id_in_use(hapd->conf) || sae_pk) &&
+	    hapd->conf->sae_pwe != 3) {
+		capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+#ifdef CONFIG_SAE_PK
+		if (sae_pk)
+			capab |= BIT(WLAN_RSNX_CAPAB_SAE_PK);
+#endif /* CONFIG_SAE_PK */
+	}
+
+	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF)
+		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_LTF);
+	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_RTT)
+		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_RTT);
+	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG)
+		capab |= BIT(WLAN_RSNX_CAPAB_PROT_RANGE_NEG);
+
+	flen = (capab & 0xff00) ? 2 : 1;
+	if (len < 2 + flen || !capab)
+		return eid; /* no supported extended RSN capabilities */
+	capab |= flen - 1; /* bit 0-3 = Field length (n - 1) */
 
 	*pos++ = WLAN_EID_RSNX;
-	*pos++ = 1;
-	/* bits 0-3 = 0 since only one octet of Extended RSN Capabilities is
-	 * used for now */
-	*pos = BIT(WLAN_RSNX_CAPAB_SAE_H2E);
-#ifdef CONFIG_SAE_PK
-	if (sae_pk)
-		*pos |= BIT(WLAN_RSNX_CAPAB_SAE_PK);
-#endif /* CONFIG_SAE_PK */
-	pos++;
+	*pos++ = flen;
+	*pos++ = capab & 0x00ff;
+	capab >>= 8;
+	if (capab)
+		*pos++ = capab;
 
 	return pos;
 }
