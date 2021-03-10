@@ -271,7 +271,8 @@ public:
 	    setGroupCipher_1_4_cb _hidl_cb) override;
 	Return<void> getGroupCipher_1_4(
 	    getGroupCipher_1_4_cb _hidl_cb) override;
-	Return<void> enableSaeH2eOnlyMode(bool enable, enableSaeH2eOnlyMode_cb _hidl_cb) override;
+	Return<void> setSaeH2eMode(V1_4::ISupplicantStaNetwork::SaeH2eMode mode,
+	    setSaeH2eMode_cb _hidl_cb) override;
 	Return<void> enableSaePkOnlyMode(bool enable, enableSaePkOnlyMode_cb _hidl_cb) override;
 
 private:
@@ -414,7 +415,7 @@ private:
 	std::pair<V1_4::SupplicantStatus, uint32_t> getPairwiseCipher_1_4Internal();
 	V1_4::SupplicantStatus setPairwiseCipher_1_4Internal(
 	    uint32_t pairwise_cipher_mask);
-	V1_4::SupplicantStatus enableSaeH2eOnlyModeInternal(bool enable);
+	V1_4::SupplicantStatus setSaeH2eModeInternal(V1_4::ISupplicantStaNetwork::SaeH2eMode mode);
 	V1_4::SupplicantStatus enableSaePkOnlyModeInternal(bool enable);
 
 	struct wpa_ssid* retrieveNetworkPtr();

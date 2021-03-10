@@ -96,9 +96,6 @@ constexpr char kNetworkEapSimUmtsAuthResponse[] = "UMTS-AUTH";
 constexpr char kNetworkEapSimUmtsAutsResponse[] = "UMTS-AUTS";
 constexpr char kNetworkEapSimGsmAuthFailure[] = "GSM-FAIL";
 constexpr char kNetworkEapSimUmtsAuthFailure[] = "UMTS-FAIL";
-/* These constants refer definitions in wpa_supplicant/config.h */
-constexpr int SAE_PWE_H2E_ONLY_MODE = 1;
-constexpr int SAE_PWE_HP_H2E_BOTH = 2;
 
 #ifdef CONFIG_WAPI_INTERFACE
 std::string dummyWapiCertSuite;
@@ -990,11 +987,12 @@ Return<void> StaNetwork::getPairwiseCipher_1_4(
 	    &StaNetwork::getPairwiseCipher_1_4Internal, _hidl_cb);
 }
 
-Return<void> StaNetwork::enableSaeH2eOnlyMode(bool enable, enableSaeH2eOnlyMode_cb _hidl_cb)
+Return<void> StaNetwork::setSaeH2eMode(
+    ISupplicantStaNetworkV1_4::SaeH2eMode mode, setSaeH2eMode_cb _hidl_cb)
 {
 	return validateAndCall(
 	    this, V1_4::SupplicantStatusCode::FAILURE_NETWORK_INVALID,
-	    &StaNetwork::enableSaeH2eOnlyModeInternal, _hidl_cb, enable);
+	    &StaNetwork::setSaeH2eModeInternal, _hidl_cb, mode);
 }
 
 Return<void> StaNetwork::enableSaePkOnlyMode(bool enable, enableSaePkOnlyMode_cb _hidl_cb)
@@ -2620,10 +2618,21 @@ SupplicantStatus StaNetwork::setEapErpInternal(bool enable)
 #endif /* CONFIG_FILS */
 }
 
-V1_4::SupplicantStatus StaNetwork::enableSaeH2eOnlyModeInternal(bool enable)
+V1_4::SupplicantStatus StaNetwork::setSaeH2eModeInternal(
+    ISupplicantStaNetworkV1_4::SaeH2eMode mode)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
-	wpa_s->conf->sae_pwe = enable ? SAE_PWE_H2E_ONLY_MODE : SAE_PWE_HP_H2E_BOTH;
+	switch (mode) {
+	case ISupplicantStaNetworkV1_4::SaeH2eMode::DISABLED:
+		wpa_s->conf->sae_pwe = 0;
+		break;
+	case ISupplicantStaNetworkV1_4::SaeH2eMode::H2E_MANDATORY:
+		wpa_s->conf->sae_pwe = 1;
+		break;
+	case ISupplicantStaNetworkV1_4::SaeH2eMode::H2E_OPTIONAL:
+		wpa_s->conf->sae_pwe = 2;
+		break;
+	}
 	resetInternalStateAfterParamsUpdate();
 	return {V1_4::SupplicantStatusCode::SUCCESS, ""};
 }
