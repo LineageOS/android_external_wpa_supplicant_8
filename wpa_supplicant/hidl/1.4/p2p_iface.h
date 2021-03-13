@@ -200,6 +200,12 @@ public:
 	    bool enable, setMacRandomization_cb _hidl_cb) override;
 	Return<void> setEdmg(bool enable, setEdmg_cb _hidl_cb) override;
 	Return<void> getEdmg(getEdmg_cb _hidl_cb) override;
+	Return<void> registerCallback_1_4(
+	    const sp<V1_4::ISupplicantP2pIfaceCallback>& callback,
+	    registerCallback_1_4_cb _hidl_cb) override;
+	Return<void> setWfdR2DeviceInfo(
+	    const hidl_array<uint8_t, 4>& info,
+	    setWfdR2DeviceInfo_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
@@ -311,6 +317,10 @@ private:
 	SupplicantStatus setMacRandomizationInternal(bool enable);
 	V1_4::SupplicantStatus setEdmgInternal(bool enable);
 	std::pair<V1_4::SupplicantStatus, bool> getEdmgInternal();
+	V1_4::SupplicantStatus registerCallback_1_4Internal(
+	    const sp<V1_4::ISupplicantP2pIfaceCallback>& callback);
+	V1_4::SupplicantStatus setWfdR2DeviceInfoInternal(
+	    const std::array<uint8_t, 4>& info);
 
 	struct wpa_supplicant* retrieveIfacePtr();
 	struct wpa_supplicant* retrieveGroupIfacePtr(

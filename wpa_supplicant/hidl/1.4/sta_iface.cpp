@@ -1756,6 +1756,7 @@ StaIface::getWpaDriverCapabilitiesInternal_1_4()
 #ifdef CONFIG_SAE_PK
 	mask |= V1_4::WpaDriverCapabilitiesMask::SAE_PK;
 #endif
+	mask |= V1_4::WpaDriverCapabilitiesMask::WFD_R2;
 
 	wpa_printf(MSG_DEBUG, "Driver capability mask: 0x%x", mask);
 

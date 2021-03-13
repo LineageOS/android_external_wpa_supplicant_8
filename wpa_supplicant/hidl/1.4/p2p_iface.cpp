@@ -33,6 +33,7 @@ const char kConfigMethodStrDisplay[] = "display";
 const char kConfigMethodStrKeypad[] = "keypad";
 constexpr char kSetMiracastMode[] = "MIRACAST ";
 constexpr uint8_t kWfdDeviceInfoSubelemId = 0;
+constexpr uint8_t kWfdR2DeviceInfoSubelemId = 11;
 constexpr char kWfdDeviceInfoSubelemLenHexStr[] = "0006";
 
 std::function<void()> pending_join_scan_callback = NULL;
@@ -893,6 +894,23 @@ Return<void> P2pIface::getEdmg(getEdmg_cb _hidl_cb)
 	return validateAndCall(
 	    this, V1_4::SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 	    &P2pIface::getEdmgInternal, _hidl_cb);
+}
+
+Return<void> P2pIface::registerCallback_1_4(
+    const sp<V1_4::ISupplicantP2pIfaceCallback>& callback,
+    registerCallback_1_4_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, V1_4::SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &P2pIface::registerCallback_1_4Internal, _hidl_cb, callback);
+}
+
+Return<void> P2pIface::setWfdR2DeviceInfo(
+    const hidl_array<uint8_t, 4>& info, setWfdR2DeviceInfo_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, V1_4::SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &P2pIface::setWfdR2DeviceInfoInternal, _hidl_cb, info);
 }
 
 std::pair<SupplicantStatus, std::string> P2pIface::getNameInternal()
@@ -1853,6 +1871,40 @@ std::pair<V1_4::SupplicantStatus, bool> P2pIface::getEdmgInternal()
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	return {{V1_4::SupplicantStatusCode::SUCCESS, ""},
 		(wpa_s->p2p_go_edmg == 1)};
+}
+
+V1_4::SupplicantStatus P2pIface::registerCallback_1_4Internal(
+    const sp<V1_4::ISupplicantP2pIfaceCallback>& callback)
+{
+	HidlManager* hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager ||
+	    hidl_manager->addP2pIfaceCallbackHidlObject(ifname_, callback)) {
+		return {V1_4::SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+	}
+	return {V1_4::SupplicantStatusCode::SUCCESS, ""};
+}
+
+V1_4::SupplicantStatus P2pIface::setWfdR2DeviceInfoInternal(
+    const std::array<uint8_t, 4>& info)
+{
+	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	uint32_t wfd_r2_device_info_hex_len = info.size() * 2 + 1;
+	std::vector<char> wfd_r2_device_info_hex(wfd_r2_device_info_hex_len);
+	wpa_snprintf_hex(
+	    wfd_r2_device_info_hex.data(), wfd_r2_device_info_hex.size(),
+	    info.data(),info.size());
+	std::string wfd_r2_device_info_set_cmd_str =
+	     std::to_string(kWfdR2DeviceInfoSubelemId) + " " +
+	     wfd_r2_device_info_hex.data();
+	std::vector<char> wfd_r2_device_info_set_cmd(
+	     wfd_r2_device_info_set_cmd_str.c_str(),
+	     wfd_r2_device_info_set_cmd_str.c_str() +
+	     wfd_r2_device_info_set_cmd_str.size() + 1);
+	if (wifi_display_subelem_set(
+		wpa_s->global, wfd_r2_device_info_set_cmd.data())) {
+		return {V1_4::SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+	}
+	return {V1_4::SupplicantStatusCode::SUCCESS, ""};
 }
 
 /**

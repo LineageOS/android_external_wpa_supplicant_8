@@ -647,6 +647,7 @@ void wpas_notify_p2p_find_stopped(struct wpa_supplicant *wpa_s)
 void wpas_notify_p2p_device_found(struct wpa_supplicant *wpa_s,
 				  const u8 *addr, const struct p2p_peer_info *info,
 				  const u8* peer_wfd_device_info, u8 peer_wfd_device_info_len,
+				  const u8* peer_wfd_r2_device_info, u8 peer_wfd_r2_device_info_len,
 				  int new_device)
 {
 	if (new_device) {
@@ -659,7 +660,9 @@ void wpas_notify_p2p_device_found(struct wpa_supplicant *wpa_s,
 
 	wpas_hidl_notify_p2p_device_found(wpa_s, addr, info,
 					  peer_wfd_device_info,
-					  peer_wfd_device_info_len);
+					  peer_wfd_device_info_len,
+					  peer_wfd_r2_device_info,
+					  peer_wfd_r2_device_info_len);
 }
 
 

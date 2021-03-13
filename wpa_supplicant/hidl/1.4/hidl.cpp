@@ -397,7 +397,8 @@ void wpas_hidl_notify_wps_event_pbc_overlap(struct wpa_supplicant *wpa_s)
 void wpas_hidl_notify_p2p_device_found(
     struct wpa_supplicant *wpa_s, const u8 *addr,
     const struct p2p_peer_info *info, const u8 *peer_wfd_device_info,
-    u8 peer_wfd_device_info_len)
+    u8 peer_wfd_device_info_len, const u8 *peer_wfd_r2_device_info,
+    u8 peer_wfd_r2_device_info_len)
 {
 	if (!wpa_s || !addr || !info)
 		return;
@@ -411,7 +412,9 @@ void wpas_hidl_notify_p2p_device_found(
 		return;
 
 	hidl_manager->notifyP2pDeviceFound(
-	    wpa_s, addr, info, peer_wfd_device_info, peer_wfd_device_info_len);
+	    wpa_s, addr, info, peer_wfd_device_info,
+	    peer_wfd_device_info_len, peer_wfd_r2_device_info,
+	    peer_wfd_r2_device_info_len);
 }
 
 void wpas_hidl_notify_p2p_device_lost(
