@@ -24,6 +24,7 @@ namespace {
 using android::hardware::hidl_array;
 
 constexpr uint8_t kWfdDeviceInfoLen = 6;
+constexpr uint8_t kWfdR2DeviceInfoLen = 2;
 // GSM-AUTH:<RAND1>:<RAND2>[:<RAND3>]
 constexpr char kGsmAuthRegex2[] = "GSM-AUTH:([0-9a-f]+):([0-9a-f]+)";
 constexpr char kGsmAuthRegex3[] =
@@ -414,6 +415,8 @@ namespace supplicant {
 namespace V1_4 {
 namespace implementation {
 using V1_0::ISupplicantStaIfaceCallback;
+using V1_0::ISupplicantP2pIfaceCallback;
+using ISupplicantP2pIfaceCallbackV1_4 = V1_4::ISupplicantP2pIfaceCallback;
 
 HidlManager *HidlManager::instance_ = NULL;
 
@@ -1224,7 +1227,8 @@ void HidlManager::notifyWpsEventPbcOverlap(struct wpa_supplicant *wpa_s)
 void HidlManager::notifyP2pDeviceFound(
     struct wpa_supplicant *wpa_s, const u8 *addr,
     const struct p2p_peer_info *info, const u8 *peer_wfd_device_info,
-    u8 peer_wfd_device_info_len)
+    u8 peer_wfd_device_info_len, const u8 *peer_wfd_r2_device_info,
+    u8 peer_wfd_r2_device_info_len)
 {
 	if (!wpa_s || !addr || !info)
 		return;
@@ -1246,13 +1250,39 @@ void HidlManager::notifyP2pDeviceFound(
 		}
 	}
 
-	callWithEachP2pIfaceCallback(
-	    wpa_s->ifname,
-	    std::bind(
-		&ISupplicantP2pIfaceCallback::onDeviceFound,
-		std::placeholders::_1, addr, info->p2p_device_addr,
-		info->pri_dev_type, info->device_name, info->config_methods,
-		info->dev_capab, info->group_capab, hidl_peer_wfd_device_info));
+	std::array<uint8_t, kWfdR2DeviceInfoLen> hidl_peer_wfd_r2_device_info{};
+	if (peer_wfd_r2_device_info) {
+		if (peer_wfd_r2_device_info_len != kWfdR2DeviceInfoLen) {
+			wpa_printf(
+			    MSG_ERROR, "Unexpected WFD R2 device info len: %d",
+			    peer_wfd_r2_device_info_len);
+			return;
+		} else {
+			os_memcpy(
+			    hidl_peer_wfd_r2_device_info.data(),
+			    peer_wfd_r2_device_info, kWfdR2DeviceInfoLen);
+		}
+	}
+
+	if (peer_wfd_r2_device_info_len == kWfdR2DeviceInfoLen) {
+		const std::function<
+		    Return<void>(android::sp<V1_4::ISupplicantP2pIfaceCallback>)>
+		    func = std::bind(
+			&ISupplicantP2pIfaceCallbackV1_4::onR2DeviceFound,
+			std::placeholders::_1, addr, info->p2p_device_addr,
+			info->pri_dev_type, info->device_name, info->config_methods,
+			info->dev_capab, info->group_capab, hidl_peer_wfd_device_info,
+			hidl_peer_wfd_r2_device_info);
+		callWithEachP2pIfaceCallbackDerived(wpa_s->ifname, func);
+	} else {
+		callWithEachP2pIfaceCallback(
+		    wpa_s->ifname,
+		    std::bind(
+			&ISupplicantP2pIfaceCallback::onDeviceFound,
+			std::placeholders::_1, addr, info->p2p_device_addr,
+			info->pri_dev_type, info->device_name, info->config_methods,
+			info->dev_capab, info->group_capab, hidl_peer_wfd_device_info));
+	}
 }
 
 void HidlManager::notifyP2pDeviceLost(
@@ -1815,7 +1845,7 @@ uint32_t getBssTmDataAssocRetryDelayMs(struct wpa_supplicant *wpa_s)
 		//wnm_bss_termination_duration contains 12 bytes of BSS
 		//termination duration subelement. Format of IE is
 		// Sub eid | Length | BSS termination TSF | Duration
-		//    1         1             8                2
+		//    1	 1	     8		2
 		// Duration indicates number of minutes for which BSS is not
 		// present.
 		duration_ms = WPA_GET_LE16(wpa_s->wnm_bss_termination_duration + 10);
@@ -2272,6 +2302,24 @@ void HidlManager::callWithEachP2pIfaceCallback(
 	&method)
 {
 	callWithEachIfaceCallback(ifname, method, p2p_iface_callbacks_map_);
+}
+
+/**
+ * Helper function to invoke the provided callback method on all the
+ * registered derived interface callback hidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required hidl method from
+ * derived |V1_x::ISupplicantIfaceCallback|.
+ */
+template <class CallbackTypeDerived>
+void HidlManager::callWithEachP2pIfaceCallbackDerived(
+    const std::string &ifname,
+    const std::function<
+	Return<void>(android::sp<CallbackTypeDerived>)> &method)
+{
+	callWithEachIfaceCallbackDerived(ifname, method, p2p_iface_callbacks_map_);
 }
 
 /**

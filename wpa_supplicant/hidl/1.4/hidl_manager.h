@@ -118,7 +118,8 @@ public:
 	void notifyP2pDeviceFound(
 	    struct wpa_supplicant *wpa_s, const u8 *addr,
 	    const struct p2p_peer_info *info, const u8 *peer_wfd_device_info,
-	    u8 peer_wfd_device_info_len);
+	    u8 peer_wfd_device_info_len, const u8 *peer_wfd_r2_device_info,
+	    u8 peer_wfd_r2_device_info_len);
 	void notifyP2pDeviceLost(
 	    struct wpa_supplicant *wpa_s, const u8 *p2p_device_addr);
 	void notifyP2pFindStopped(struct wpa_supplicant *wpa_s);
@@ -236,6 +237,11 @@ private:
 	    const std::string &ifname,
 	    const std::function<android::hardware::Return<void>(
 		android::sp<ISupplicantP2pIfaceCallback>)> &method);
+	template <class CallbackTypeDerived>
+	void callWithEachP2pIfaceCallbackDerived(
+	    const std::string &ifname,
+	    const std::function<
+		Return<void>(android::sp<CallbackTypeDerived>)> &method);
 	void callWithEachStaIfaceCallback(
 	    const std::string &ifname,
 	    const std::function<android::hardware::Return<void>(
