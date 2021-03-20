@@ -1016,6 +1016,9 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 		if (ssid && (ssid->key_mgmt & WPA_KEY_MGMT_OWE))
 			wpas_update_owe_connect_params(wpa_s);
 #endif /* CONFIG_OWE */
+#ifdef CONFIG_HS20
+		hs20_configure_frame_filters(wpa_s);
+#endif
 	} else if (state == WPA_DISCONNECTED || state == WPA_ASSOCIATING ||
 		   state == WPA_ASSOCIATED) {
 		wpa_s->new_connection = 1;
@@ -3033,7 +3036,7 @@ static u8 * wpas_populate_assoc_ies(
 	}
 
 #ifdef CONFIG_HS20
-	if (is_hs20_network(wpa_s, ssid, bss)) {
+	if (is_hs20_config(wpa_s) && is_hs20_network(wpa_s, ssid, bss)) {
 		struct wpabuf *hs20;
 
 		hs20 = wpabuf_alloc(20 + MAX_ROAMING_CONS_OI_LEN);
@@ -3051,10 +3054,9 @@ static u8 * wpas_populate_assoc_ies(
 				wpa_ie_len += wpabuf_len(hs20);
 			}
 			wpabuf_free(hs20);
-
-			hs20_configure_frame_filters(wpa_s);
 		}
 	}
+	hs20_configure_frame_filters(wpa_s);
 #endif /* CONFIG_HS20 */
 
 	if (wpa_s->vendor_elem[VENDOR_ELEM_ASSOC_REQ]) {
