@@ -73,7 +73,12 @@ void hs20_configure_frame_filters(struct wpa_supplicant *wpa_s)
 	const u8 *ext_capa;
 	u32 filter = 0;
 
-	if (!bss || !is_hs20_network(wpa_s, wpa_s->current_ssid, bss)) {
+	if (!bss || !is_hs20_network(wpa_s, wpa_s->current_ssid, bss)
+#ifndef ANDROID
+			// HS 2.0 Configuration is not used in AOSP
+			|| !is_hs20_config(wpa_s)
+#endif
+			) {
 		wpa_printf(MSG_DEBUG,
 			   "Not configuring frame filtering - BSS " MACSTR
 			   " is not a Hotspot 2.0 network", MAC2STR(bssid));
@@ -158,11 +163,15 @@ int get_hs20_version(struct wpa_bss *bss)
 	return ((ie[6] >> 4) & 0x0f) + 1;
 }
 
+int is_hs20_config(struct wpa_supplicant *wpa_s)
+{
+	return wpa_s->conf->hs20;
+}
 
 int is_hs20_network(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 		    struct wpa_bss *bss)
 {
-	if (!wpa_s->conf->hs20 || !ssid)
+	if (!ssid)
 		return 0;
 
 	if (ssid->parent_cred)
