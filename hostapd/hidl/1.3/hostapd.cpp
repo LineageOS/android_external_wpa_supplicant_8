@@ -938,13 +938,31 @@ V1_2::HostapdStatus Hostapd::addSingleAccessPoint(
 
 V1_0::HostapdStatus Hostapd::removeAccessPointInternal(const std::string& iface_name)
 {
-	std::vector<char> remove_iface_param_vec(
-	    iface_name.begin(), iface_name.end() + 1);
-	if (hostapd_remove_iface(interfaces_, remove_iface_param_vec.data()) <
-	    0) {
-		wpa_printf(
-		    MSG_ERROR, "Removing interface %s failed",
-		    iface_name.c_str());
+	// interfaces to be removed
+	std::vector<std::string> interfaces;
+	bool is_error = false;
+
+	const auto it = br_interfaces_.find(iface_name);
+	if (it != br_interfaces_.end()) {
+		// In case bridge, remove managed interfaces
+		interfaces = it->second;
+		br_interfaces_.erase(iface_name);
+	} else {
+		// else remove current interface
+		interfaces.push_back(iface_name);
+	}
+
+	for (auto& iface : interfaces) {
+		std::vector<char> remove_iface_param_vec(
+		    iface.begin(), iface.end() + 1);
+		if (hostapd_remove_iface(interfaces_, remove_iface_param_vec.data()) <
+		    0) {
+			wpa_printf(MSG_INFO, "Remove interface %s failed",
+			    iface.c_str());
+			is_error = true;
+		}
+	}
+	if (is_error) {
 		return {V1_0::HostapdStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {V1_0::HostapdStatusCode::SUCCESS, ""};

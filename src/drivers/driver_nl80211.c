@@ -6809,6 +6809,7 @@ void nl80211_restore_ap_mode(struct i802_bss *bss)
 {
 	struct wpa_driver_nl80211_data *drv = bss->drv;
 	int was_ap = is_ap_interface(drv->nlmode);
+	int br_ifindex;
 
 	wpa_driver_nl80211_set_mode(bss, drv->ap_scan_as_station);
 	if (!was_ap && is_ap_interface(drv->ap_scan_as_station) &&
@@ -6823,6 +6824,8 @@ void nl80211_restore_ap_mode(struct i802_bss *bss)
 				   "nl80211: Failed to add interface %s into bridge %s: %s",
 				   bss->ifname, bss->brname, strerror(errno));
 		}
+		br_ifindex = if_nametoindex(bss->brname);
+		add_ifidx(drv, br_ifindex, drv->ifindex);
 	}
 	drv->ap_scan_as_station = NL80211_IFTYPE_UNSPECIFIED;
 }
