@@ -720,20 +720,6 @@ int has_ctrl_char(const u8 *data, size_t len)
 }
 
 
-int has_non_nvt_ascii_char(const u8 *data, size_t len)
-{
-	size_t i;
-
-	for (i = 0; i < len; i++) {
-		if (data[i] < 7
-			|| (13 < data[i] && data[i] < 32)
-				|| data[i] == 127)
-			return 1;
-	}
-	return 0;
-}
-
-
 int has_newline(const char *str)
 {
 	while (*str) {
