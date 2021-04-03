@@ -2412,7 +2412,7 @@ int StaNetwork::isPskPassphraseValid(const std::string &psk)
 					  PSK_PASSPHRASE_MAX_LEN_IN_BYTES)) {
 		return 1;
 	}
-	if (has_non_nvt_ascii_char((u8 *)psk.c_str(), psk.size())) {
+	if (has_ctrl_char((u8 *)psk.c_str(), psk.size())) {
 		return 1;
 	}
 	return 0;
