@@ -278,7 +278,7 @@ static int eap_tls_init_connection(struct eap_sm *sm,
 	}
 	if (res) {
 		wpa_printf(MSG_INFO, "TLS: Failed to set TLS connection "
-			   "parameters");
+			   "parameters, error code: %d", res);
 		tls_connection_deinit(data->ssl_ctx, data->conn);
 		data->conn = NULL;
 		return -1;
