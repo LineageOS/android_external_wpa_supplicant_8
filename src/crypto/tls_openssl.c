@@ -163,11 +163,32 @@ static int tls_add_ca_from_keystore(X509_STORE *ctx, const char *key_alias)
 	BIO *bio = BIO_from_keystore(key_alias);
 	STACK_OF(X509_INFO) *stack = NULL;
 	stack_index_t i;
+	int ret = 0;
 
-	if (bio) {
-		stack = PEM_X509_INFO_read_bio(bio, NULL, NULL, NULL);
-		BIO_free(bio);
+	if (!bio) {
+		wpa_printf(MSG_ERROR, "TLS: Failed to parse certificate: %s",
+			   key_alias);
+		return -1;
 	}
+
+	// Try DER encoding first
+	X509 *x509 = d2i_X509_bio(bio, NULL);
+	if (x509) {
+		while (x509) {
+			if (!X509_STORE_add_cert(ctx, x509)) {
+				wpa_printf(MSG_ERROR, "TLS: Failed to add Root CA certificate");
+				ret = -1;
+				break;
+			}
+			x509 = d2i_X509_bio(bio, NULL);
+		}
+		BIO_free(bio);
+		return ret;
+	}
+
+	// Try PEM encoding
+	stack = PEM_X509_INFO_read_bio(bio, NULL, NULL, NULL);
+	BIO_free(bio);
 
 	if (!stack) {
 		wpa_printf(MSG_WARNING, "TLS: Failed to parse certificate: %s",
@@ -179,14 +200,17 @@ static int tls_add_ca_from_keystore(X509_STORE *ctx, const char *key_alias)
 		X509_INFO *info = sk_X509_INFO_value(stack, i);
 
 		if (info->x509)
-			X509_STORE_add_cert(ctx, info->x509);
+			if (!X509_STORE_add_cert(ctx, info->x509)) {
+				wpa_printf(MSG_ERROR, "TLS: Failed to add Root CA certificate");
+				ret = -1;
+				break;
+			}
 		if (info->crl)
 			X509_STORE_add_crl(ctx, info->crl);
 	}
 
 	sk_X509_INFO_pop_free(stack, X509_INFO_free);
-
-	return 0;
+	return ret;
 }
 
 
@@ -3321,7 +3345,16 @@ static int tls_connection_client_cert(struct tls_connection *conn,
 		X509 *x509 = NULL;
 		int ret = -1;
 		if (bio) {
-			x509 = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+			// Try DER encoding first
+			x509 = d2i_X509_bio(bio, NULL);
+			if (!x509) {
+				// Maybe this bio is actually PEM encoded.
+				x509 = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+				if (!x509) {
+					wpa_printf(MSG_ERROR, "tls_connection_client_cert: "
+							"Unknown certificate encoding.");
+				}
+			}
 		}
 		if (x509) {
 			if (SSL_use_certificate(conn->ssl, x509) == 1)
@@ -5171,8 +5204,10 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 					     params->altsubject_match,
 					     params->suffix_match,
 					     params->domain_match,
-					     params->check_cert_subject))
+					     params->check_cert_subject)) {
+		wpa_printf(MSG_ERROR, "TLS: Failed to set subject match");
 		return -1;
+	}
 
 	if (engine_id && ca_cert_id) {
 		if (tls_connection_engine_ca_cert(data, conn, ca_cert_id))
@@ -5180,16 +5215,20 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 	} else if (tls_connection_ca_cert(data, conn, params->ca_cert,
 					  params->ca_cert_blob,
 					  params->ca_cert_blob_len,
-					  params->ca_path))
+					  params->ca_path)) {
+		wpa_printf(MSG_ERROR, "TLS: Failed to parse Root CA certificate");
 		return -1;
+	}
 
 	if (engine_id && cert_id) {
 		if (tls_connection_engine_client_cert(conn, cert_id))
 			return TLS_SET_PARAMS_ENGINE_PRV_VERIFY_FAILED;
 	} else if (tls_connection_client_cert(conn, params->client_cert,
 					      params->client_cert_blob,
-					      params->client_cert_blob_len))
+					      params->client_cert_blob_len)) {
+		wpa_printf(MSG_ERROR, "TLS: Failed to parse client certificate");
 		return -1;
+	}
 
 	if (engine_id && key_id) {
 		wpa_printf(MSG_DEBUG, "TLS: Using private key from engine");
@@ -5264,8 +5303,10 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 	}
 
 	if (tls_set_conn_flags(conn, params->flags,
-			       params->openssl_ciphers) < 0)
+			       params->openssl_ciphers) < 0) {
+		wpa_printf(MSG_ERROR, "TLS: Failed to set connection flags");
 		return -1;
+	}
 
 #ifdef OPENSSL_IS_BORINGSSL
 	if (params->flags & TLS_CONN_REQUEST_OCSP) {
