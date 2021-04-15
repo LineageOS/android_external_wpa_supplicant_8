@@ -92,28 +92,31 @@ int isPskPassphraseValid(const std::string &psk)
 	return 1;
 }
 
-void setBandScanFreqsList(
+void setP2pCliBandScanFreqsList(
     struct wpa_supplicant *wpa_s,
-    enum hostapd_hw_mode band,
+    enum wpa_radio_work_band band,
     struct wpa_driver_scan_params *params)
 {
-	/* Include only supported channels for the specified band */
-	struct hostapd_hw_modes *mode;
-	int count, i;
+	int num_channels, count, i;
+	int freq_list[P2P_MAX_CHANNELS];
+	struct p2p_data *p2p = wpa_s->global->p2p;
+	struct p2p_channels all_channels;
 
-	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, band, 0);
-	if (mode == NULL) {
-		/* No channels supported in this band. */
+	// Add p2p client only channels also to allow client to discover and connect to devices
+	// which are operating on channels marked as NO_IR (not allow initiation of radiation)
+	p2p_channels_union(&p2p->cfg->channels, &p2p->cfg->cli_channels,
+			   &all_channels);
+	num_channels = p2p_channels_to_freqs(&all_channels, freq_list, P2P_MAX_CHANNELS);
+	params->freqs = (int *) os_calloc(num_channels + 1, sizeof(int));
+	if (params->freqs == NULL) {
+		wpa_printf(MSG_ERROR,
+		    "P2P: Cannot allocate memory for scan params freq list");
 		return;
 	}
-
-	params->freqs = (int *) os_calloc(mode->num_channels + 1, sizeof(int));
-	if (params->freqs == NULL)
-		return;
-	for (count = 0, i = 0; i < mode->num_channels; i++) {
-		if (mode->channels[i].flag & HOSTAPD_CHAN_DISABLED)
-			continue;
-		params->freqs[count++] = mode->channels[i].freq;
+	for (count = 0, i = 0; i < num_channels; i++) {
+		if (wpas_freq_to_band(freq_list[i]) == band) {
+			params->freqs[count++] = freq_list[i];
+		}
 	}
 }
 /*
@@ -254,12 +257,12 @@ int joinScanReq(
 			if (wpa_s->hw.modes != NULL) {
 				switch (freq) {
 				case 2:
-					setBandScanFreqsList(wpa_s,
-					    HOSTAPD_MODE_IEEE80211G, &params);
+					setP2pCliBandScanFreqsList(wpa_s,
+					    BAND_2_4_GHZ, &params);
 				break;
 				case 5:
-					setBandScanFreqsList(wpa_s,
-					    HOSTAPD_MODE_IEEE80211A, &params);
+					setP2pCliBandScanFreqsList(wpa_s,
+					    BAND_5_GHZ, &params);
 				break;
 				}
 				if (!params.freqs) {
