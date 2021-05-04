@@ -1239,6 +1239,7 @@ struct wpa_supplicant {
 	unsigned int oci_freq_override_ft_assoc;
 	unsigned int oci_freq_override_fils_assoc;
 	unsigned int oci_freq_override_wnm_sleep;
+	int force_hunting_and_pecking_pwe;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	struct wmm_ac_assoc_data *wmm_ac_assoc_info;

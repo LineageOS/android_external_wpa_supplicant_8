@@ -1667,6 +1667,16 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 	sae_pwe = wpa_s->conf->sae_pwe;
 	if (ssid->sae_password_id && sae_pwe != 3)
 		sae_pwe = 1;
+	if (bss && is_6ghz_freq(bss->freq)) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: force hash-to-element mode for 6GHz BSS.");
+		sae_pwe = 1;
+	}
+#ifdef CONFIG_TESTING_OPTIONS
+	if (wpa_s->force_hunting_and_pecking_pwe) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: force hunting and pecking mode.");
+		sae_pwe = 0;
+	}
+#endif
 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_SAE_PWE, sae_pwe);
 #ifdef CONFIG_SAE_PK
 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_SAE_PK,
