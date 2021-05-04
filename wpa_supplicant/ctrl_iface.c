@@ -816,6 +816,8 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 			wpa_s->sae_commit_override = wpabuf_parse_bin(value);
 	} else if (os_strcasecmp(cmd, "driver_signal_override") == 0) {
 		ret = wpas_ctrl_iface_set_dso(wpa_s, value);
+	} else if (os_strcasecmp(cmd, "force_hunting_and_pecking_pwe") == 0) {
+		wpa_s->force_hunting_and_pecking_pwe = (atoi(value) != 0) ? 1 : 0;
 #ifdef CONFIG_DPP
 	} else if (os_strcasecmp(cmd, "dpp_config_obj_override") == 0) {
 		os_free(wpa_s->dpp_config_obj_override);
