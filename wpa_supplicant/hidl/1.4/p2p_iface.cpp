@@ -25,7 +25,8 @@ extern "C"
 #include "driver_i.h"
 }
 
-#define P2P_MAX_JOIN_SCAN_ATTEMPTS 10
+#define P2P_MAX_JOIN_SCAN_ATTEMPTS 3
+#define P2P_JOIN_SCAN_INTERVAL_USECS 1000000
 
 namespace {
 const char kConfigMethodStrPbc[] = "pbc";
@@ -92,33 +93,93 @@ int isPskPassphraseValid(const std::string &psk)
 	return 1;
 }
 
-void setP2pCliBandScanFreqsList(
+static int setBandScanFreqsList(
     struct wpa_supplicant *wpa_s,
-    enum wpa_radio_work_band band,
+    enum hostapd_hw_mode hw_mode,
+    bool exclude_dfs,
     struct wpa_driver_scan_params *params)
 {
-	int num_channels, count, i;
-	int freq_list[P2P_MAX_CHANNELS];
-	struct p2p_data *p2p = wpa_s->global->p2p;
-	struct p2p_channels all_channels;
+	struct hostapd_hw_modes *mode;
+	int count, i;
 
-	// Add p2p client only channels also to allow client to discover and connect to devices
-	// which are operating on channels marked as NO_IR (not allow initiation of radiation)
-	p2p_channels_union(&p2p->cfg->channels, &p2p->cfg->cli_channels,
-			   &all_channels);
-	num_channels = p2p_channels_to_freqs(&all_channels, freq_list, P2P_MAX_CHANNELS);
-	params->freqs = (int *) os_calloc(num_channels + 1, sizeof(int));
-	if (params->freqs == NULL) {
+	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, hw_mode, 0);
+	if (mode == NULL || !mode->num_channels) {
 		wpa_printf(MSG_ERROR,
-		    "P2P: Cannot allocate memory for scan params freq list");
-		return;
+		    "P2P: No channels supported in this hw_mode: %d", hw_mode);
+		return -1;
 	}
-	for (count = 0, i = 0; i < num_channels; i++) {
-		if (wpas_freq_to_band(freq_list[i]) == band) {
-			params->freqs[count++] = freq_list[i];
+
+	/*
+	 * Allocate memory for frequency array, allocate one extra
+	 * slot for the zero-terminator.
+	 */
+	params->freqs = (int *) os_calloc(mode->num_channels + 1, sizeof(int));
+	if (params->freqs == NULL) {
+		return -ENOMEM;
+	}
+	for (count = 0, i = 0; i < mode->num_channels; i++) {
+		if (mode->channels[i].flag & HOSTAPD_CHAN_DISABLED) {
+			continue;
+		}
+		if (exclude_dfs && (mode->channels[i].flag & HOSTAPD_CHAN_RADAR)) {
+			continue;
+		}
+		params->freqs[count++] = mode->channels[i].freq;
+	}
+	if (!count && params->freqs) {
+		wpa_printf(MSG_ERROR,
+		    "P2P: All channels(exclude_dfs: %d) are disabled in this hw_mode: %d",
+		    exclude_dfs, hw_mode);
+		os_free(params->freqs);
+		return -1;
+	}
+	return 0;
+}
+
+static int setP2pCliOptimizedScanFreqsList(struct wpa_supplicant *wpa_s,
+    struct wpa_driver_scan_params *params, int freq)
+{
+	if (freq == 2 || freq == 5) {
+		enum hostapd_hw_mode mode;
+		int ret;
+		if (wpa_s->hw.modes == NULL) {
+			wpa_printf(MSG_DEBUG,
+				   "P2P: Unknown what %dG channels the driver supports.", freq);
+			return 0;
+		}
+		mode = freq == 5 ? HOSTAPD_MODE_IEEE80211A : HOSTAPD_MODE_IEEE80211G;
+		if (wpa_s->p2p_join_scan_count < 2) {
+			// scan all non DFS channels in the first two attempts
+			ret = setBandScanFreqsList(wpa_s, mode, true, params);
+			if (ret < 0 && (-ENOMEM != ret)) {
+				// try to scan all channels before returning error
+				ret = setBandScanFreqsList(wpa_s, mode, false, params);
+			}
+		} else {
+			// scan all channels
+			ret = setBandScanFreqsList(wpa_s, mode, false, params);
+		}
+		return ret;
+	} else {
+		if (disabled_freq(wpa_s, freq)) {
+			wpa_printf(MSG_ERROR,
+				   "P2P: freq %d is not supported for a client.", freq);
+			return -1;
+		}
+		/*
+		 * Allocate memory for frequency array, allocate one extra
+		 * slot for the zero-terminator.
+		 */
+		params->freqs = (int *) os_calloc(2, sizeof(int));
+		if (params->freqs) {
+			params->freqs[0] = freq;
+		} else {
+			return -ENOMEM;
 		}
 	}
+	return 0;
 }
+
 /*
  * isAnyEtherAddr - match any ether address
  *
@@ -252,47 +313,13 @@ int joinScanReq(
 	wpa_printf(MSG_DEBUG, "Scan SSID %s for join with frequency %d (reinvoke)",
 	    wpa_ssid_txt(params.ssids[0].ssid, params.ssids[0].ssid_len), freq);
 
+	/* Construct an optimized p2p scan channel list */
 	if (freq > 0) {
-		if (freq == 2 || freq == 5) {
-			if (wpa_s->hw.modes != NULL) {
-				switch (freq) {
-				case 2:
-					setP2pCliBandScanFreqsList(wpa_s,
-					    BAND_2_4_GHZ, &params);
-				break;
-				case 5:
-					setP2pCliBandScanFreqsList(wpa_s,
-					    BAND_5_GHZ, &params);
-				break;
-				}
-				if (!params.freqs) {
-					wpa_printf(MSG_ERROR,
-					    "P2P: No supported channels in %dG band.", freq);
-					return -1;
-				}
-			} else {
-				wpa_printf(MSG_DEBUG,
-				    "P2P: Unknown what %dG channels the driver supports.", freq);
-			}
-		} else {
-			if (0 == p2p_supported_freq_cli(wpa_s->global->p2p, freq)) {
-				wpa_printf(MSG_ERROR,
-				    "P2P: freq %d is not supported for a client.", freq);
-				return -1;
-			}
-
-			/*
-			 * Allocate memory for frequency array, allocate one extra
-			 * slot for the zero-terminator.
-			 */
-			params.freqs = (int *) os_calloc(2, sizeof(int));
-			if (params.freqs) {
-				params.freqs[0] = freq;
-			} else {
-				wpa_printf(MSG_ERROR,
-				    "P2P: Cannot allocate memory for scan params.");
-				return -1;
-			}
+		ret = setP2pCliOptimizedScanFreqsList(wpa_s, &params, freq);
+		if (ret < 0) {
+			wpa_printf(MSG_ERROR,
+				   "Failed to set frequency in p2p scan params, error = %d", ret);
+			return -1;
 		}
 	}
 
@@ -323,6 +350,7 @@ int joinScanReq(
 		if (wpa_s->scan_res_handler) {
 			wpa_printf(MSG_DEBUG, "Replace current running scan result handler");
 		}
+		wpa_s->p2p_join_scan_count++;
 		wpa_s->scan_res_handler = scanResJoinWrapper;
 		wpa_s->own_scan_requested = 1;
 		wpa_s->clear_driver_scan_cache = 0;
@@ -1758,7 +1786,6 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 		if (-EBUSY == ret) {
 			// re-schedule this join scan and don't consume retry count.
 			if (pending_scan_res_join_callback) {
-				wpa_s->p2p_join_scan_count--;
 				pending_scan_res_join_callback();
 			}
 		} else if (0 != ret) {
@@ -1786,13 +1813,12 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 			pending_scan_res_join_callback = NULL;
 			return;
 		}
-
-		wpa_s->p2p_join_scan_count++;
-		wpa_printf(MSG_DEBUG, "P2P: Join scan attempt %d.", wpa_s->p2p_join_scan_count);
+		wpa_printf(MSG_DEBUG, "P2P: Join scan count %d.", wpa_s->p2p_join_scan_count);
 		eloop_cancel_timeout(joinScanWrapper, wpa_s, NULL);
-		if (wpa_s->p2p_join_scan_count <= P2P_MAX_JOIN_SCAN_ATTEMPTS) {
+		if (wpa_s->p2p_join_scan_count < P2P_MAX_JOIN_SCAN_ATTEMPTS) {
 			wpa_printf(MSG_DEBUG, "P2P: Try join again later.");
-			eloop_register_timeout(1, 0, joinScanWrapper, wpa_s, this);
+			eloop_register_timeout(0, P2P_JOIN_SCAN_INTERVAL_USECS,
+			    joinScanWrapper, wpa_s, this);
 			return;
 		}
 
