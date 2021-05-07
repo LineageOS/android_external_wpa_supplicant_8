@@ -1749,5 +1749,6 @@ int wpas_pasn_auth_tx_status(struct wpa_supplicant *wpa_s,
 			     const u8 *data, size_t data_len, u8 acked);
 int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 		      const struct ieee80211_mgmt *mgmt, size_t len);
+int disabled_freq(struct wpa_supplicant *wpa_s, int freq);
 
 #endif /* WPA_SUPPLICANT_I_H */
