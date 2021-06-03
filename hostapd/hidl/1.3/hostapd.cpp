@@ -464,6 +464,7 @@ std::string CreateHostapdConfig(
 	if (iface_params.V1_2.hwModeParams.enable80211AX && !is_60Ghz_used) {
 		he_params_as_string = StringPrintf(
 		    "ieee80211ax=1\n"
+		    "he_oper_chwidth=1\n"
 		    "he_su_beamformer=%d\n"
 		    "he_su_beamformee=%d\n"
 		    "he_mu_beamformer=%d\n"
