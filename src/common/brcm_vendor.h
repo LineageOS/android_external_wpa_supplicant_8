@@ -27,6 +27,7 @@
  */
 enum brcm_nl80211_vendor_subcmds {
 	BRCM_VENDOR_SUBCMD_UNSPEC		= 0,
+	BRCM_VENDOR_SCMD_BCM_PSK                = 3,
 	BRCM_VENDOR_SUBCMD_SET_PMK		= 4,
 	BRCM_VENDOR_SUBCMD_SET_MAC		= 6,
 	BRCM_VENDOR_SCMD_ACS			= 9,
@@ -42,6 +43,7 @@ enum brcm_nl80211_vendor_subcmds {
  */
 enum brcm_nl80211_vendor_events {
         BRCM_VENDOR_EVENT_UNSPEC,
+	BRCM_VENDOR_EVENT_SAE_KEY               = 34,
 	BRCM_VENDOR_EVENT_ACS			= 42,
 	BRCM_VENDOR_EVENT_LAST			= 44
 };
@@ -70,6 +72,12 @@ enum brcm_wlan_vendor_attr {
 	BRCM_ATTR_DRIVER_MAC_ADDR	= 3,
 	BRCM_ATTR_DRIVER_AFTER_LAST     = 5,
 	BRCM_ATTR_DRIVER_MAX            = BRCM_ATTR_DRIVER_AFTER_LAST - 1,
+};
+
+enum wifi_sae_key_attr {
+	BRCM_SAE_KEY_ATTR_BSSID,
+	BRCM_SAE_KEY_ATTR_PMK,
+	BRCM_SAE_KEY_ATTR_PMKID
 };
 #endif /* BRCM_VENDOR_H */
 

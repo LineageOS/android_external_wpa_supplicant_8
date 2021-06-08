@@ -18,7 +18,7 @@
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
 #include "driver_nl80211.h"
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_BCMDHD_SAE)
 #include "common/brcm_vendor.h"
 #endif /* CONFIG_DRIVER_NL80211_BRCM */
 
@@ -26,6 +26,13 @@ static void
 nl80211_control_port_frame_tx_status(struct wpa_driver_nl80211_data *drv,
 				     const u8 *frame, size_t len,
 				     struct nlattr *ack, struct nlattr *cookie);
+
+#ifdef CONFIG_BCMDHD_SAE
+#include "utils/common.h"
+#include "rsn_supp/wpa.h"
+#include "rsn_supp/wpa_i.h"
+#include "wpa_supplicant_i.h"
+#endif
 
 
 static const char * nl80211_command_to_string(enum nl80211_commands cmd)
@@ -1838,6 +1845,32 @@ static void nl80211_spurious_frame(struct i802_bss *bss, struct nlattr **tb,
 	wpa_supplicant_event(drv->ctx, EVENT_RX_FROM_UNKNOWN, &event);
 }
 
+#ifdef CONFIG_BCMDHD_SAE
+static void brcm_nl80211_sae_key_event(struct wpa_driver_nl80211_data *drv,
+                                       const u8 *data, size_t len)
+{
+	struct nlattr *tb[BRCM_SAE_KEY_ATTR_PMKID + 1];
+	struct wpa_pmkid_params params;
+	struct wpa_supplicant *wpa_s = drv->ctx;
+	struct wpa_sm *sm = wpa_s->wpa;
+
+	wpa_printf(MSG_DEBUG, "nl80211: BRCM SAE key vendor event received");
+
+	if (nla_parse(tb, BRCM_SAE_KEY_ATTR_PMKID, (struct nlattr *) data,
+			len, NULL))
+		return;
+
+	params.bssid = (u8*) nla_data(tb[BRCM_SAE_KEY_ATTR_BSSID]);
+	params.pmk = (u8*) nla_data(tb[BRCM_SAE_KEY_ATTR_PMK]);
+	params.pmk_len = nla_len(tb[BRCM_SAE_KEY_ATTR_PMK]);
+	params.pmkid = (u8*) nla_data(tb[BRCM_SAE_KEY_ATTR_PMKID]);
+
+	wpa_hexdump(MSG_DEBUG, "nl80211: Received BRCM SAE key for", params.bssid, nla_len(tb[BRCM_SAE_KEY_ATTR_BSSID]));
+	wpa_printf(MSG_DEBUG, "nl80211: BRCM SAE key len=%zu", params.pmk_len);
+
+	wpa_sm_set_pmk(sm, params.pmk, params.pmk_len, params.pmkid, params.bssid);
+}
+#endif /* CONFIG_BCMDHD_SAE */
 #ifdef CONFIG_DRIVER_NL80211_BRCM
 static void brcm_nl80211_acs_select_ch(struct wpa_driver_nl80211_data
 	*drv, const u8 *data, size_t len)
@@ -1906,7 +1939,9 @@ static void brcm_nl80211_acs_select_ch(struct wpa_driver_nl80211_data
 		&event);
 	return;
 }
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_BCMDHD_SAE)
 static void nl80211_vendor_event_brcm( struct wpa_driver_nl80211_data *drv,
 	u32 subcmd, u8 *data, size_t len)
 {
@@ -1917,17 +1952,24 @@ static void nl80211_vendor_event_brcm( struct wpa_driver_nl80211_data *drv,
 	wpa_printf(MSG_MSGDUMP, "got vendor event %d", subcmd);
 	memset(&event, 0, sizeof(event));
 	switch (subcmd) {
+#ifdef CONFIG_DRIVER_NL80211_BRCM
 	case BRCM_VENDOR_EVENT_ACS:
 		wpa_printf(MSG_DEBUG, "nl80211: Received VENDOR_EVENT_ACS");
 		brcm_nl80211_acs_select_ch(drv, data, len);
 		break;
+#endif
+#ifdef CONFIG_BCMDHD_SAE
+	case BRCM_VENDOR_EVENT_SAE_KEY:
+		brcm_nl80211_sae_key_event(drv, data, len);
+		break;
+#endif
 	default:
 		wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported vendor event %u", subcmd);
 		break;
 	}
 
 }
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_BCMDHD_SAE */
 #ifdef CONFIG_DRIVER_NL80211_QCA
 
 static void qca_nl80211_avoid_freq(struct wpa_driver_nl80211_data *drv,
@@ -2471,7 +2513,6 @@ static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
 	}
 }
 
-
 static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 				 struct nlattr **tb)
 {
@@ -2516,11 +2557,11 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 	case OUI_QCA:
 		nl80211_vendor_event_qca(drv, subcmd, data, len);
 		break;
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_BCMDHD_SAE)
 	case OUI_BRCM:
 	        nl80211_vendor_event_brcm(drv, subcmd, data, len);
 	        break;
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_BCMDHD_SAE */
 	default:
 		wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported vendor event");
 		break;
