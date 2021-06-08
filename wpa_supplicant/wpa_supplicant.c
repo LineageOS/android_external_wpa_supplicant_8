@@ -4291,6 +4291,19 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 			params.psk = psk;
 	}
 
+#ifdef CONFIG_BRCM_SAE
+	if (wpa_key_mgmt_sae(params.key_mgmt_suite)) {
+		params.auth_alg = WPA_AUTH_ALG_SAE;
+		if (ssid->sae_password)
+			params.sae_password = ssid->sae_password;
+		else if (ssid->passphrase)
+			params.passphrase = ssid->passphrase;
+
+		if (ssid->psk_set)
+			params.psk = ssid->psk;
+	}
+#endif
+
 	params.drop_unencrypted = use_crypt;
 
 	params.mgmt_frame_protection = wpas_get_ssid_pmf(wpa_s, ssid);

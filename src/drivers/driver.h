@@ -1116,6 +1116,15 @@ struct wpa_driver_associate_params {
 	 */
 	const u8 *psk;
 
+#ifdef CONFIG_BRCM_SAE
+	/**
+	 * sae_password - Password for SAE authentication
+	 *
+	 * This value is made available only for WPA3-Personal (SAE)
+	 */
+	const char *sae_password;
+#endif
+
 	/**
 	 * drop_unencrypted - Enable/disable unencrypted frame filtering
 	 *

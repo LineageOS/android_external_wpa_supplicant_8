@@ -40,7 +40,7 @@
 #include "radiotap_iter.h"
 #include "rfkill.h"
 #include "driver_nl80211.h"
-#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA) || defined(CONFIG_BRCM_SAE)
 #include "common/brcm_vendor.h"
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
@@ -3397,6 +3397,32 @@ static int issue_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
 }
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
+#ifdef CONFIG_BRCM_SAE
+static int bcmdhd_set_sae_password(struct wpa_driver_nl80211_data *drv,
+				   const void *data, int len)
+{
+	struct nl_msg *msg;
+	int ret;
+
+	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR)) ||
+	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_BRCM) ||
+	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
+			BRCM_VENDOR_SCMD_BCM_PSK) ||
+	    nla_put(msg, NL80211_ATTR_VENDOR_DATA, len, data)) {
+		nl80211_nlmsg_clear(msg);
+		nlmsg_free(msg);
+		return -1;
+	}
+	ret = send_and_recv_msgs(drv, msg, NULL, (void *) -1, NULL, NULL);
+	if (ret) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Set SAE password failed: ret=%d (%s)",
+			   ret, strerror(-ret));
+	}
+
+	return ret;
+}
+#endif /* CONFIG_BRCM_SAE */
 
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 static int key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
@@ -6934,6 +6960,23 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 		if (nla_put(msg, NL80211_ATTR_PMK, 32, params->psk))
 			return -1;
 	}
+
+#ifdef CONFIG_BRCM_SAE
+	/* add SAE password in case of SAE authentication offload */
+	if ((params->sae_password || params->passphrase)) {
+		const char *password;
+		size_t pwd_len;
+
+		password = params->sae_password;
+		if (!password)
+			password = params->passphrase;
+		pwd_len = os_strlen(password);
+		wpa_hexdump_ascii_key(MSG_DEBUG, "  * SAE password",
+				      (u8 *) password, pwd_len);
+		if (bcmdhd_set_sae_password(drv, password, pwd_len))
+			return -1;
+	}
+#endif
 
 	if (nla_put_flag(msg, NL80211_ATTR_CONTROL_PORT))
 		return -1;
