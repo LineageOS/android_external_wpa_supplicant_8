@@ -615,8 +615,10 @@ static void wiphy_info_ext_feature_flags(struct wiphy_info_data *info,
 			      NL80211_EXT_FEATURE_4WAY_HANDSHAKE_STA_1X))
 		capa->flags |= WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X;
 
+#ifndef CONFIG_BRCM_SAE
 	if (ext_feature_isset(ext_features, len,
 			      NL80211_EXT_FEATURE_SAE_OFFLOAD))
+#endif
 		capa->flags2 |= WPA_DRIVER_FLAGS2_SAE_OFFLOAD_STA;
 
 	if (ext_feature_isset(ext_features, len,
