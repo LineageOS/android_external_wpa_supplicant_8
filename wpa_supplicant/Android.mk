@@ -18,6 +18,10 @@ ifeq ($(BOARD_WLAN_DEVICE), qcwcn)
   CONFIG_DRIVER_NL80211_QCA=y
 endif
 
+ifneq ($(BOARD_WLAN_BCMDHD_SAE),)
+  CONFIG_BRCM_SAE=y
+endif
+
 include $(LOCAL_PATH)/android.config
 
 # To ignore possible wrong network configurations
@@ -73,6 +77,11 @@ endif
 
 ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
 L_CFLAGS += -DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS
+endif
+
+# BCMDHD SAE authentication offload
+ifdef CONFIG_BRCM_SAE
+L_CFLAGS += -DCONFIG_BRCM_SAE
 endif
 
 # Use Android specific directory for control interface sockets
