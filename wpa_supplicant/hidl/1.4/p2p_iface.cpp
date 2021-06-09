@@ -1239,6 +1239,7 @@ SupplicantStatus P2pIface::removeGroupInternal(const std::string& group_ifname)
 	if (!wpa_group_s) {
 		return {SupplicantStatusCode::FAILURE_IFACE_UNKNOWN, ""};
 	}
+	wpa_group_s->global->p2p_go_found_external_scan = 0;
 	if (wpas_p2p_group_remove(wpa_group_s, group_ifname.c_str())) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
@@ -1804,8 +1805,10 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 		struct wpa_bss *bss = findBssBySsid(
 		    wpa_s, peer_address.data(), ssid.data(), ssid.size());
 		if (bss) {
+			wpa_s->global->p2p_go_found_external_scan = 1;
 			if (0 != joinGroup(wpa_s, bss->bssid, ssid, passphrase)) {
 				wpa_printf(MSG_ERROR, "P2P: Failed to join a group.");
+				wpa_s->global->p2p_go_found_external_scan = 0;
 			}
 			// no need to notify group join failure here,
 			// it will be handled by wpas_p2p_group_add_persistent
