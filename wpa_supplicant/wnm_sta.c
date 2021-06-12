@@ -1465,17 +1465,15 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
 	vendor = get_ie(pos, end - pos, WLAN_EID_VENDOR_SPECIFIC);
 	if (vendor) {
 		wpas_mbo_ie_trans_req(wpa_s, vendor + 2, vendor[1]);
-		if (wpa_s->conf->btm_offload) {
-			wpa_msg(wpa_s, MSG_INFO,
-				"WNM: Notify BSS Transition Management Request frame status");
-			wpa_s->bss_tm_status = WNM_BSS_TM_ACCEPT;
-			wpas_notify_bss_tm_status(wpa_s);
-			/* since it could be referenced in the scan result logic, initialize it */
-			wpa_s->wnm_mbo_trans_reason_present = 0;
-			return;
-		}
 	}
 #endif /* CONFIG_MBO */
+	if (wpa_s->conf->btm_offload) {
+		wpa_printf(MSG_INFO,
+			"WNM: BTM offload enabled. Notify status and return");
+		wpa_s->bss_tm_status = WNM_BSS_TM_ACCEPT;
+		wpas_notify_bss_tm_status(wpa_s);
+		return;
+	}
 
 	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_DISASSOC_IMMINENT) {
 		wpa_msg(wpa_s, MSG_INFO, "WNM: Disassociation Imminent - "

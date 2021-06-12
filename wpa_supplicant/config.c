@@ -4384,8 +4384,8 @@ struct wpa_config * wpa_config_alloc_empty(const char *ctrl_interface,
 	config->disassoc_imminent_rssi_threshold =
 		DEFAULT_DISASSOC_IMMINENT_RSSI_THRESHOLD;
 	config->oce = DEFAULT_OCE_SUPPORT;
-	config->btm_offload = DEFAULT_BTM_OFFLOAD;
 #endif /* CONFIG_MBO */
+	config->btm_offload = DEFAULT_BTM_OFFLOAD;
 
 	if (ctrl_interface)
 		config->ctrl_interface = os_strdup(ctrl_interface);
@@ -5188,8 +5188,8 @@ static const struct global_parse_data global_fields[] = {
 		    MBO_CELL_CAPA_NOT_SUPPORTED), 0 },
 	{ INT_RANGE(disassoc_imminent_rssi_threshold, -120, 0), 0 },
 	{ INT_RANGE(oce, 0, 3), 0 },
-	{ INT_RANGE(btm_offload, 0, 1), CFG_CHANGED_DISABLE_BTM_NOTIFY },
 #endif /* CONFIG_MBO */
+	{ INT_RANGE(btm_offload, 0, 1), CFG_CHANGED_DISABLE_BTM_NOTIFY },
 	{ INT(gas_address3), 0 },
 	{ INT_RANGE(ftm_responder, 0, 1), 0 },
 	{ INT_RANGE(ftm_initiator, 0, 1), 0 },
