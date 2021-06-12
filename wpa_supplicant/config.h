@@ -1476,15 +1476,14 @@ struct wpa_config {
 	 *  - Set BIT(1) to enable OCE in STA-CFON mode
 	 */
 	unsigned int oce;
-
+#endif /* CONFIG_MBO */
 	/**
 	 * btm_offload - Set where to perform roaming logic
 	 *  - Set to 0 to handle fully roaming logic in supplicant
 	 *  - Set to 1 to skip roaming logic in supplicant for firmware roaming
 	 *    just parse BTM frame and notify framework
 	 */
-        int btm_offload;
-#endif /* CONFIG_MBO */
+	int btm_offload;
 
 	/**
 	 * gas_address3 - GAS Address3 field behavior
