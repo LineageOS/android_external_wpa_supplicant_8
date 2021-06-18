@@ -2176,6 +2176,14 @@ struct wpa_supplicant *HidlManager::getTargetP2pIfaceForGroup(
 		return NULL;
 
 	struct wpa_supplicant *target_wpa_s = wpa_group_s->parent;
+
+	// check wpa_supplicant object is a p2p device interface
+	if ((wpa_group_s == wpa_group_s->p2pdev) && wpa_group_s->p2p_mgmt) {
+		if (p2p_iface_object_map_.find(wpa_group_s->ifname) !=
+		    p2p_iface_object_map_.end())
+			return wpa_group_s;
+	}
+
 	if (p2p_iface_object_map_.find(target_wpa_s->ifname) !=
 	    p2p_iface_object_map_.end())
 		return target_wpa_s;
