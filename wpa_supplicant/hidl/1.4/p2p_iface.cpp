@@ -26,7 +26,12 @@ extern "C"
 }
 
 #define P2P_MAX_JOIN_SCAN_ATTEMPTS 3
-#define P2P_JOIN_SCAN_INTERVAL_USECS 1000000
+// Wait time before triggering the single channel scan to discover Auto GO.
+// Use a shorter wait time when the given frequency is GO operating frequency.
+// The idea is to quickly finish scans and return the status to application.
+#define P2P_JOIN_SINGLE_CHANNEL_SCAN_INTERVAL_USECS 200000
+// Wait time before triggering the multiple channel scan to discover Auto GO.
+#define P2P_JOIN_MULTIPLE_CHANNEL_SCAN_INTERVAL_USECS 1000000
 
 namespace {
 const char kConfigMethodStrPbc[] = "pbc";
@@ -178,6 +183,19 @@ static int setP2pCliOptimizedScanFreqsList(struct wpa_supplicant *wpa_s,
 		}
 	}
 	return 0;
+}
+
+/**
+ * getP2pJoinScanInterval - Get the delay in triggering the scan to discover
+ * Auto GO.
+ */
+static int getP2pJoinScanIntervalUsecs(int freq)
+{
+	if (freq == 5 || freq == 2 || freq == 0) {
+		return P2P_JOIN_MULTIPLE_CHANNEL_SCAN_INTERVAL_USECS;
+	} else {
+		return P2P_JOIN_SINGLE_CHANNEL_SCAN_INTERVAL_USECS;
+	}
 }
 
 /*
@@ -1795,7 +1813,7 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 		}
 	};
 
-	pending_scan_res_join_callback = [wpa_s, ssid, passphrase, peer_address, this]() {
+	pending_scan_res_join_callback = [wpa_s, ssid, passphrase, peer_address, freq, this]() {
 		if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
 			return;
 		}
@@ -1820,7 +1838,7 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 		eloop_cancel_timeout(joinScanWrapper, wpa_s, NULL);
 		if (wpa_s->p2p_join_scan_count < P2P_MAX_JOIN_SCAN_ATTEMPTS) {
 			wpa_printf(MSG_DEBUG, "P2P: Try join again later.");
-			eloop_register_timeout(0, P2P_JOIN_SCAN_INTERVAL_USECS,
+			eloop_register_timeout(0, getP2pJoinScanIntervalUsecs(freq),
 			    joinScanWrapper, wpa_s, this);
 			return;
 		}
