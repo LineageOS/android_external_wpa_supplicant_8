@@ -32,7 +32,8 @@
 #include "pmksa_cache.h"
 #include "wpa_i.h"
 #include "wpa_ie.h"
-
+#include "wpa_supplicant_i.h"
+#include "driver_i.h"
 
 static const u8 null_rsc[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -3875,6 +3876,32 @@ void wpa_sm_install_pmk(struct wpa_sm *sm)
 		/* No harm if the driver doesn't support. */
 		wpa_msg(sm->ctx->msg_ctx, MSG_DEBUG,
 			"WPA: Failed to set PMK to the driver");
+	}
+}
+
+void wpa_sm_notify_brcm_ft_reassoc(struct wpa_sm *sm, const u8 *bssid)
+{
+	u8 buf[256];
+	struct wpa_supplicant *wpa_s = sm->ctx->ctx;
+
+	wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG,
+		"WPA: BRCM FT Reassociation event - clear replay counter");
+	os_memcpy(sm->bssid, bssid, ETH_ALEN);
+	os_memset(sm->rx_replay_counter, 0, WPA_REPLAY_COUNTER_LEN);
+	sm->rx_replay_counter_set = 0;
+
+	if (wpa_drv_driver_cmd(wpa_s, "GET_FTKEY", (char *)buf, sizeof(buf)) < 0) {
+		wpa_msg(sm->ctx->msg_ctx, MSG_ERROR,
+			"WPA: Failed to get FT KEY information");
+		wpa_supplicant_deauthenticate(
+			wpa_s, WLAN_REASON_DEAUTH_LEAVING);
+
+	} else {
+		/* update kck and kek */
+		os_memcpy(sm->ptk.kck, buf, 16);
+		os_memcpy(sm->ptk.kek, buf + 16, 16);
+		wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
+			"WPA: Updated KCK and KEK after FT reassoc");
 	}
 }
 #endif /* CONFIG_DRIVER_NL80211_BRCM */

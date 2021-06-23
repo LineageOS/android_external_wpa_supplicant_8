@@ -2929,7 +2929,10 @@ no_pfs:
 	}
 #endif /* CONFIG_SME */
 #ifdef CONFIG_DRIVER_NL80211_BRCM
-	if ((wpa_s->key_mgmt == WPA_KEY_MGMT_FT_SAE) &&
+	if (((wpa_s->key_mgmt == WPA_KEY_MGMT_FT_PSK) ||
+		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_IEEE8021X) ||
+		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_SAE) ||
+		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_IEEE8021X_SHA384)) &&
 		wpa_ft_is_completed(wpa_s->wpa)) {
 		return 0;
 	}
@@ -3119,7 +3122,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		/* Check for FT reassociation is done by the driver */
 #ifdef CONFIG_IEEE80211R
 		int use_sha384 = wpa_key_mgmt_sha384(wpa_s->wpa->key_mgmt);
-		if ((wpa_s->key_mgmt == WPA_KEY_MGMT_FT_SAE) && (wpa_s->key_mgmt == ie.key_mgmt)) {
+		if (wpa_key_mgmt_ft(wpa_s->key_mgmt) && (wpa_s->key_mgmt == ie.key_mgmt)) {
 			if (wpa_ft_parse_ies(data->assoc_info.resp_ies,
 				data->assoc_info.resp_ies_len, &parse, use_sha384) < 0) {
 				wpa_printf(MSG_DEBUG, "Failed to parse FT IEs");
@@ -3293,7 +3296,20 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		 */
 		eapol_sm_notify_portValid(wpa_s->eapol, true);
 	}
-
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	if (ft_completed && wpa_key_mgmt_ft(wpa_s->key_mgmt)) {
+		if (wpa_drv_get_bssid(wpa_s, bssid) < 0) {
+			wpa_dbg(wpa_s, MSG_ERROR, "Failed to get BSSID, key_mgmt: 0x%0x",
+				wpa_s->key_mgmt);
+			wpa_supplicant_deauthenticate(
+				wpa_s, WLAN_REASON_DEAUTH_LEAVING);
+			return;
+		}
+		os_memcpy(wpa_s->bssid, bssid, ETH_ALEN);
+		wpa_s->assoc_freq = data->assoc_info.freq;
+		wpa_sm_notify_brcm_ft_reassoc(wpa_s->wpa, bssid);
+	}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 	wpa_s->last_eapol_matches_bssid = 0;
 
 #ifdef CONFIG_TESTING_OPTIONS

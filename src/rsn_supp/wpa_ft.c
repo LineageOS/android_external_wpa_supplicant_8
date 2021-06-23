@@ -743,6 +743,18 @@ int wpa_ft_is_completed(struct wpa_sm *sm)
 	return sm->ft_completed;
 }
 
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+int wpa_ft_is_ft_protocol(struct wpa_sm *sm)
+{
+	if (sm == NULL)
+		return 0;
+
+	if (!wpa_key_mgmt_ft(sm->key_mgmt))
+		return 0;
+
+	return sm->ft_protocol;
+}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 void wpa_reset_ft_completed(struct wpa_sm *sm)
 {
