@@ -879,8 +879,8 @@ V1_2::HostapdStatus Hostapd::addSingleAccessPoint(
 			    // Invoke the failure callback on all registered
 			    // clients.
 			    for (const auto& callback : callbacks_) {
-				    callback->onFailure(
-					iface_hapd->conf->iface);
+				callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
+					iface_hapd->conf->bridge : iface_hapd->conf->iface);
 			    }
 		    }
 	    };
