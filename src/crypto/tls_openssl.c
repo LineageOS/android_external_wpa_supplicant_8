@@ -3066,7 +3066,7 @@ static int tls_set_conn_flags(struct tls_connection *conn, unsigned int flags,
 #ifdef CONFIG_SUITEB
 #ifdef OPENSSL_IS_BORINGSSL
 	/* Start with defaults from BoringSSL */
-	SSL_CTX_set_verify_algorithm_prefs(conn->ssl_ctx, NULL, 0);
+	SSL_set_verify_algorithm_prefs(conn->ssl, NULL, 0);
 #endif /* OPENSSL_IS_BORINGSSL */
 #if OPENSSL_VERSION_NUMBER >= 0x10002000L
 	if (flags & TLS_CONN_SUITEB_NO_ECDH) {
@@ -3120,7 +3120,7 @@ static int tls_set_conn_flags(struct tls_connection *conn, unsigned int flags,
 #ifdef OPENSSL_IS_BORINGSSL
 		uint16_t sigalgs[1] = { SSL_SIGN_RSA_PKCS1_SHA384 };
 
-		if (SSL_CTX_set_verify_algorithm_prefs(conn->ssl_ctx, sigalgs,
+		if (SSL_set_verify_algorithm_prefs(conn->ssl, sigalgs,
 						       1) != 1) {
 			wpa_printf(MSG_INFO,
 				   "OpenSSL: Failed to set Suite B sigalgs");
@@ -3158,7 +3158,7 @@ static int tls_set_conn_flags(struct tls_connection *conn, unsigned int flags,
 			return -1;
 		}
 
-		if (SSL_CTX_set_verify_algorithm_prefs(conn->ssl_ctx, sigalgs,
+		if (SSL_set_verify_algorithm_prefs(conn->ssl, sigalgs,
 						       1) != 1) {
 			wpa_printf(MSG_INFO,
 				   "OpenSSL: Failed to set Suite B sigalgs");

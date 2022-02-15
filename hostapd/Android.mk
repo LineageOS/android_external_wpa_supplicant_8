@@ -42,6 +42,10 @@ ifeq ($(BOARD_HOSTAPD_PRIVATE_LIB),)
 L_CFLAGS += -DANDROID_LIB_STUB
 endif
 
+ifeq ($(BOARD_HOSTAPD_CONFIG_80211W_MFP_OPTIONAL),true)
+L_CFLAGS += -DENABLE_HOSTAPD_CONFIG_80211W_MFP_OPTIONAL
+endif
+
 # Use Android specific directory for control interface sockets
 L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/hostapd/sockets\"
 L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/hostapd/ctrl\"

@@ -3046,7 +3046,11 @@ static u8 * wpas_populate_assoc_ies(
 	}
 
 #ifdef CONFIG_HS20
-	if (is_hs20_config(wpa_s) && is_hs20_network(wpa_s, ssid, bss)) {
+	if (is_hs20_network(wpa_s, ssid, bss)
+#ifndef ANDROID /* Android does not use the native HS 2.0 config */
+			&& is_hs20_config(wpa_s)
+#endif /* ANDROID */
+	) {
 		struct wpabuf *hs20;
 
 		hs20 = wpabuf_alloc(20 + MAX_ROAMING_CONS_OI_LEN);
@@ -7581,7 +7585,7 @@ int wpas_driver_bss_selection(struct wpa_supplicant *wpa_s)
 }
 
 
-#if defined(CONFIG_CTRL_IFACE) || defined(CONFIG_CTRL_IFACE_DBUS_NEW) || defined (CONFIG_CTRL_IFACE_HIDL)
+#if defined(CONFIG_CTRL_IFACE) || defined(CONFIG_CTRL_IFACE_DBUS_NEW) || defined (CONFIG_CTRL_IFACE_AIDL)
 int wpa_supplicant_ctrl_iface_ctrl_rsp_handle(struct wpa_supplicant *wpa_s,
 					      struct wpa_ssid *ssid,
 					      const char *field,
@@ -7711,7 +7715,7 @@ int wpa_supplicant_ctrl_rsp_handle(struct wpa_supplicant *wpa_s,
 	return -1;
 #endif /* IEEE8021X_EAPOL */
 }
-#endif /* CONFIG_CTRL_IFACE || CONFIG_CTRL_IFACE_DBUS_NEW || CONFIG_CTRL_IFACE_HIDL */
+#endif /* CONFIG_CTRL_IFACE || CONFIG_CTRL_IFACE_DBUS_NEW || CONFIG_CTRL_IFACE_AIDL */
 
 
 int wpas_network_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
@@ -8107,7 +8111,7 @@ void wpas_vendor_elem_update(struct wpa_supplicant *wpa_s)
 	}
 
 #ifdef CONFIG_P2P
-	if (wpa_s->parent == wpa_s &&
+	if ((wpa_s->parent == wpa_s || (wpa_s == wpa_s->p2pdev && wpa_s->p2p_mgmt)) &&
 	    wpa_s->global->p2p &&
 	    !wpa_s->global->p2p_disabled)
 		p2p_set_vendor_elems(wpa_s->global->p2p, wpa_s->vendor_elem);

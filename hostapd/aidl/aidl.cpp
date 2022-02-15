@@ -64,8 +64,10 @@ err:
 void hostapd_aidl_deinit(struct hapd_interfaces *interfaces)
 {
 	wpa_printf(MSG_INFO, "Deiniting aidl control");
-	// Before aidl init, make sure call terminate to clear callback_
-	service->terminate();
+	// Before aidl deinit, make sure call terminate to clear callback_
+	if (service) {
+		service->terminate();
+	}
 	eloop_unregister_read_sock(aidl_fd);
 	aidl_fd = -1;
 }

@@ -663,7 +663,11 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 	}
 
 #ifdef CONFIG_HS20
-	if (is_hs20_config(wpa_s) && is_hs20_network(wpa_s, ssid, bss)) {
+	if (is_hs20_network(wpa_s, ssid, bss)
+#ifndef ANDROID /* Android does not use the native HS 2.0 config */
+			&& is_hs20_config(wpa_s)
+#endif /* ANDROID */
+	) {
 		struct wpabuf *hs20;
 
 		hs20 = wpabuf_alloc(20 + MAX_ROAMING_CONS_OI_LEN);
