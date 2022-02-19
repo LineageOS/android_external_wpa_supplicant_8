@@ -14,17 +14,25 @@
 
 package {
     default_applicable_licenses: [
-        "external_wpa_supplicant_8_wpa_supplicant_license",
+        // Inherits SPDX-license-identifier-BSD-3-Clause
+        "external_wpa_supplicant_8_license",
     ],
 }
 
+// See: http://go/android-license-faq
 license {
-    name: "external_wpa_supplicant_8_wpa_supplicant_license",
-    license_kinds: [
-        "SPDX-license-identifier-BSD",
-        "SPDX-license-identifier-BSD-3-Clause",
-        "SPDX-license-identifier-ISC",
-        "legacy_unencumbered",
+    name: "external_wpa_supplicant_8_wpa_supplicant_icons_license",
+    license_kinds: ["SPDX-license-identifier-CC0-1.0"],
+    license_text: ["wpa_gui-qt4/icons/LICENSE"],
+}
+
+// Ostensibly unused.
+filegroup {
+    name: "wpa_supplicant_gui_qt4_icons",
+    srcs: ["wpa_gui-qt4/icons/*.svg"],
+    licenses: [
+        "external_wpa_supplicant_8_license",
+        "external_wpa_supplicant_8_wpa_supplicant_icons_license",
     ],
 }
 

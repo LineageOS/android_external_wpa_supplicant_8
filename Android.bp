@@ -17,21 +17,12 @@ package {
     default_applicable_licenses: ["external_wpa_supplicant_8_license"],
 }
 
-// Added automatically by a large-scale-change
-//
-// large-scale-change included anything that looked like it might be a license
-// text as a license_text. e.g. LICENSE, NOTICE, COPYING etc.
-//
-// Please consider removing redundant or irrelevant files from 'license_text:'.
 // See: http://go/android-license-faq
 license {
     name: "external_wpa_supplicant_8_license",
-    visibility: [":__subpackages__"],
+    visibility: ["//visibility:public"],
     license_kinds: [
-        "SPDX-license-identifier-BSD",
+        "SPDX-license-identifier-BSD-3-Clause",
     ],
-    license_text: [
-        "COPYING",
-        "NOTICE",
-    ],
+    license_text: ["LICENSE"],
 }
