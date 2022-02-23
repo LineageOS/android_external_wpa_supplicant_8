@@ -788,13 +788,13 @@ bool StaIface::isValid()
 }
 
 ::ndk::ScopedAStatus StaIface::sendQosPolicyResponse(
-	bool in_morePolicies,
+	int32_t in_qosPolicyRequestId, bool in_morePolicies,
 	const std::vector<QosPolicyStatus>& in_qosPolicyStatusList)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
-		&StaIface::sendQosPolicyResponseInternal, in_morePolicies,
-		in_qosPolicyStatusList);
+		&StaIface::sendQosPolicyResponseInternal, in_qosPolicyRequestId,
+		in_morePolicies, in_qosPolicyStatusList);
 }
 
 ::ndk::ScopedAStatus StaIface::removeAllQosPolicies()
@@ -1809,7 +1809,8 @@ ndk::ScopedAStatus StaIface::setQosPolicyFeatureEnabledInternal(bool enable)
 }
 
 ndk::ScopedAStatus StaIface::sendQosPolicyResponseInternal(
-	bool more_policies, const std::vector<QosPolicyStatus>& qos_policy_status_list)
+	int32_t qos_policy_request_id, bool more_policies,
+	const std::vector<QosPolicyStatus>& qos_policy_status_list)
 {
 	return ndk::ScopedAStatus::ok();
 }
