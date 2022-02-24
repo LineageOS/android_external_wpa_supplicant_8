@@ -1546,7 +1546,7 @@ void AidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
 		&ISupplicantStaIfaceCallback::onEapFailure,
-		std::placeholders::_1, error_code));
+		std::placeholders::_1, std::vector<uint8_t>(), error_code));
 }
 
 /**
