@@ -1286,7 +1286,6 @@ static void wpa_driver_nl80211_event_rtm_newlink(void *ctx,
 	} else if (ifi->ifi_flags & IFF_UP) {
 		/* Re-read MAC address as it may have changed */
 		nl80211_refresh_mac(drv, ifi->ifi_index, 1);
-		return;
 	}
 
 	/*

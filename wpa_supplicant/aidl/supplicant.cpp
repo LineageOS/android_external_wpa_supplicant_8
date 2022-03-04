@@ -144,7 +144,8 @@ int ensureConfigFileExists(
 		return -1;
 	}
 	const char* path =
-	    resolvePath(kTemplateConfPaths, sizeof(kTemplateConfPaths));
+	    resolvePath(kTemplateConfPaths,
+	    sizeof(kTemplateConfPaths)/sizeof(kTemplateConfPaths[0]));
 	if (path != nullptr) {
 		ret = copyFileIfItExists(path, config_file_path);
 		if (ret == 0) {
@@ -342,7 +343,7 @@ Supplicant::addP2pInterfaceInternal(const std::string& name)
 	iface_params.confname = kP2pIfaceConfPath;
 	const char* path = resolvePath(
 		    kP2pIfaceConfOverlayPaths,
-		    sizeof(kP2pIfaceConfOverlayPaths));
+		    sizeof(kP2pIfaceConfOverlayPaths)/sizeof(kP2pIfaceConfOverlayPaths[0]));
 	if (path != nullptr) {
 		iface_params.confanother = path;
 	}
@@ -402,7 +403,7 @@ Supplicant::addStaInterfaceInternal(const std::string& name)
 	iface_params.confname = kStaIfaceConfPath;
 	const char* path = resolvePath(
 		    kStaIfaceConfOverlayPaths,
-		    sizeof(kStaIfaceConfOverlayPaths));
+		    sizeof(kStaIfaceConfOverlayPaths)/sizeof(kStaIfaceConfOverlayPaths[0]));
 	if (path != nullptr) {
 		iface_params.confanother = path;
 	}
