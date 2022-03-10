@@ -95,8 +95,8 @@ static u8 * wpa_alloc_eapol(const struct wpa_supplicant *wpa_s, u8 type,
  * @len: Frame payload length
  * Returns: >=0 on success, <0 on failure
  */
-static int wpa_ether_send(struct wpa_supplicant *wpa_s, const u8 *dest,
-			  u16 proto, const u8 *buf, size_t len)
+int wpa_ether_send(struct wpa_supplicant *wpa_s, const u8 *dest,
+		   u16 proto, const u8 *buf, size_t len)
 {
 #ifdef CONFIG_TESTING_OPTIONS
 	if (wpa_s->ext_eapol_frame_io && proto == ETH_P_EAPOL) {
@@ -788,6 +788,9 @@ static int wpa_supplicant_tdls_peer_addset(
 	const u8 *supp_rates, size_t supp_rates_len,
 	const struct ieee80211_ht_capabilities *ht_capab,
 	const struct ieee80211_vht_capabilities *vht_capab,
+	const struct ieee80211_he_capabilities *he_capab,
+	size_t he_capab_len,
+	const struct ieee80211_he_6ghz_band_cap *he_6ghz_he_capab,
 	u8 qosinfo, int wmm, const u8 *ext_capab, size_t ext_capab_len,
 	const u8 *supp_channels, size_t supp_channels_len,
 	const u8 *supp_oper_classes, size_t supp_oper_classes_len)
@@ -811,6 +814,9 @@ static int wpa_supplicant_tdls_peer_addset(
 
 	params.ht_capabilities = ht_capab;
 	params.vht_capabilities = vht_capab;
+	params.he_capab = he_capab;
+	params.he_capab_len = he_capab_len;
+	params.he_6ghz_capab = he_6ghz_he_capab;
 	params.qosinfo = qosinfo;
 	params.listen_interval = 0;
 	params.supp_rates = supp_rates;

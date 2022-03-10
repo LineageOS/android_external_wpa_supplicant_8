@@ -461,7 +461,9 @@ std::string CreateHostapdConfig(
 	std::string ht_cap_vht_oper_chwidth_as_string;
 	std::string enable_edmg_as_string;
 	std::string edmg_channel_as_string;
+#ifdef CONFIG_IEEE80211AX
 	bool is_60Ghz_used = false;
+#endif /* CONFIG_IEEE80211AX */
 
 	if (((band & band60Ghz) != 0)) {
 		hw_mode_as_string = "hw_mode=ad";
@@ -471,7 +473,9 @@ std::string CreateHostapdConfig(
 				"edmg_channel=%d",
 				channelParams.channel);
 		}
+#ifdef CONFIG_IEEE80211AX
 		is_60Ghz_used = true;
+#endif /* CONFIG_IEEE80211AX */
 	} else if ((band & band2Ghz) != 0) {
 		if (((band & band5Ghz) != 0)
 		    || ((band & band6Ghz) != 0)) {

@@ -18,6 +18,7 @@ struct wps_credential;
 struct wps_event_m2d;
 struct wps_event_fail;
 struct tls_cert_data;
+struct wpa_cred;
 
 int wpas_notify_supplicant_initialized(struct wpa_global *global);
 void wpas_notify_supplicant_deinitialized(struct wpa_global *global);
@@ -201,5 +202,11 @@ void wpas_notify_transition_disable(struct wpa_supplicant *wpa_s,
 				    struct wpa_ssid *ssid,
 				    u8 bitmap);
 void wpas_notify_network_not_found(struct wpa_supplicant *wpa_s);
+void wpas_notify_interworking_ap_added(struct wpa_supplicant *wpa_s,
+				       struct wpa_bss *bss,
+				       struct wpa_cred *cred, int excluded,
+				       const char *type, int bh, int bss_load,
+				       int conn_capab);
+void wpas_notify_interworking_select_done(struct wpa_supplicant *wpa_s);
 
 #endif /* NOTIFY_H */
