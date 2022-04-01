@@ -1287,3 +1287,20 @@ void wpas_notify_interworking_select_done(struct wpa_supplicant *wpa_s)
 
 #endif /* CONFIG_INTERWORKING */
 
+void wpas_notify_eap_method_selected(struct wpa_supplicant *wpa_s,
+			const char* reason_string)
+{
+	wpas_aidl_notify_eap_method_selected(wpa_s, reason_string);
+}
+
+void wpas_notify_ssid_temp_disabled(struct wpa_supplicant *wpa_s,
+			const char *reason_string)
+{
+	wpas_aidl_notify_ssid_temp_disabled(wpa_s, reason_string);
+}
+
+void wpas_notify_open_ssl_failure(struct wpa_supplicant *wpa_s,
+			const char *reason_string)
+{
+	wpas_aidl_notify_open_ssl_failure(wpa_s, reason_string);
+}

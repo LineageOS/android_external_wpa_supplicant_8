@@ -22,6 +22,7 @@ extern "C"
 }
 
 using aidl::android::hardware::wifi::supplicant::AidlManager;
+using aidl::android::hardware::wifi::supplicant::AuxiliarySupplicantEventCode;
 using aidl::android::hardware::wifi::supplicant::DppEventType;
 using aidl::android::hardware::wifi::supplicant::DppFailureCode;
 using aidl::android::hardware::wifi::supplicant::DppProgressCode;
@@ -960,4 +961,43 @@ void wpas_aidl_notify_ceritification(struct wpa_supplicant *wpa_s,
 			num_altsubject,
 			cert_hash,
 			cert);
+}
+
+void wpas_aidl_notify_auxiliary_event(struct wpa_supplicant *wpa_s,
+	AuxiliarySupplicantEventCode event_code, const char *reason_string)
+{
+	if (!wpa_s)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notify auxiliary event, code=%d",
+		static_cast<int>(event_code));
+	aidl_manager->notifyAuxiliaryEvent(wpa_s, event_code, reason_string);
+}
+
+void wpas_aidl_notify_eap_method_selected(struct wpa_supplicant *wpa_s,
+	const char *reason_string)
+{
+	wpas_aidl_notify_auxiliary_event(wpa_s,
+		AuxiliarySupplicantEventCode::EAP_METHOD_SELECTED,
+		reason_string);
+}
+
+void wpas_aidl_notify_ssid_temp_disabled(struct wpa_supplicant *wpa_s,
+	const char *reason_string)
+{
+	wpas_aidl_notify_auxiliary_event(wpa_s,
+		AuxiliarySupplicantEventCode::SSID_TEMP_DISABLED,
+		reason_string);
+}
+
+void wpas_aidl_notify_open_ssl_failure(struct wpa_supplicant *wpa_s,
+	const char *reason_string)
+{
+	wpas_aidl_notify_auxiliary_event(wpa_s,
+		AuxiliarySupplicantEventCode::OPEN_SSL_FAILURE,
+		reason_string);
 }

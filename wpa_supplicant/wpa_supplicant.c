@@ -8145,6 +8145,17 @@ void wpas_auth_failed(struct wpa_supplicant *wpa_s, char *reason)
 		"id=%d ssid=\"%s\" auth_failures=%u duration=%d reason=%s",
 		ssid->id, wpa_ssid_txt(ssid->ssid, ssid->ssid_len),
 		ssid->auth_failures, dur, reason);
+
+	char *format_str = "id=%d ssid=\"%s\" auth_failures=%u duration=%d reason=%s";
+	int msg_len = snprintf(NULL, 0, format_str,
+		ssid->id, wpa_ssid_txt(ssid->ssid, ssid->ssid_len),
+		ssid->auth_failures, dur, reason) + 1;
+	char *msg = os_malloc(msg_len);
+	snprintf(msg, msg_len, format_str,
+		ssid->id, wpa_ssid_txt(ssid->ssid, ssid->ssid_len),
+		ssid->auth_failures, dur, reason);
+	wpas_notify_ssid_temp_disabled(wpa_s, msg);
+	os_free(msg);
 }
 
 
