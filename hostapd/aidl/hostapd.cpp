@@ -458,10 +458,11 @@ std::string CreateHostapdConfig(
 	}
 
 	std::string hw_mode_as_string;
-	std::string ht_cap_vht_oper_chwidth_as_string;
 	std::string enable_edmg_as_string;
 	std::string edmg_channel_as_string;
+#ifdef CONFIG_IEEE80211AX
 	bool is_60Ghz_used = false;
+#endif /* CONFIG_IEEE80211AX */
 
 	if (((band & band60Ghz) != 0)) {
 		hw_mode_as_string = "hw_mode=ad";
@@ -471,27 +472,19 @@ std::string CreateHostapdConfig(
 				"edmg_channel=%d",
 				channelParams.channel);
 		}
+#ifdef CONFIG_IEEE80211AX
 		is_60Ghz_used = true;
+#endif /* CONFIG_IEEE80211AX */
 	} else if ((band & band2Ghz) != 0) {
 		if (((band & band5Ghz) != 0)
 		    || ((band & band6Ghz) != 0)) {
 			hw_mode_as_string = "hw_mode=any";
-			if (iface_params.hwModeParams.enable80211AC) {
-				ht_cap_vht_oper_chwidth_as_string =
-					"ht_capab=[HT40+]\n"
-					"vht_oper_chwidth=1";
-			}
 		} else {
 			hw_mode_as_string = "hw_mode=g";
 		}
 	} else if (((band & band5Ghz) != 0)
 		    || ((band & band6Ghz) != 0)) {
 			hw_mode_as_string = "hw_mode=a";
-		if (iface_params.hwModeParams.enable80211AC) {
-			ht_cap_vht_oper_chwidth_as_string =
-				"ht_capab=[HT40+]\n"
-				"vht_oper_chwidth=1";
-		}
 	} else {
 		wpa_printf(MSG_ERROR, "Invalid band");
 		return "";
@@ -502,7 +495,6 @@ std::string CreateHostapdConfig(
 	if (iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) {
 		he_params_as_string = StringPrintf(
 			"ieee80211ax=1\n"
-			"he_oper_chwidth=1\n"
 			"he_su_beamformer=%d\n"
 			"he_su_beamformee=%d\n"
 			"he_mu_beamformer=%d\n"
@@ -515,6 +507,62 @@ std::string CreateHostapdConfig(
 		he_params_as_string = "ieee80211ax=0";
 	}
 #endif /* CONFIG_IEEE80211AX */
+
+	std::string ht_cap_vht_oper_he_oper_chwidth_as_string;
+	switch (iface_params.hwModeParams.maximumChannelBandwidth) {
+	case ChannelBandwidth::BANDWIDTH_20:
+		ht_cap_vht_oper_he_oper_chwidth_as_string = StringPrintf(
+#ifdef CONFIG_IEEE80211AX
+			"he_oper_chwidth=0\n"
+#endif
+			"vht_oper_chwidth=0");
+		break;
+	case ChannelBandwidth::BANDWIDTH_40:
+		ht_cap_vht_oper_he_oper_chwidth_as_string = StringPrintf(
+			"ht_capab=[HT40+]\n"
+#ifdef CONFIG_IEEE80211AX
+			"he_oper_chwidth=0\n"
+#endif
+			"vht_oper_chwidth=0");
+		break;
+	case ChannelBandwidth::BANDWIDTH_80:
+		ht_cap_vht_oper_he_oper_chwidth_as_string = StringPrintf(
+			"ht_capab=[HT40+]\n"
+#ifdef CONFIG_IEEE80211AX
+			"he_oper_chwidth=%d\n"
+#endif
+			"vht_oper_chwidth=%d",
+#ifdef CONFIG_IEEE80211AX
+			(iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) ? 1 : 0,
+#endif
+			iface_params.hwModeParams.enable80211AC ? 1 : 0);
+		break;
+	case ChannelBandwidth::BANDWIDTH_160:
+		ht_cap_vht_oper_he_oper_chwidth_as_string = StringPrintf(
+			"ht_capab=[HT40+]\n"
+#ifdef CONFIG_IEEE80211AX
+			"he_oper_chwidth=%d\n"
+#endif
+			"vht_oper_chwidth=%d",
+#ifdef CONFIG_IEEE80211AX
+			(iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) ? 2 : 0,
+#endif
+			iface_params.hwModeParams.enable80211AC ? 2 : 0);
+		break;
+	default:
+		ht_cap_vht_oper_he_oper_chwidth_as_string = StringPrintf(
+			"ht_capab=[HT40+]\n"
+#ifdef CONFIG_IEEE80211AX
+			"he_oper_chwidth=%d\n"
+#endif
+			"vht_oper_chwidth=%d",
+#ifdef CONFIG_IEEE80211AX
+			(iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) ? 1 : 0,
+#endif
+			((((band & band5Ghz) != 0) || ((band & band6Ghz) != 0))
+			&& iface_params.hwModeParams.enable80211AC) ? 1 : 0);
+		break;
+	}
 
 #ifdef CONFIG_INTERWORKING
 	std::string access_network_params_as_string;
@@ -581,7 +629,7 @@ std::string CreateHostapdConfig(
 		iface_params.hwModeParams.enable80211N ? 1 : 0,
 		iface_params.hwModeParams.enable80211AC ? 1 : 0,
 		he_params_as_string.c_str(),
-		hw_mode_as_string.c_str(), ht_cap_vht_oper_chwidth_as_string.c_str(),
+		hw_mode_as_string.c_str(), ht_cap_vht_oper_he_oper_chwidth_as_string.c_str(),
 		nw_params.isHidden ? 1 : 0,
 #ifdef CONFIG_INTERWORKING
 		access_network_params_as_string.c_str(),

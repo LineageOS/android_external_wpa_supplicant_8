@@ -150,6 +150,9 @@ public:
 			int num_altsubject,
 			const char *cert_hash,
 			const struct wpabuf *cert);
+	void notifyAuxiliaryEvent(struct wpa_supplicant *wpa_s,
+			AuxiliarySupplicantEventCode event_code,
+			const char *reason_string);
 
 	// Methods called from aidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);

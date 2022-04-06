@@ -1546,7 +1546,8 @@ void AidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
 		&ISupplicantStaIfaceCallback::onEapFailure,
-		std::placeholders::_1, std::vector<uint8_t>(), error_code));
+		std::placeholders::_1,
+		macAddrToVec(wpa_s->bssid), error_code));
 }
 
 /**
@@ -1965,6 +1966,22 @@ void AidlManager::notifyCertification(struct wpa_supplicant *wpa_s,
 
 	callWithEachStaNetworkCallback(
 		misc_utils::charBufToString(wpa_s->ifname), current_ssid->id, func);
+}
+
+void AidlManager::notifyAuxiliaryEvent(struct wpa_supplicant *wpa_s,
+	AuxiliarySupplicantEventCode event_code, const char *reason_string)
+{
+	if (!wpa_s)
+		return;
+
+	const std::function<
+		ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+		func = std::bind(
+		&ISupplicantStaIfaceCallback::onAuxiliarySupplicantEvent,
+		std::placeholders::_1, event_code, macAddrToVec(wpa_s->bssid),
+		misc_utils::charBufToString(reason_string));
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), func);
 }
 
 /**
