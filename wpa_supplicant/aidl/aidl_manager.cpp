@@ -1584,7 +1584,12 @@ void AidlManager::notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 		config->ssid + config->ssid_len);
 
 	if (securityAkm == DppAkm::DPP) {
-		// TODO Add code to fill aidl_keys
+		std::string connector_str = misc_utils::charBufToString(config->dpp_connector);
+		aidl_keys.connector = std::vector<uint8_t>(connector_str.begin(),
+			connector_str.end());
+		aidl_keys.cSign = byteArrToVec(config->dpp_csign, config->dpp_csign_len);
+		aidl_keys.netAccessKey = byteArrToVec(config->dpp_netaccesskey,
+			config->dpp_netaccesskey_len);
 	}
 
 	/* At this point, the network is already registered, notify about new

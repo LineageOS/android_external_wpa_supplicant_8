@@ -1419,6 +1419,9 @@ StaIface::startDppConfiguratorInitiatorInternal(
 #ifdef CONFIG_DPP
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	std::string cmd = "";
+	std::string cmd2 = "";
+	int32_t id;
+	char key[1024];
 
 	if (net_role != DppNetRole::AP &&
 			net_role != DppNetRole::STA) {
@@ -1493,8 +1496,10 @@ StaIface::startDppConfiguratorInitiatorInternal(
 		role += "psk-sae";
 		break;
 
-	// TODO add code to handle DPP AKM
 	case DppAkm::DPP:
+		role += "dpp";
+		break;
+
 	default:
 		wpa_printf(MSG_ERROR,
 			   "DPP: Invalid or unsupported security AKM specified: %d", security_akm);
@@ -1510,10 +1515,33 @@ StaIface::startDppConfiguratorInitiatorInternal(
 		cmd += " conn_status=1";
 	}
 
+	if (security_akm == DppAkm::DPP) {
+		if (!privEcKey.empty()) {
+			cmd2 += " key=" + std::string(privEcKey.begin(), privEcKey.end());
+		}
+		id = dpp_configurator_add(wpa_s->dpp, cmd2.c_str());
+		if (id < 0 || (privEcKey.empty() &&
+			       (dpp_configurator_get_key_id(wpa_s->dpp, id, key, sizeof(key)) < 0)))
+		{
+			wpa_printf(MSG_ERROR, "DPP configurator add failed. "
+			           "Input key might be incorrect");
+			return {std::vector<uint8_t>(),
+				createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+		}
+
+		cmd += " configurator=" + std::to_string(id);
+	}
+
 	wpa_printf(MSG_DEBUG,
 		   "DPP initiator command: %s", cmd.c_str());
 
 	if (wpas_dpp_auth_init(wpa_s, cmd.c_str()) == 0) {
+		// Return key if input privEcKey was null/empty.
+		if (security_akm == DppAkm::DPP && privEcKey.empty()) {
+			std::string k(key);
+			std::vector<uint8_t> vKey(k.begin(), k.end());
+			return {vKey, ndk::ScopedAStatus::ok()};
+		}
 		return {std::vector<uint8_t>(), ndk::ScopedAStatus::ok()};
 	}
 #endif
@@ -1666,8 +1694,46 @@ ndk::ScopedAStatus StaIface::generateSelfDppConfigurationInternal(const std::str
 		const std::vector<uint8_t> &privEcKey)
 {
 #ifdef CONFIG_DPP
-    // TODO Implement this function
-    return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	std::string cmd = "";
+	char *ssid_hex_str;
+	int len;
+	int32_t id;
+
+	if (ssid.empty() || privEcKey.empty()) {
+		wpa_printf(MSG_ERROR, "DPP generate self configuration failed. ssid/key empty");
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	cmd += " key=" + std::string(privEcKey.begin(), privEcKey.end());
+
+	id = dpp_configurator_add(wpa_s->dpp, cmd.c_str());
+	if (id < 0) {
+		wpa_printf(MSG_ERROR, "DPP configurator add failed. Input key might be incorrect");
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	cmd = " conf=sta-dpp";
+	cmd += " configurator=" + std::to_string(id);
+
+	ssid_hex_str = (char *) os_zalloc(ssid.size() * 2 + 1);
+	if (!ssid_hex_str) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	wpa_snprintf_hex(ssid_hex_str, ssid.size() * 2 + 1, (u8*)ssid.data(), ssid.size());
+	cmd += " ssid=" + std::string(ssid_hex_str);
+
+	/* Report received configuration to AIDL and create an internal profile */
+	wpa_s->conf->dpp_config_processing = 1;
+
+	if (wpas_dpp_configurator_sign(wpa_s, cmd.c_str()) == 0) {
+		os_free(ssid_hex_str);
+		return ndk::ScopedAStatus::ok();
+	}
+
+	os_free(ssid_hex_str);
+	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 #else
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 #endif
