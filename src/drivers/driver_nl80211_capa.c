@@ -1020,7 +1020,7 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 					break;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 				}
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 			} else if (vinfo->vendor_id == OUI_BRCM) {
 				switch (vinfo->subcmd) {
 				case BRCM_VENDOR_SCMD_ACS:
@@ -1038,7 +1038,7 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 				default:
 					break;
 				}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 			}
 			wpa_printf(MSG_DEBUG, "nl80211: Supported vendor command: vendor_id=0x%x subcmd=%u",
 				   vinfo->vendor_id, vinfo->subcmd);

@@ -308,19 +308,19 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 		ieee802_1x_notify_create_actor(wpa_s, wpa_s->last_eapol_src);
 	}
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM                                                            
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (result != EAPOL_SUPP_RESULT_SUCCESS)                          
 #else                                                                     
 	if (result != EAPOL_SUPP_RESULT_SUCCESS ||                        
 		!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X))  
-#endif /* CONFIG_DRIVER_NL80211_BRCM */                                                      
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 		return;                                                   
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (wpa_ft_is_ft_protocol(wpa_s->wpa)) {
 		return;
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	if (!wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt))
 		return;
