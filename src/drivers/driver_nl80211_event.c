@@ -2410,7 +2410,7 @@ static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
 }
 
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 
 static void brcm_nl80211_acs_select_ch(struct wpa_driver_nl80211_data *drv,
 				       const u8 *data, size_t len)
@@ -2488,7 +2488,7 @@ static void nl80211_vendor_event_brcm(struct wpa_driver_nl80211_data *drv,
 	}
 }
 
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 
 static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
@@ -2535,11 +2535,11 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 	case OUI_QCA:
 		nl80211_vendor_event_qca(drv, subcmd, data, len);
 		break;
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	case OUI_BRCM:
 		nl80211_vendor_event_brcm(drv, subcmd, data, len);
 		break;
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 	default:
 		wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported vendor event");
 		break;

@@ -38,9 +38,9 @@
 #include "radiotap_iter.h"
 #include "rfkill.h"
 #include "driver_nl80211.h"
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 #include "common/brcm_vendor.h"
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 #ifndef NETLINK_CAP_ACK
 #define NETLINK_CAP_ACK 10
@@ -3189,7 +3189,7 @@ static int wpa_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
 	return num_suites;
 }
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 static int wpa_driver_do_broadcom_acs(struct wpa_driver_nl80211_data *drv,
 				      struct drv_acs_params *params)
 {
@@ -3239,7 +3239,7 @@ fail:
 	nlmsg_free(msg);
 	return ret;
 }
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
 static int issue_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
@@ -3272,7 +3272,7 @@ static int issue_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 static int key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
 				  const u8 *key, size_t key_len)
 {
@@ -3300,7 +3300,8 @@ static int key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
 
 	return ret;
 }
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+
 
 static int nl80211_set_pmk(struct wpa_driver_nl80211_data *drv,
 			   const u8 *key, size_t key_len,
@@ -3389,12 +3390,13 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
 	if (key_flag & KEY_FLAG_PMK) {
 		if (drv->capa.flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X)
 			return nl80211_set_pmk(drv, key, key_len, addr);
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 		if (drv->vendor_set_pmk) {
 			wpa_printf(MSG_INFO, "nl80211: key_mgmt_set_key with key_len %lu", (unsigned long) key_len);
 			return key_mgmt_set_key(drv, key, key_len);
 		}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+
 		/* The driver does not have any offload mechanism for PMK, so
 		 * there is no need to configure this key. */
 		return 0;
@@ -10496,17 +10498,17 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
 	int new_addr = addr != NULL;
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	struct nl_msg *msg;
 	struct nlattr *params;
 	int ret;
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 	wpa_printf(MSG_DEBUG, "Enter: %s", __FUNCTION__);
 
 	if (TEST_FAIL())
 		return -1;
 	if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE) {
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 		if (!addr ) {
 			addr = drv->global->p2p_perm_addr;
 		}
@@ -10533,7 +10535,7 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
 		return ret;
 #else
 		return -ENOTSUP;
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 	}
 	if (!addr)
 		addr = drv->perm_addr;
@@ -11838,20 +11840,22 @@ fail:
 
 static int nl80211_do_acs(void *priv, struct drv_acs_params *params)
 {
-#if defined(CONFIG_DRIVER_NL80211_QCA) || defined(CONFIG_DRIVER_NL80211_BRCM)
+#if defined(CONFIG_DRIVER_NL80211_QCA) || defined(CONFIG_DRIVER_NL80211_BRCM) \
+	|| defined(CONFIG_DRIVER_NL80211_SYNA)
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
-#endif /* CONFIG_DRIVER_NL80211_QCA || CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_QCA || CONFIG_DRIVER_NL80211_BRCM \
+	  || defined(CONFIG_DRIVER_NL80211_SYNA) */
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
 	if (drv->qca_do_acs)
 		return nl80211_qca_do_acs(drv, params);
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (drv->brcm_do_acs)
 		return wpa_driver_do_broadcom_acs(drv, params);
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	return -1;
 }

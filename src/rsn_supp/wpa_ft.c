@@ -743,7 +743,7 @@ int wpa_ft_is_completed(struct wpa_sm *sm)
 	return sm->ft_completed;
 }
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 int wpa_ft_is_ft_protocol(struct wpa_sm *sm)
 {
 	if (sm == NULL)
@@ -754,7 +754,7 @@ int wpa_ft_is_ft_protocol(struct wpa_sm *sm)
 
 	return sm->ft_protocol;
 }
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 void wpa_reset_ft_completed(struct wpa_sm *sm)
 {

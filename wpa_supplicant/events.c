@@ -3129,7 +3129,7 @@ no_pfs:
 		p += len;
 	}
 #endif /* CONFIG_SME */
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (((wpa_s->key_mgmt == WPA_KEY_MGMT_FT_PSK) ||
 		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_IEEE8021X) ||
 		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_SAE) ||
@@ -3137,7 +3137,7 @@ no_pfs:
 		wpa_ft_is_completed(wpa_s->wpa)) {
 		return 0;
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	/* Process FT when SME is in the driver */
 	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) &&
@@ -3300,9 +3300,9 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 #if defined(CONFIG_FILS) || defined(CONFIG_MBO)
 	struct wpa_bss *bss;
 #endif /* CONFIG_FILS || CONFIG_MBO */
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	struct wpa_ie_data ie;
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 #ifdef CONFIG_AP
 	if (wpa_s->ap_iface) {
@@ -3320,7 +3320,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 	eloop_cancel_timeout(wpas_network_reenabled, wpa_s, NULL);
 	wpa_s->own_reconnect_req = 0;
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (!(wpa_sm_parse_own_wpa_ie(wpa_s->wpa, &ie) < 0)) {
 		struct wpa_ft_ies parse;
 		/* Check for FT reassociation is done by the driver */
@@ -3339,7 +3339,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		}
 #endif  /* CONFIG_IEEE80211R */
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	ft_completed = wpa_ft_is_completed(wpa_s->wpa);
 	if (data && wpa_supplicant_event_associnfo(wpa_s, data) < 0)
@@ -3359,7 +3359,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		return;
 	}
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	/* For driver based roaming, insert PSK during the initial association */
 	if (is_zero_ether_addr(wpa_s->bssid) &&
 		wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt)) {
@@ -3367,7 +3367,8 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		wpa_dbg(wpa_s, MSG_DEBUG, "Pass the PMK to the driver");
 		wpa_sm_install_pmk(wpa_s->wpa);
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+
 	wpa_supplicant_set_state(wpa_s, WPA_ASSOCIATED);
 	if (os_memcmp(bssid, wpa_s->bssid, ETH_ALEN) != 0) {
 		if (os_reltime_initialized(&wpa_s->session_start)) {
@@ -3504,7 +3505,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		 */
 		eapol_sm_notify_portValid(wpa_s->eapol, true);
 	}
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (ft_completed && wpa_key_mgmt_ft(wpa_s->key_mgmt)) {
 		if (wpa_drv_get_bssid(wpa_s, bssid) < 0) {
 			wpa_dbg(wpa_s, MSG_ERROR, "Failed to get BSSID, key_mgmt: 0x%0x",
@@ -3517,7 +3518,8 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		wpa_s->assoc_freq = data->assoc_info.freq;
 		wpa_sm_notify_brcm_ft_reassoc(wpa_s->wpa, bssid);
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+
 	wpa_s->last_eapol_matches_bssid = 0;
 
 #ifdef CONFIG_TESTING_OPTIONS
