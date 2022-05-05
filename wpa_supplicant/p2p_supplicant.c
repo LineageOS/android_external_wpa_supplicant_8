@@ -5803,7 +5803,7 @@ static int wpas_p2p_setup_freqs(struct wpa_supplicant *wpa_s, int freq,
 				}
 				i++;
 			}
-		} else {
+		} else if (!wpa_s->conf->num_p2p_pref_chan) {
 			enum wpa_driver_if_type iface_type;
 
 			if (go)
