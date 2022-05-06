@@ -681,6 +681,21 @@ struct active_scs_elem {
 	enum scs_response_status status;
 };
 
+struct dscp_policy_data {
+	u8 policy_id;
+	u8 req_type;
+	u8 dscp;
+	bool dscp_info;
+	const u8 *frame_classifier;
+	u8 frame_classifier_len;
+	struct type4_params type4_param;
+	const u8 *domain_name;
+	u8 domain_name_len;
+	u16 start_port;
+	u16 end_port;
+	bool port_range_info;
+};
+
 
 /**
  * struct wpa_supplicant - Internal data for wpa_supplicant interface

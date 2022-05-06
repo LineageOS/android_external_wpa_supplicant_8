@@ -1304,3 +1304,20 @@ void wpas_notify_open_ssl_failure(struct wpa_supplicant *wpa_s,
 {
 	wpas_aidl_notify_open_ssl_failure(wpa_s, reason_string);
 }
+
+void wpas_notify_qos_policy_reset(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s)
+		return;
+
+	wpas_aidl_notify_qos_policy_reset(wpa_s);
+}
+
+void wpas_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
+	struct dscp_policy_data *policies, int num_policies)
+{
+	if (!wpa_s || !policies)
+		return;
+
+	wpas_aidl_notify_qos_policy_request(wpa_s, policies, num_policies);
+}

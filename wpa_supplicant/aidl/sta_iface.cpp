@@ -1871,6 +1871,8 @@ StaIface::getKeyMgmtCapabilitiesInternal()
 
 ndk::ScopedAStatus StaIface::setQosPolicyFeatureEnabledInternal(bool enable)
 {
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	wpa_s->enable_dscp_policy_capa = enable ? 1 : 0;
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -1878,11 +1880,51 @@ ndk::ScopedAStatus StaIface::sendQosPolicyResponseInternal(
 	int32_t qos_policy_request_id, bool more_policies,
 	const std::vector<QosPolicyStatus>& qos_policy_status_list)
 {
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct dscp_resp_data resp_data;
+	int num_policies = qos_policy_status_list.size();
+
+	memset(&resp_data, 0, sizeof(resp_data));
+
+	resp_data.more = more_policies ? 1 : 0;
+	resp_data.policy = (struct dscp_policy_status *) malloc(
+		sizeof(struct dscp_policy_status) * num_policies);
+	if (num_policies && !resp_data.policy){
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	resp_data.solicited = true;
+	wpa_s->dscp_req_dialog_token = qos_policy_request_id;
+
+	for (int i = 0; i < num_policies; i++) {
+		resp_data.policy[i].id = qos_policy_status_list.at(i).policyId;
+		resp_data.policy[i].status =
+			static_cast<uint8_t>(qos_policy_status_list.at(i).status);
+	}
+	resp_data.num_policies = num_policies;
+
+	if (wpas_send_dscp_response(wpa_s, &resp_data)) {
+		free(resp_data.policy);
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	free(resp_data.policy);
 	return ndk::ScopedAStatus::ok();
 }
 
 ndk::ScopedAStatus StaIface::removeAllQosPoliciesInternal()
 {
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct dscp_resp_data resp_data;
+
+	memset(&resp_data, 0, sizeof(resp_data));
+	resp_data.reset = true;
+	resp_data.solicited = false;
+	wpa_s->dscp_req_dialog_token = 0;
+
+	if (wpas_send_dscp_response(wpa_s, &resp_data)) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	return ndk::ScopedAStatus::ok();
 }
 

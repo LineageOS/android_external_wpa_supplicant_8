@@ -214,5 +214,8 @@ void wpas_notify_ssid_temp_disabled(struct wpa_supplicant *wpa_s,
 		const char *reason_string);
 void wpas_notify_open_ssl_failure(struct wpa_supplicant *wpa_s,
 		const char *reason_string);
+void wpas_notify_qos_policy_reset(struct wpa_supplicant *wpa_s);
+void wpas_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
+		struct dscp_policy_data *policies, int num_policies);
 
 #endif /* NOTIFY_H */

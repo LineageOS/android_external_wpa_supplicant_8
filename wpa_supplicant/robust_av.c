@@ -14,6 +14,7 @@
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
 #include "bss.h"
+#include "notify.h"
 
 
 #define SCS_RESP_TIMEOUT 1
@@ -843,22 +844,6 @@ static int write_ipv6_info(char *pos, int total_len,
 }
 
 
-struct dscp_policy_data {
-	u8 policy_id;
-	u8 req_type;
-	u8 dscp;
-	bool dscp_info;
-	const u8 *frame_classifier;
-	u8 frame_classifier_len;
-	struct type4_params type4_param;
-	const u8 *domain_name;
-	u8 domain_name_len;
-	u16 start_port;
-	u16 end_port;
-	bool port_range_info;
-};
-
-
 static int set_frame_classifier_type4_ipv4(struct dscp_policy_data *policy)
 {
 	u8 classifier_mask;
@@ -1062,7 +1047,7 @@ static bool dscp_valid_domain_name(const char *str)
 }
 
 
-static void wpas_add_dscp_policy(struct wpa_supplicant *wpa_s,
+static int  wpas_add_dscp_policy(struct wpa_supplicant *wpa_s,
 				 struct dscp_policy_data *policy)
 {
 	int ip_ver = 0, res;
@@ -1147,10 +1132,11 @@ static void wpas_add_dscp_policy(struct wpa_supplicant *wpa_s,
 	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY
 		"add policy_id=%u dscp=%u ip_version=%d%s",
 		policy->policy_id, policy->dscp, ip_ver, policy_str);
-	return;
+	return 0;
 fail:
 	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY "reject policy_id=%u",
 		policy->policy_id);
+	return -1;
 }
 
 
@@ -1231,6 +1217,9 @@ void wpas_handle_qos_mgmt_recv_action(struct wpa_supplicant *wpa_s,
 	const u8 *qos_ie, *attr;
 	int more, reset;
 
+        struct dscp_policy_data *policies = NULL, *policies_temp;
+        int num_dscp_policies = 0;
+
 	if (!wpa_s->enable_dscp_policy_capa) {
 		wpa_printf(MSG_ERROR,
 			   "QM: Ignore DSCP Policy frame since the capability is not enabled");
@@ -1276,6 +1265,9 @@ void wpas_handle_qos_mgmt_recv_action(struct wpa_supplicant *wpa_s,
 	more = buf[2] & DSCP_POLICY_CTRL_MORE;
 	reset = buf[2] & DSCP_POLICY_CTRL_RESET;
 
+        if (reset)
+                wpas_notify_qos_policy_reset(wpa_s);
+
 	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY "request_start%s%s",
 		reset ? " clear_all" : "", more ? " more" : "");
 
@@ -1283,6 +1275,7 @@ void wpas_handle_qos_mgmt_recv_action(struct wpa_supplicant *wpa_s,
 	rem_len = len - 3;
 	while (rem_len > 2) {
 		struct dscp_policy_data policy;
+		int res = 0;
 		int rem_attrs_len, ie_len;
 
 		ie_len = 2 + qos_ie[1];
@@ -1318,16 +1311,37 @@ void wpas_handle_qos_mgmt_recv_action(struct wpa_supplicant *wpa_s,
 		}
 
 		if (policy.req_type == DSCP_POLICY_REQ_ADD)
-			wpas_add_dscp_policy(wpa_s, &policy);
+			res = wpas_add_dscp_policy(wpa_s, &policy);
 		else if (policy.req_type == DSCP_POLICY_REQ_REMOVE)
 			wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY
 				"remove policy_id=%u", policy.policy_id);
-		else
+		else {
 			wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY
 				"reject policy_id=%u", policy.policy_id);
+			res = -1;
+		}
+
+		if (res)
+			continue;
+
+		policies_temp = os_realloc(policies,
+					   (num_dscp_policies + 1)  *
+					   sizeof(struct dscp_policy_data));
+		if (!policies_temp)
+			goto fail;
+
+		policies = policies_temp;
+		policies[num_dscp_policies] = policy;
+		num_dscp_policies++;
 	}
 
+	wpas_notify_qos_policy_request(wpa_s, policies, num_dscp_policies);
+
 	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY "request_end");
+
+fail:
+        os_free(policies);
+        return;
 }
 
 

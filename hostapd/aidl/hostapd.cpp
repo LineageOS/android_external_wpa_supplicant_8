@@ -1010,7 +1010,9 @@ std::vector<uint8_t>  generateRandomOweSsid()
 			for (const auto &callback : callbacks_) {
 				callback->onApInstanceInfoChanged(info);
 			}
-		} else if (os_strncmp(txt, AP_EVENT_DISABLED, strlen(AP_EVENT_DISABLED)) == 0) {
+		} else if (os_strncmp(txt, AP_EVENT_DISABLED, strlen(AP_EVENT_DISABLED)) == 0
+                           || os_strncmp(txt, INTERFACE_DISABLED, strlen(INTERFACE_DISABLED)) == 0)
+		{
 			// Invoke the failure callback on all registered clients.
 			for (const auto& callback : callbacks_) {
 				callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
