@@ -153,6 +153,10 @@ public:
 	void notifyAuxiliaryEvent(struct wpa_supplicant *wpa_s,
 			AuxiliarySupplicantEventCode event_code,
 			const char *reason_string);
+	void notifyQosPolicyReset(struct wpa_supplicant *wpa_s);
+	void notifyQosPolicyRequest(struct wpa_supplicant *wpa_s,
+			struct dscp_policy_data *policies,
+			int num_policies);
 
 	// Methods called from aidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
