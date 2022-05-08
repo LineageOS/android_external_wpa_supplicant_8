@@ -1366,6 +1366,17 @@ static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
 		changed = 1;
 	}
 
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	/* driver call for transition disable */
+	{
+		struct wpa_driver_associate_params params;
+
+		os_memset(&params, 0, sizeof(params));
+		params.td_policy = bitmap;
+		wpa_drv_update_connect_params(wpa_s, &params, WPA_DRV_UPDATE_TD_POLICY);
+	}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
+
 	wpas_notify_transition_disable(wpa_s, ssid, bitmap);
 
 	if (!changed)

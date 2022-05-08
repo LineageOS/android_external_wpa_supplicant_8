@@ -1319,6 +1319,9 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 #ifdef CONFIG_SAE
 	if ((wpa_s->conf->sae_pwe == 1 || ssid->sae_password_id) &&
 	    wpa_s->conf->sae_pwe != 3 && wpa_key_mgmt_sae(ssid->key_mgmt) &&
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	    !(wpa_key_mgmt_wpa_psk_no_sae(ssid->key_mgmt)) &&
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 	    !(rsnxe_capa & BIT(WLAN_RSNX_CAPAB_SAE_H2E))) {
 		if (debug_print)
 			wpa_dbg(wpa_s, MSG_DEBUG,
@@ -2893,6 +2896,9 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 	const u8 *p;
 	u8 bssid[ETH_ALEN];
 	bool bssid_known;
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	struct wpa_ie_data ie;
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Association info event");
 	bssid_known = wpa_drv_get_bssid(wpa_s, bssid) == 0;
@@ -3016,6 +3022,52 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 		wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
 	if (!found_x && data->assoc_info.req_ies)
 		wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
+
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	/* The WPA/RSN IE has been updated at this point. Since the Firmware could have roamed
+	 * to a different security type, update the current supplicant configuration to use the AKM
+	 * and pairwise suites from the assoc IE passed by the driver.
+	 */
+	if (wpas_driver_bss_selection(wpa_s)) {
+		if (!(wpa_sm_parse_own_wpa_ie(wpa_s->wpa, &ie) < 0)) {
+			/* Check if firmware has roamed to a different security network */
+			if(wpa_s->key_mgmt != ie.key_mgmt) {
+				wpa_dbg(wpa_s, MSG_DEBUG, "Update to AKM suite 0x%x from Assoc IE",
+					ie.key_mgmt);
+				wpa_s->key_mgmt = ie.key_mgmt;
+				wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_KEY_MGMT, wpa_s->key_mgmt);
+
+				if (wpa_key_mgmt_wpa_psk_no_sae(wpa_s->key_mgmt)) {
+					/* Restore PMK as it can get overwritten if the previous
+					* association was to 802.1X.
+					*/
+					if ((!(wpa_s->drv_flags &
+					    WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK)) &&
+					    (wpa_s->current_ssid) &&
+					    (wpa_s->current_ssid->psk_set)) {
+						if (wpa_drv_get_bssid(wpa_s, bssid) < 0) {
+							wpa_dbg(wpa_s, MSG_ERROR, "Failed to get "
+								"BSSID");
+							wpa_supplicant_deauthenticate(
+								wpa_s, WLAN_REASON_DEAUTH_LEAVING);
+							return -1;
+						}
+						wpa_sm_set_pmk(wpa_s->wpa, wpa_s->current_ssid->psk,
+							PMK_LEN, NULL, bssid);
+					}
+				}
+			}
+			if(wpa_s->pairwise_cipher != ie.pairwise_cipher) {
+				wpa_dbg(wpa_s, MSG_DEBUG, "Update to pairwise cipher suite 0x%x "
+					"from Assoc IE", ie.pairwise_cipher);
+				wpa_s->pairwise_cipher = ie.pairwise_cipher;
+				wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_PAIRWISE,
+					wpa_s->pairwise_cipher);
+			}
+			// TODO: Notify the framework about security type change b/230766005
+		}
+	}
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 #ifdef CONFIG_FILS
 #ifdef CONFIG_SME
