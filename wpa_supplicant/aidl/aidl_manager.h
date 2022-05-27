@@ -143,7 +143,7 @@ public:
 			struct wpa_ssid *ssid,
 			u8 bitmap);
 	void notifyNetworkNotFound(struct wpa_supplicant *wpa_s);
-	void notifyBssFreqChanged(struct wpa_supplicant *wpa_s);
+	void notifyFrequencyChanged(struct wpa_supplicant *wpa_s, int frequency);
 	void notifyCertification(struct wpa_supplicant *wpa_s,
 			int depth, const char *subject,
 			const char *altsubject[],

@@ -5347,6 +5347,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		if (event == EVENT_CH_SWITCH_STARTED)
 			break;
 
+		if (wpa_s->assoc_freq && data->ch_switch.freq &&
+			    (int) wpa_s->assoc_freq != data->ch_switch.freq) {
+			wpas_notify_frequency_changed(wpa_s, data->ch_switch.freq);
+		}
 		wpa_s->assoc_freq = data->ch_switch.freq;
 		wpa_s->current_ssid->frequency = data->ch_switch.freq;
 		if (wpa_s->current_bss &&

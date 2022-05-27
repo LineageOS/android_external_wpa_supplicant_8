@@ -472,8 +472,6 @@ void wpas_notify_bss_freq_changed(struct wpa_supplicant *wpa_s,
 		return;
 
 	wpas_dbus_bss_signal_prop_changed(wpa_s, WPAS_DBUS_BSS_PROP_FREQ, id);
-
-	wpas_aidl_notify_bss_freq_changed(wpa_s);
 }
 
 
@@ -1320,4 +1318,12 @@ void wpas_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
 		return;
 
 	wpas_aidl_notify_qos_policy_request(wpa_s, policies, num_policies);
+}
+
+void wpas_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency)
+{
+	if (!wpa_s)
+		return;
+
+	wpas_aidl_notify_frequency_changed(wpa_s, frequency);
 }
