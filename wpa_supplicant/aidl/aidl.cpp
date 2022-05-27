@@ -923,7 +923,7 @@ void wpas_aidl_notify_network_not_found(struct wpa_supplicant *wpa_s)
 	aidl_manager->notifyNetworkNotFound(wpa_s);
 }
 
-void wpas_aidl_notify_bss_freq_changed(struct wpa_supplicant *wpa_s)
+void wpas_aidl_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency)
 {
 	if (!wpa_s)
 		return;
@@ -932,10 +932,10 @@ void wpas_aidl_notify_bss_freq_changed(struct wpa_supplicant *wpa_s)
 	if (!aidl_manager)
 		return;
 
-	wpa_printf(MSG_DEBUG, "Notify %s frequency changed to %d",
-	    wpa_s->ifname, wpa_s->assoc_freq);
+	wpa_printf(MSG_INFO, "Notify %s frequency changed to %d",
+	    wpa_s->ifname, frequency);
 
-	aidl_manager->notifyBssFreqChanged(wpa_s);
+	aidl_manager->notifyFrequencyChanged(wpa_s, frequency);
 }
 
 void wpas_aidl_notify_ceritification(struct wpa_supplicant *wpa_s,
