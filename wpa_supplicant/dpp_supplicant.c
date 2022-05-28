@@ -1148,6 +1148,7 @@ static void wpas_dpp_rx_auth_req(struct wpa_supplicant *wpa_s, const u8 *src,
 		return;
 	}
 
+	wpa_s->dpp_pkex_wait_auth_req = false;
 	wpa_s->dpp_gas_client = 0;
 	wpa_s->dpp_gas_server = 0;
 	wpa_s->dpp_auth_ok_on_ack = 0;
@@ -1661,6 +1662,21 @@ static void wpas_dpp_build_csr(void *eloop_ctx, void *timeout_ctx)
 #endif /* CONFIG_DPP2 */
 
 
+#ifdef CONFIG_DPP3
+static void wpas_dpp_build_new_key(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpa_supplicant *wpa_s = eloop_ctx;
+	struct dpp_authentication *auth = wpa_s->dpp_auth;
+
+	if (!auth || !auth->waiting_new_key)
+		return;
+
+	wpa_printf(MSG_DEBUG, "DPP: Build config request with a new key");
+	wpas_dpp_start_gas_client(wpa_s);
+}
+#endif /* CONFIG_DPP3 */
+
+
 static void wpas_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
 				 enum gas_query_result result,
 				 const struct wpabuf *adv_proto,
@@ -1714,6 +1730,14 @@ static void wpas_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
 		return;
 	}
 #endif /* CONFIG_DPP2 */
+#ifdef CONFIG_DPP3
+	if (res == -3) {
+		wpa_printf(MSG_DEBUG, "DPP: New protocol key needed");
+		eloop_register_timeout(0, 0, wpas_dpp_build_new_key, wpa_s,
+				       NULL);
+		return;
+	}
+#endif /* CONFIG_DPP3 */
 	if (res < 0) {
 		wpa_printf(MSG_DEBUG, "DPP: Configuration attempt failed");
 		goto fail;
@@ -2748,14 +2772,8 @@ static int wpas_dpp_pkex_done(void *ctx, void *conn,
 #endif /* CONFIG_DPP2 */
 
 
-enum wpas_dpp_pkex_ver {
-	PKEX_VER_AUTO,
-	PKEX_VER_ONLY_1,
-	PKEX_VER_ONLY_2,
-};
-
 static int wpas_dpp_pkex_init(struct wpa_supplicant *wpa_s,
-			      enum wpas_dpp_pkex_ver ver,
+			      enum dpp_pkex_ver ver,
 			      const struct hostapd_ip_addr *ipaddr,
 			      int tcp_port)
 {
@@ -2908,6 +2926,17 @@ wpas_dpp_rx_pkex_exchange_req(struct wpa_supplicant *wpa_s, const u8 *src,
 	wpa_printf(MSG_DEBUG, "DPP: PKEX Exchange Request from " MACSTR,
 		   MAC2STR(src));
 
+	if (wpa_s->dpp_pkex_ver == PKEX_VER_ONLY_1 && v2) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Ignore PKEXv2 Exchange Request when configured to be PKEX v1 only");
+		return;
+	}
+	if (wpa_s->dpp_pkex_ver == PKEX_VER_ONLY_2 && !v2) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Ignore PKEXv1 Exchange Request when configured to be PKEX v2 only");
+		return;
+	}
+
 	/* TODO: Support multiple PKEX codes by iterating over all the enabled
 	 * values here */
 
@@ -2935,6 +2964,7 @@ wpas_dpp_rx_pkex_exchange_req(struct wpa_supplicant *wpa_s, const u8 *src,
 		return;
 	}
 
+	wpa_s->dpp_pkex_wait_auth_req = false;
 	msg = wpa_s->dpp_pkex->exchange_resp;
 	wait_time = wpa_s->max_remain_on_chan;
 	if (wait_time > 2000)
@@ -3051,6 +3081,7 @@ wpas_dpp_rx_pkex_commit_reveal_req(struct wpa_supplicant *wpa_s, const u8 *src,
 	wpabuf_free(msg);
 
 	wpas_dpp_pkex_finish(wpa_s, src, freq);
+	wpa_s->dpp_pkex_wait_auth_req = true;
 }
 
 
@@ -3332,11 +3363,13 @@ wpas_dpp_gas_req_handler(void *ctx, void *resp_ctx, const u8 *sa,
 		return NULL;
 	}
 
+	auth->conf_resp = resp;
 	if (!resp) {
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_FAILED);
 		wpas_notify_dpp_configuration_failure(wpa_s);
+		dpp_auth_deinit(wpa_s->dpp_auth);
+		wpa_s->dpp_auth = NULL;
 	}
-	auth->conf_resp = resp;
 	return resp;
 }
 
@@ -3366,6 +3399,14 @@ wpas_dpp_gas_status_handler(void *ctx, struct wpabuf *resp, int ok)
 		return;
 	}
 #endif /* CONFIG_DPP2 */
+
+#ifdef CONFIG_DPP3
+	if (auth->waiting_new_key && ok) {
+		wpa_printf(MSG_DEBUG, "DPP: Waiting for a new key");
+		wpabuf_free(resp);
+		return;
+	}
+#endif /* CONFIG_DPP3 */
 
 	wpa_printf(MSG_DEBUG, "DPP: Configuration exchange completed (ok=%d)",
 		   ok);
@@ -3493,6 +3534,8 @@ int wpas_dpp_check_connect(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 	wpa_printf(MSG_DEBUG,
 		   "DPP: Starting network introduction protocol to derive PMKSA for "
 		   MACSTR, MAC2STR(bss->bssid));
+	if (wpa_s->wpa_state == WPA_SCANNING)
+		wpa_supplicant_set_state(wpa_s, wpa_s->scan_prev_wpa_state);
 
 	len = 5 + 4 + os_strlen(ssid->dpp_connector);
 #ifdef CONFIG_DPP2
@@ -3614,6 +3657,11 @@ int wpas_dpp_pkex_add(struct wpa_supplicant *wpa_s, const char *cmd)
 {
 	struct dpp_bootstrap_info *own_bi;
 	const char *pos, *end;
+#ifdef CONFIG_DPP3
+	enum dpp_pkex_ver ver = PKEX_VER_AUTO;
+#else /* CONFIG_DPP3 */
+	enum dpp_pkex_ver ver = PKEX_VER_ONLY_1;
+#endif /* CONFIG_DPP3 */
 	int tcp_port = DPP_TCP_PORT;
 	struct hostapd_ip_addr *ipaddr = NULL;
 #ifdef CONFIG_DPP2
@@ -3679,27 +3727,22 @@ int wpas_dpp_pkex_add(struct wpa_supplicant *wpa_s, const char *cmd)
 	if (!wpa_s->dpp_pkex_code)
 		return -1;
 
+	pos = os_strstr(cmd, " ver=");
+	if (pos) {
+		int v;
+
+		pos += 5;
+		v = atoi(pos);
+		if (v == 1)
+			ver = PKEX_VER_ONLY_1;
+		else if (v == 2)
+			ver = PKEX_VER_ONLY_2;
+		else
+			return -1;
+	}
+	wpa_s->dpp_pkex_ver = ver;
+
 	if (os_strstr(cmd, " init=1")) {
-#ifdef CONFIG_DPP3
-		enum wpas_dpp_pkex_ver ver = PKEX_VER_AUTO;
-#else /* CONFIG_DPP3 */
-		enum wpas_dpp_pkex_ver ver = PKEX_VER_ONLY_1;
-#endif /* CONFIG_DPP3 */
-
-		pos = os_strstr(cmd, " ver=");
-		if (pos) {
-			int v;
-
-			pos += 5;
-			v = atoi(pos);
-			if (v == 1)
-				ver = PKEX_VER_ONLY_1;
-			else if (v == 2)
-				ver = PKEX_VER_ONLY_2;
-			else
-				return -1;
-		}
-
 		if (wpas_dpp_pkex_init(wpa_s, ver, ipaddr, tcp_port) < 0)
 			return -1;
 	} else {
@@ -3751,12 +3794,13 @@ int wpas_dpp_pkex_remove(struct wpa_supplicant *wpa_s, const char *id)
 
 void wpas_dpp_stop(struct wpa_supplicant *wpa_s)
 {
-	if (wpa_s->dpp_auth || wpa_s->dpp_pkex)
+	if (wpa_s->dpp_auth || wpa_s->dpp_pkex || wpa_s->dpp_pkex_wait_auth_req)
 		offchannel_send_action_done(wpa_s);
 	dpp_auth_deinit(wpa_s->dpp_auth);
 	wpa_s->dpp_auth = NULL;
 	dpp_pkex_free(wpa_s->dpp_pkex);
 	wpa_s->dpp_pkex = NULL;
+	wpa_s->dpp_pkex_wait_auth_req = false;
 	if (wpa_s->dpp_gas_client && wpa_s->dpp_gas_dialog_token >= 0)
 		gas_query_stop(wpa_s->gas, wpa_s->dpp_gas_dialog_token);
 }
@@ -3822,6 +3866,9 @@ void wpas_dpp_deinit(struct wpa_supplicant *wpa_s)
 	dpp_free_reconfig_id(wpa_s->dpp_reconfig_id);
 	wpa_s->dpp_reconfig_id = NULL;
 #endif /* CONFIG_DPP2 */
+#ifdef CONFIG_DPP3
+	eloop_cancel_timeout(wpas_dpp_build_new_key, wpa_s, NULL);
+#endif /* CONFIG_DPP3 */
 	offchannel_send_action_done(wpa_s);
 	wpas_dpp_listen_stop(wpa_s);
 	wpas_dpp_stop(wpa_s);
@@ -4236,6 +4283,7 @@ int wpas_dpp_chirp(struct wpa_supplicant *wpa_s, const char *cmd)
 
 	wpas_dpp_chirp_stop(wpa_s);
 	wpa_s->dpp_allowed_roles = DPP_CAPAB_ENROLLEE;
+	wpa_s->dpp_netrole = DPP_NETROLE_STA;
 	wpa_s->dpp_qr_mutual = 0;
 	wpa_s->dpp_chirp_bi = bi;
 	wpa_s->dpp_presence_announcement = dpp_build_presence_announcement(bi);
@@ -4320,6 +4368,7 @@ int wpas_dpp_reconfig(struct wpa_supplicant *wpa_s, const char *cmd)
 	}
 	wpas_dpp_chirp_stop(wpa_s);
 	wpa_s->dpp_allowed_roles = DPP_CAPAB_ENROLLEE;
+	wpa_s->dpp_netrole = DPP_NETROLE_STA;
 	wpa_s->dpp_qr_mutual = 0;
 	wpa_s->dpp_reconfig_ssid = ssid;
 	wpa_s->dpp_reconfig_ssid_id = ssid->id;

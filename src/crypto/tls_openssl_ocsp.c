@@ -644,13 +644,12 @@ enum ocsp_result check_ocsp_resp(SSL_CTX *ssl_ctx, SSL *ssl, X509 *cert,
 		   buf);
 
 	ctx = X509_STORE_CTX_new();
-	if (!ctx ||
-	    !X509_STORE_CTX_init(ctx, store, signer, untrusted) ||
-	    !X509_STORE_CTX_set_purpose(ctx, X509_PURPOSE_OCSP_HELPER)) {
+	if (!ctx || !X509_STORE_CTX_init(ctx, store, signer, untrusted))
 		goto fail;
-	}
+	X509_STORE_CTX_set_purpose(ctx, X509_PURPOSE_OCSP_HELPER);
 	ret = X509_verify_cert(ctx);
 	chain = X509_STORE_CTX_get1_chain(ctx);
+	X509_STORE_CTX_cleanup(ctx);
 	if (ret <= 0) {
 		wpa_printf(MSG_DEBUG,
 			   "OpenSSL: Could not validate OCSP signer certificate");
@@ -663,6 +662,7 @@ enum ocsp_result check_ocsp_resp(SSL_CTX *ssl_ctx, SSL *ssl, X509 *cert,
 	}
 
 	if (!signer_trusted) {
+		X509_check_purpose(signer, -1, 0);
 		if ((X509_get_extension_flags(signer) & EXFLAG_XKUSAGE) &&
 		    (X509_get_extended_key_usage(signer) & XKU_OCSP_SIGN)) {
 			wpa_printf(MSG_DEBUG,

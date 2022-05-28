@@ -2451,7 +2451,6 @@ static const struct parse_data ssid_fields[] = {
 	{ STRe(client_cert, cert.client_cert) },
 	{ STRe(private_key, cert.private_key) },
 	{ STR_KEYe(private_key_passwd, cert.private_key_passwd) },
-	{ STRe(dh_file, cert.dh_file) },
 	{ STRe(subject_match, cert.subject_match) },
 	{ STRe(check_cert_subject, cert.check_cert_subject) },
 	{ STRe(altsubject_match, cert.altsubject_match) },
@@ -2462,7 +2461,6 @@ static const struct parse_data ssid_fields[] = {
 	{ STRe(client_cert2, phase2_cert.client_cert) },
 	{ STRe(private_key2, phase2_cert.private_key) },
 	{ STR_KEYe(private_key2_passwd, phase2_cert.private_key_passwd) },
-	{ STRe(dh_file2, phase2_cert.dh_file) },
 	{ STRe(subject_match2, phase2_cert.subject_match) },
 	{ STRe(check_cert_subject2, phase2_cert.check_cert_subject) },
 	{ STRe(altsubject_match2, phase2_cert.altsubject_match) },
@@ -2490,7 +2488,6 @@ static const struct parse_data ssid_fields[] = {
 	{ STRe(machine_private_key, machine_cert.private_key) },
 	{ STR_KEYe(machine_private_key_passwd,
 		   machine_cert.private_key_passwd) },
-	{ STRe(machine_dh_file, machine_cert.dh_file) },
 	{ STRe(machine_subject_match, machine_cert.subject_match) },
 	{ STRe(machine_check_cert_subject, machine_cert.check_cert_subject) },
 	{ STRe(machine_altsubject_match, machine_cert.altsubject_match) },
@@ -2506,6 +2503,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INTe(machine_ocsp, machine_cert.ocsp) },
 	{ INT(eapol_flags) },
 	{ INTe(sim_num, sim_num) },
+	{ STRe(imsi_privacy_key, imsi_privacy_key) },
 	{ STRe(openssl_ciphers, openssl_ciphers) },
 	{ INTe(erp, erp) },
 #endif /* IEEE8021X_EAPOL */
@@ -2612,6 +2610,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT(macsec_replay_window) },
 	{ INT_RANGE(macsec_port, 1, 65534) },
 	{ INT_RANGE(mka_priority, 0, 255) },
+	{ INT_RANGE(macsec_csindex, 0, 1) },
 	{ FUNC_KEY(mka_cak) },
 	{ FUNC_KEY(mka_ckn) },
 #endif /* CONFIG_MACSEC */
@@ -2753,7 +2752,6 @@ static void eap_peer_config_free_cert(struct eap_peer_cert_config *cert)
 	os_free(cert->client_cert);
 	os_free(cert->private_key);
 	str_clear_free(cert->private_key_passwd);
-	os_free(cert->dh_file);
 	os_free(cert->subject_match);
 	os_free(cert->check_cert_subject);
 	os_free(cert->altsubject_match);
@@ -2773,6 +2771,7 @@ static void eap_peer_config_free(struct eap_peer_config *eap)
 	bin_clear_free(eap->identity, eap->identity_len);
 	os_free(eap->anonymous_identity);
 	os_free(eap->imsi_identity);
+	os_free(eap->imsi_privacy_key);
 	os_free(eap->machine_identity);
 	bin_clear_free(eap->password, eap->password_len);
 	bin_clear_free(eap->machine_password, eap->machine_password_len);
@@ -2876,6 +2875,7 @@ void wpa_config_free_cred(struct wpa_cred *cred)
 		os_free(cred->req_conn_capab_port[i]);
 	os_free(cred->req_conn_capab_port);
 	os_free(cred->req_conn_capab_proto);
+	os_free(cred->imsi_privacy_key);
 	os_free(cred);
 }
 
@@ -3155,6 +3155,26 @@ void wpa_config_set_network_defaults(struct wpa_ssid *ssid)
 }
 
 
+static const char *removed_fields[] = {
+	"dh_file",
+	"dh_file2",
+	"machine_dh_file",
+	NULL
+};
+
+static bool removed_field(const char *field)
+{
+	int i;
+
+	for (i = 0; removed_fields[i]; i++) {
+		if (os_strcmp(field, removed_fields[i]) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+
 /**
  * wpa_config_set - Set a variable in network configuration
  * @ssid: Pointer to network configuration data
@@ -3203,6 +3223,12 @@ int wpa_config_set(struct wpa_ssid *ssid, const char *var, const char *value,
 		break;
 	}
 	if (i == NUM_SSID_FIELDS) {
+		if (removed_field(var)) {
+			wpa_printf(MSG_INFO,
+				   "Line %d: Ignore removed configuration field '%s'",
+				   line, var);
+			return ret;
+		}
 		if (line) {
 			wpa_printf(MSG_ERROR, "Line %d: unknown network field "
 				   "'%s'.", line, var);
@@ -3400,8 +3426,11 @@ char * wpa_config_get_no_key(struct wpa_ssid *ssid, const char *var)
 void wpa_config_update_psk(struct wpa_ssid *ssid)
 {
 #ifndef CONFIG_NO_PBKDF2
-	pbkdf2_sha1(ssid->passphrase, ssid->ssid, ssid->ssid_len, 4096,
-		    ssid->psk, PMK_LEN);
+	if (pbkdf2_sha1(ssid->passphrase, ssid->ssid, ssid->ssid_len, 4096,
+			ssid->psk, PMK_LEN) != 0) {
+		wpa_printf(MSG_ERROR, "Error in pbkdf2_sha1()");
+		return;
+	}
 	wpa_hexdump_key(MSG_MSGDUMP, "PSK (from passphrase)",
 			ssid->psk, PMK_LEN);
 	ssid->psk_set = 1;
@@ -3882,6 +3911,12 @@ int wpa_config_set_cred(struct wpa_cred *cred, const char *var,
 		return 0;
 	}
 
+	if (os_strcmp(var, "imsi_privacy_key") == 0) {
+		os_free(cred->imsi_privacy_key);
+		cred->imsi_privacy_key = val;
+		return 0;
+	}
+
 	if (line) {
 		wpa_printf(MSG_ERROR, "Line %d: unknown cred field '%s'.",
 			   line, var);
@@ -4031,6 +4066,9 @@ char * wpa_config_get_cred_no_key(struct wpa_cred *cred, const char *var)
 
 	if (os_strcmp(var, "imsi") == 0)
 		return alloc_strdup(cred->imsi);
+
+	if (os_strcmp(var, "imsi_privacy_key") == 0)
+		return alloc_strdup(cred->imsi_privacy_key);
 
 	if (os_strcmp(var, "milenage") == 0) {
 		if (!(cred->milenage))

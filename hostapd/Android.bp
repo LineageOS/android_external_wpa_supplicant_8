@@ -287,7 +287,6 @@ filegroup {
         "src/crypto/fips_prf_openssl.c",
         "src/crypto/aes-siv.c",
         "src/crypto/aes-ctr.c",
-        "src/crypto/aes-omac1.c",
         "src/crypto/sha1-prf.c",
         "src/crypto/sha1-tlsprf.c",
         "src/crypto/sha256-prf.c",
