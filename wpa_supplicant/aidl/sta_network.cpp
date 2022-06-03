@@ -1242,11 +1242,24 @@ ndk::ScopedAStatus StaNetwork::setEapAnonymousIdentityInternal(
 	const std::vector<uint8_t> &identity)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (setByteArrayFieldAndResetState(
+	// If current supplicant pseudonym is the prefix of new pseudonym,
+	// the credential is not changed, just update the decoration.
+	// As a result, no need to reset the state.
+	// The decorated identity will have a postfix like
+	// @mncXXX.mccYYY.3gppnetwork.org, so the length will be always
+	// greater than the current one.
+	bool resetState = wpa_ssid->eap.anonymous_identity == NULL
+		|| wpa_ssid->eap.anonymous_identity_len == 0
+		|| identity.size() == 0
+		|| wpa_ssid->eap.anonymous_identity_len >= identity.size()
+		|| os_strncmp((char *) identity.data(),
+			(char *) wpa_ssid->eap.anonymous_identity,
+			wpa_ssid->eap.anonymous_identity_len) != 0;
+	if (setByteArrayField(
 		identity.data(), identity.size(),
 		&(wpa_ssid->eap.anonymous_identity),
 		&(wpa_ssid->eap.anonymous_identity_len),
-		"eap anonymous_identity")) {
+		"eap anonymous_identity", resetState)) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
@@ -2385,9 +2398,9 @@ int StaNetwork::setStringKeyFieldAndResetState(
  * field in |wpa_ssid| structure instance for this network.
  * This function frees any existing data in these fields.
  */
-int StaNetwork::setByteArrayFieldAndResetState(
+int StaNetwork::setByteArrayField(
 	const uint8_t *value, const size_t value_len, uint8_t **to_update_field,
-	size_t *to_update_field_len, const char *hexdump_prefix)
+	size_t *to_update_field_len, const char *hexdump_prefix, bool resetState)
 {
 	if (*to_update_field) {
 		os_free(*to_update_field);
@@ -2402,8 +2415,24 @@ int StaNetwork::setByteArrayFieldAndResetState(
 	wpa_hexdump_ascii(
 		MSG_MSGDUMP, hexdump_prefix, *to_update_field,
 		*to_update_field_len);
-	resetInternalStateAfterParamsUpdate();
+
+	if (resetState) {
+		resetInternalStateAfterParamsUpdate();
+	}
 	return 0;
+}
+
+/**
+ * Helper function to set value in a string field with a corresponding length
+ * field in |wpa_ssid| structure instance for this network.
+ * This function frees any existing data in these fields.
+ */
+int StaNetwork::setByteArrayFieldAndResetState(
+	const uint8_t *value, const size_t value_len, uint8_t **to_update_field,
+	size_t *to_update_field_len, const char *hexdump_prefix)
+{
+	return setByteArrayField(value, value_len, to_update_field,
+		to_update_field_len, hexdump_prefix, true);
 }
 
 /**
