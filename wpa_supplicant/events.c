@@ -149,19 +149,22 @@ static struct wpa_bss * wpa_supplicant_get_new_bss(
 }
 
 
-static void wpa_supplicant_update_current_bss(struct wpa_supplicant *wpa_s)
+static struct wpa_bss *
+wpa_supplicant_update_current_bss(struct wpa_supplicant *wpa_s, const u8 *bssid)
 {
-	struct wpa_bss *bss = wpa_supplicant_get_new_bss(wpa_s, wpa_s->bssid);
+	struct wpa_bss *bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
 
 	if (!bss) {
 		wpa_supplicant_update_scan_results(wpa_s);
 
 		/* Get the BSS from the new scan results */
-		bss = wpa_supplicant_get_new_bss(wpa_s, wpa_s->bssid);
+		bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
 	}
 
 	if (bss)
 		wpa_s->current_bss = bss;
+
+	return bss;
 }
 
 
@@ -173,7 +176,7 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s)
 	int res;
 
 	if (wpa_s->conf->ap_scan == 1 && wpa_s->current_ssid) {
-		wpa_supplicant_update_current_bss(wpa_s);
+		wpa_supplicant_update_current_bss(wpa_s, wpa_s->bssid);
 
 		if (wpa_s->current_ssid->ssid_len == 0)
 			return 0; /* current profile still in use */
@@ -250,7 +253,7 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s)
 	old_ssid = wpa_s->current_ssid;
 	wpa_s->current_ssid = ssid;
 
-	wpa_supplicant_update_current_bss(wpa_s);
+	wpa_supplicant_update_current_bss(wpa_s, wpa_s->bssid);
 
 	wpa_supplicant_rsn_supp_set_config(wpa_s, wpa_s->current_ssid);
 	wpa_supplicant_initiate_eapol(wpa_s);
@@ -567,6 +570,7 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_WEP
 	int wep_ok;
 #endif /* CONFIG_WEP */
+	bool is_6ghz_bss = is_6ghz_freq(bss->freq);
 
 	ret = wpas_wps_ssid_bss_match(wpa_s, ssid, bss);
 	if (ret >= 0)
@@ -581,6 +585,13 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_WEP */
 
 	rsn_ie = wpa_bss_get_ie(bss, WLAN_EID_RSN);
+	if (is_6ghz_bss && !rsn_ie) {
+		if (debug_print)
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"   skip - 6 GHz BSS without RSNE");
+		return 0;
+	}
+
 	while ((ssid->proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)) && rsn_ie) {
 		proto_match++;
 
@@ -594,6 +605,16 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 			ie.pairwise_cipher = wpa_default_rsn_cipher(bss->freq);
 		if (!ie.has_group)
 			ie.group_cipher = wpa_default_rsn_cipher(bss->freq);
+
+		if (is_6ghz_bss) {
+			/* WEP and TKIP are not allowed on 6 GHz */
+			ie.pairwise_cipher &= ~(WPA_CIPHER_WEP40 |
+						WPA_CIPHER_WEP104 |
+						WPA_CIPHER_TKIP);
+			ie.group_cipher &= ~(WPA_CIPHER_WEP40 |
+					     WPA_CIPHER_WEP104 |
+					     WPA_CIPHER_TKIP);
+		}
 
 #ifdef CONFIG_WEP
 		if (wep_ok &&
@@ -636,6 +657,21 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 			break;
 		}
 
+		if (is_6ghz_bss) {
+			/* MFPC must be supported on 6 GHz */
+			if (!(ie.capabilities & WPA_CAPABILITY_MFPC)) {
+				if (debug_print)
+					wpa_dbg(wpa_s, MSG_DEBUG,
+						"   skip RSNE - 6 GHz without MFPC");
+				break;
+			}
+
+			/* WPA PSK is not allowed on the 6 GHz band */
+			ie.key_mgmt &= ~(WPA_KEY_MGMT_PSK |
+					 WPA_KEY_MGMT_FT_PSK |
+					 WPA_KEY_MGMT_PSK_SHA256);
+		}
+
 		if (!(ie.key_mgmt & ssid->key_mgmt)) {
 			if (debug_print)
 				wpa_dbg(wpa_s, MSG_DEBUG,
@@ -664,6 +700,13 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 			wpa_dbg(wpa_s, MSG_DEBUG,
 				"   selected based on RSN IE");
 		return 1;
+	}
+
+	if (is_6ghz_bss) {
+		if (debug_print)
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"   skip - 6 GHz BSS without matching RSNE");
+		return 0;
 	}
 
 	if (wpas_get_ssid_pmf(wpa_s, ssid) == MGMT_FRAME_PROTECTION_REQUIRED &&
@@ -1317,7 +1360,10 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 	}
 
 #ifdef CONFIG_SAE
-	if ((wpa_s->conf->sae_pwe == 1 || ssid->sae_password_id) &&
+	/* When using SAE Password Identifier and when operationg on the 6 GHz
+	 * band, only H2E is allowed. */
+	if ((wpa_s->conf->sae_pwe == 1 || is_6ghz_freq(bss->freq) ||
+	     ssid->sae_password_id) &&
 	    wpa_s->conf->sae_pwe != 3 && wpa_key_mgmt_sae(ssid->key_mgmt) &&
 #ifdef CONFIG_DRIVER_NL80211_BRCM
 	    !(wpa_key_mgmt_wpa_psk_no_sae(ssid->key_mgmt)) &&
@@ -1412,7 +1458,7 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 	if (wpa_s->ignore_assoc_disallow)
 		goto skip_assoc_disallow;
 #endif /* CONFIG_TESTING_OPTIONS */
-	assoc_disallow = wpas_mbo_get_bss_attr(bss, MBO_ATTR_ID_ASSOC_DISALLOW);
+	assoc_disallow = wpas_mbo_check_assoc_disallow(bss);
 	if (assoc_disallow && assoc_disallow[1] >= 1) {
 		if (debug_print)
 			wpa_dbg(wpa_s, MSG_DEBUG,
@@ -2961,6 +3007,8 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 				 BAND_2_4_GHZ);
 			wpa_s->connection_he = req_elems.he_capabilities &&
 				resp_elems.he_capabilities;
+			wpa_s->connection_eht = req_elems.eht_capabilities &&
+				resp_elems.eht_capabilities;
 
 			int max_nss_rx_req = get_max_nss_capability(&req_elems, 1);
 			int max_nss_rx_resp = get_max_nss_capability(&resp_elems, 1);
@@ -3394,6 +3442,26 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	ft_completed = wpa_ft_is_completed(wpa_s->wpa);
+
+	if (wpa_drv_get_bssid(wpa_s, bssid) < 0) {
+		wpa_dbg(wpa_s, MSG_ERROR, "Failed to get BSSID");
+		wpa_supplicant_deauthenticate(
+			wpa_s, WLAN_REASON_DEAUTH_LEAVING);
+		return;
+	}
+
+	if (ft_completed &&
+	    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_BSS_SELECTION)) {
+		wpa_msg(wpa_s, MSG_INFO, "Attempt to roam to " MACSTR,
+			MAC2STR(bssid));
+		if (!wpa_supplicant_update_current_bss(wpa_s, bssid)) {
+			wpa_printf(MSG_ERROR,
+				   "Can't find target AP's information!");
+			return;
+		}
+		wpa_supplicant_assoc_update_ie(wpa_s);
+	}
+
 	if (data && wpa_supplicant_event_associnfo(wpa_s, data) < 0)
 		return;
 	/*
@@ -3403,13 +3471,6 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 	 */
 	if (!ft_completed)
 		ft_completed = wpa_fils_is_completed(wpa_s->wpa);
-
-	if (wpa_drv_get_bssid(wpa_s, bssid) < 0) {
-		wpa_dbg(wpa_s, MSG_ERROR, "Failed to get BSSID");
-		wpa_supplicant_deauthenticate(
-			wpa_s, WLAN_REASON_DEAUTH_LEAVING);
-		return;
-	}
 
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	/* For driver based roaming, insert PSK during the initial association */

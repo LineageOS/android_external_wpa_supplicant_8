@@ -301,7 +301,6 @@ filegroup {
         "src/common/sae_pk.c",
         "src/common/wpa_common.c",
         "src/crypto/aes-ctr.c",
-        "src/crypto/aes-omac1.c",
         "src/crypto/aes-siv.c",
         "src/crypto/crypto_openssl.c",
         "src/crypto/dh_groups.c",

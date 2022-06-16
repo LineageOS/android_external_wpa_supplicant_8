@@ -200,6 +200,15 @@ struct he_capabilities {
 	u16 he_6ghz_capa;
 };
 
+/* struct eht_capabilities - IEEE 802.11be EHT capabilities */
+struct eht_capabilities {
+	bool eht_supported;
+	u16 mac_cap;
+	u8 phy_cap[EHT_PHY_CAPAB_LEN];
+	u8 mcs[EHT_MCS_NSS_CAPAB_LEN];
+	u8 ppet[EHT_PPE_THRESH_CAPAB_LEN];
+};
+
 #define HOSTAPD_MODE_FLAG_HT_INFO_KNOWN BIT(0)
 #define HOSTAPD_MODE_FLAG_VHT_INFO_KNOWN BIT(1)
 
@@ -298,6 +307,11 @@ struct hostapd_hw_modes {
 	 * for IEEE 802.11ay EDMG configuration.
 	 */
 	struct ieee80211_edmg_config edmg;
+
+	/**
+	 * eht_capab - EHT (IEEE 802.11be) capabilities
+	 */
+	struct eht_capabilities eht_capab[IEEE80211_MODE_NUM];
 };
 
 
@@ -338,6 +352,7 @@ struct hostapd_hw_modes {
  * @parent_tsf: Time when the Beacon/Probe Response frame was received in terms
  * of TSF of the BSS specified by %tsf_bssid.
  * @tsf_bssid: The BSS that %parent_tsf TSF time refers to.
+ * @beacon_newer: Whether the Beacon frame data is known to be newer
  * @ie_len: length of the following IE field in octets
  * @beacon_ie_len: length of the following Beacon IE field in octets
  *
@@ -370,6 +385,7 @@ struct wpa_scan_res {
 	int snr;
 	u64 parent_tsf;
 	u8 tsf_bssid[ETH_ALEN];
+	bool beacon_newer;
 	size_t ie_len;
 	size_t beacon_ie_len;
 	/* Followed by ie_len + beacon_ie_len octets of IE data */
@@ -782,6 +798,16 @@ struct hostapd_freq_params {
 	 * for IEEE 802.11ay EDMG configuration.
 	 */
 	struct ieee80211_edmg_config edmg;
+
+	/**
+	 * radar_background - Whether radar/CAC background is requested
+	 */
+	bool radar_background;
+
+	/**
+	 * eht_enabled - Whether EHT is enabled
+	 */
+	bool eht_enabled;
 };
 
 /**
@@ -1036,7 +1062,7 @@ struct wpa_driver_associate_params {
 	 *
 	 * If the driver needs to do special configuration for WPS association,
 	 * this variable provides more information on what type of association
-	 * is being requested. Most drivers should not need ot use this.
+	 * is being requested. Most drivers should not need to use this.
 	 */
 	enum wps_mode wps;
 
@@ -1781,7 +1807,7 @@ enum wpa_driver_if_type {
 	WPA_IF_P2P_GROUP,
 
 	/**
-	 * WPA_IF_P2P_DEVICE - P2P Device interface is used to indentify the
+	 * WPA_IF_P2P_DEVICE - P2P Device interface is used to identify the
 	 * abstracted P2P Device function in the driver
 	 */
 	WPA_IF_P2P_DEVICE,
@@ -2033,6 +2059,10 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_OCV			0x0000000000000080ULL
 /** Driver expects user space implementation of SME in AP mode */
 #define WPA_DRIVER_FLAGS2_AP_SME		0x0000000000000100ULL
+/** Driver handles SA Query procedures in AP mode */
+#define WPA_DRIVER_FLAGS2_SA_QUERY_OFFLOAD_AP	0x0000000000000200ULL
+/** Driver supports background radar/CAC detection */
+#define WPA_DRIVER_RADAR_BACKGROUND		0x0000000000000400ULL
 	u64 flags2;
 
 #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
@@ -2200,6 +2230,8 @@ struct hostapd_sta_add_params {
 	const struct ieee80211_he_capabilities *he_capab;
 	size_t he_capab_len;
 	const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab;
+	const struct ieee80211_eht_capabilities *eht_capab;
+	size_t eht_capab_len;
 	u32 flags; /* bitmask of WPA_STA_* flags */
 	u32 flags_mask; /* unset bits in flags */
 #ifdef CONFIG_MESH
@@ -2403,6 +2435,27 @@ struct csa_settings {
 	u16 counter_offset_presp[2];
 };
 
+/**
+ * struct cca_settings - Settings for color switch command
+ * @cca_count: Count in Beacon frames (TBTT) to perform the switch
+ * @cca_color: The new color that we are switching to
+ * @beacon_cca: Beacon/Probe Response/(Re)Association Response frame info for
+ * color switch period
+ * @beacon_after: Next Beacon/Probe Response/(Re)Association Response frame info
+ * @counter_offset_beacon: Offset to the count field in Beacon frame tail
+ * @counter_offset_presp: Offset to the count field in Probe Response frame
+ */
+struct cca_settings {
+	u8 cca_count;
+	u8 cca_color;
+
+	struct beacon_data beacon_cca;
+	struct beacon_data beacon_after;
+
+	u16 counter_offset_beacon;
+	u16 counter_offset_presp;
+};
+
 /* TDLS peer capabilities for send_tdls_mgmt() */
 enum tdls_peer_capability {
 	TDLS_PEER_HT = BIT(0),
@@ -2467,6 +2520,9 @@ struct drv_acs_params {
 
 	/* Indicates whether EDMG is enabled */
 	int edmg_enabled;
+
+	/* Indicates whether EHT is enabled */
+	bool eht_enabled;
 };
 
 struct wpa_bss_trans_info {
@@ -2608,7 +2664,7 @@ struct wpa_driver_ops {
 	 * some drivers may expect them in different order than wpa_supplicant
 	 * is using. If the TX/RX keys are swapped, all TKIP encrypted packets
 	 * will trigger Michael MIC errors. This can be fixed by changing the
-	 * order of MIC keys by swapping te bytes 16..23 and 24..31 of the key
+	 * order of MIC keys by swapping the bytes 16..23 and 24..31 of the key
 	 * in driver_*.c set_key() implementation, see driver_ndis.c for an
 	 * example on how this can be done.
 	 */
@@ -3989,6 +4045,17 @@ struct wpa_driver_ops {
 	int (*switch_channel)(void *priv, struct csa_settings *settings);
 
 	/**
+	 * switch_color - Announce color switch and migrate the BSS to the
+	 * given color
+	 * @priv: Private driver interface data
+	 * @settings: Settings for CCA period and new color
+	 * Returns: 0 on success, -1 on failure
+	 *
+	 * This function is used to move the BSS to its new color.
+	 */
+	int (*switch_color)(void *priv, struct cca_settings *settings);
+
+	/**
 	 * add_tx_ts - Add traffic stream
 	 * @priv: Private driver interface data
 	 * @tsid: Traffic stream ID
@@ -4617,7 +4684,7 @@ enum wpa_event_type {
 	 * This event must be delivered when a Michael MIC error is detected by
 	 * the local driver. Additional data for event processing is
 	 * provided with union wpa_event_data::michael_mic_failure. This
-	 * information is used to request new encyption key and to initiate
+	 * information is used to request new encryption key and to initiate
 	 * TKIP countermeasures if needed.
 	 */
 	EVENT_MICHAEL_MIC_FAILURE,
@@ -5147,6 +5214,26 @@ enum wpa_event_type {
 	 * non-zero wait time and that has not been explicitly cancelled.
 	 */
 	EVENT_TX_WAIT_EXPIRE,
+
+	/**
+	  * EVENT_BSS_COLOR_COLLISION - Notification of a BSS color collision
+	  */
+	EVENT_BSS_COLOR_COLLISION,
+
+	/**
+	 * EVENT_CCA_STARTED_NOTIFY - Notification that CCA has started
+	 */
+	EVENT_CCA_STARTED_NOTIFY,
+
+	/**
+	 * EVENT_CCA_ABORTED_NOTIFY - Notification that CCA has aborted
+	 */
+	EVENT_CCA_ABORTED_NOTIFY,
+
+	/**
+	 * EVENT_CCA_NOTIFY - Notification that CCA has completed
+	 */
+	EVENT_CCA_NOTIFY,
 };
 
 
@@ -6039,6 +6126,13 @@ union wpa_event_data {
 	struct unprot_beacon {
 		const u8 *sa;
 	} unprot_beacon;
+
+	/**
+	 * struct bss_color_collision - Data for EVENT_BSS_COLOR_COLLISION
+	 */
+	struct bss_color_collision {
+		u64 bitmap;
+	} bss_color_collision;
 };
 
 /**
