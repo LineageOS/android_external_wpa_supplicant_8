@@ -400,6 +400,7 @@ int AidlManager::registerAidlService(struct wpa_global *global)
 {
 	// Create the main aidl service object and register it.
 	wpa_printf(MSG_INFO, "Starting AIDL supplicant");
+	wpa_printf(MSG_INFO, "Interface version: %d", Supplicant::version);
 	supplicant_object_ = ndk::SharedRefBase::make<Supplicant>(global);
 	wpa_global_ = global;
 	std::string instance = std::string() + Supplicant::descriptor + "/default";
