@@ -1380,26 +1380,13 @@ scan:
 	    is_6ghz_supported(wpa_s)) {
 		int i;
 
-		/* Exclude 5 GHz channels from the full scan for P2P connection
+		/* Exclude 6 GHz channels from the full scan for P2P connection
 		 * since the 6 GHz band is disabled for P2P uses. */
 		wpa_printf(MSG_DEBUG,
 			   "P2P: 6 GHz disabled - update the scan frequency list");
-		for (i = 0; i < wpa_s->hw.num_modes; i++) {
-			if (wpa_s->hw.modes[i].num_channels == 0)
-				continue;
-			if (wpa_s->hw.modes[i].mode == HOSTAPD_MODE_IEEE80211G)
-				wpa_add_scan_freqs_list(
-					wpa_s, HOSTAPD_MODE_IEEE80211G,
-					&params, false);
-			if (wpa_s->hw.modes[i].mode == HOSTAPD_MODE_IEEE80211A)
-				wpa_add_scan_freqs_list(
-					wpa_s, HOSTAPD_MODE_IEEE80211A,
-					&params, false);
-			if (wpa_s->hw.modes[i].mode == HOSTAPD_MODE_IEEE80211AD)
-				wpa_add_scan_freqs_list(
-					wpa_s, HOSTAPD_MODE_IEEE80211AD,
-					&params, false);
-		}
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211G, &params, false);
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params, false);
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211AD, &params, false);
 	}
 #endif /* CONFIG_P2P */
 
