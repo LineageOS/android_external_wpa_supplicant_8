@@ -167,6 +167,7 @@ void wpa_hexdump_ascii_key(int level, const char *title, const void *buf,
 #define wpa_msg_no_global(args...) do { } while (0)
 #define wpa_msg_global_only(args...) do { } while (0)
 #define wpa_msg_register_cb(f) do { } while (0)
+#define wpa_msg_register_aidl_cb(f) do { } while (0)
 #define wpa_msg_register_ifname_cb(f) do { } while (0)
 #else /* CONFIG_NO_WPA_MSG */
 /**
@@ -274,7 +275,7 @@ typedef void (*wpa_msg_cb_func)(void *ctx, int level, enum wpa_msg_type type,
  * @func: Callback function (%NULL to unregister)
  */
 void wpa_msg_register_cb(wpa_msg_cb_func func);
-
+void wpa_msg_register_aidl_cb(wpa_msg_cb_func func);
 typedef const char * (*wpa_msg_get_ifname_func)(void *ctx);
 void wpa_msg_register_ifname_cb(wpa_msg_get_ifname_func func);
 
