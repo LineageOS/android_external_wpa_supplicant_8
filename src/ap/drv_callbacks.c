@@ -340,6 +340,16 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		}
 #endif /* CONFIG_WPS */
 
+		if (check_sa_query_need(hapd, sta)) {
+			status = WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
+
+			p = hostapd_eid_assoc_comeback_time(hapd, sta, p);
+
+			hostapd_sta_assoc(hapd, addr, reassoc, status, buf,
+					  p - buf);
+			return 0;
+		}
+
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
 							sta->addr,
@@ -418,16 +428,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 				   res);
 			wpa_hexdump(MSG_DEBUG, "IE", ie, ielen);
 			goto fail;
-		}
-
-		if (check_sa_query_need(hapd, sta)) {
-			status = WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
-
-			p = hostapd_eid_assoc_comeback_time(hapd, sta, p);
-
-			hostapd_sta_assoc(hapd, addr, reassoc, status, buf,
-					  p - buf);
-			return 0;
 		}
 
 		if (wpa_auth_uses_mfp(sta->wpa_sm))
@@ -838,6 +838,9 @@ void hostapd_event_sta_opmode_changed(struct hostapd_data *hapd, const u8 *addr,
 	case CHAN_WIDTH_160:
 		txt = "160";
 		break;
+	case CHAN_WIDTH_320:
+		txt = "320";
+		break;
 	default:
 		txt = NULL;
 		break;
@@ -891,19 +894,22 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 
 	switch (width) {
 	case CHAN_WIDTH_80:
-		chwidth = CHANWIDTH_80MHZ;
+		chwidth = CONF_OPER_CHWIDTH_80MHZ;
 		break;
 	case CHAN_WIDTH_80P80:
-		chwidth = CHANWIDTH_80P80MHZ;
+		chwidth = CONF_OPER_CHWIDTH_80P80MHZ;
 		break;
 	case CHAN_WIDTH_160:
-		chwidth = CHANWIDTH_160MHZ;
+		chwidth = CONF_OPER_CHWIDTH_160MHZ;
+		break;
+	case CHAN_WIDTH_320:
+		chwidth = CONF_OPER_CHWIDTH_320MHZ;
 		break;
 	case CHAN_WIDTH_20_NOHT:
 	case CHAN_WIDTH_20:
 	case CHAN_WIDTH_40:
 	default:
-		chwidth = CHANWIDTH_USE_HT;
+		chwidth = CONF_OPER_CHWIDTH_USE_HT;
 		break;
 	}
 
@@ -979,10 +985,10 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 	hostapd_set_oper_centr_freq_seg1_idx(hapd->iconf, seg1_idx);
 	if (hapd->iconf->ieee80211ac) {
 		hapd->iconf->vht_capab &= ~VHT_CAP_SUPP_CHAN_WIDTH_MASK;
-		if (chwidth == CHANWIDTH_160MHZ)
+		if (chwidth == CONF_OPER_CHWIDTH_160MHZ)
 			hapd->iconf->vht_capab |=
 				VHT_CAP_SUPP_CHAN_WIDTH_160MHZ;
-		else if (chwidth == CHANWIDTH_80P80MHZ)
+		else if (chwidth == CONF_OPER_CHWIDTH_80P80MHZ)
 			hapd->iconf->vht_capab |=
 				VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ;
 	}
@@ -1145,7 +1151,7 @@ void hostapd_acs_channel_selected(struct hostapd_data *hapd,
 		/* set defaults for backwards compatibility */
 		hostapd_set_oper_centr_freq_seg1_idx(hapd->iconf, 0);
 		hostapd_set_oper_centr_freq_seg0_idx(hapd->iconf, 0);
-		hostapd_set_oper_chwidth(hapd->iconf, CHANWIDTH_USE_HT);
+		hostapd_set_oper_chwidth(hapd->iconf, CONF_OPER_CHWIDTH_USE_HT);
 		if (acs_res->ch_width == 40) {
 			if (is_6ghz_freq(acs_res->pri_freq))
 				hostapd_set_oper_centr_freq_seg0_idx(
@@ -1155,21 +1161,32 @@ void hostapd_acs_channel_selected(struct hostapd_data *hapd,
 			hostapd_set_oper_centr_freq_seg0_idx(
 				hapd->iconf, acs_res->vht_seg0_center_ch);
 			if (acs_res->vht_seg1_center_ch == 0) {
-				hostapd_set_oper_chwidth(hapd->iconf,
-							 CHANWIDTH_80MHZ);
+				hostapd_set_oper_chwidth(
+					hapd->iconf, CONF_OPER_CHWIDTH_80MHZ);
 			} else {
-				hostapd_set_oper_chwidth(hapd->iconf,
-							 CHANWIDTH_80P80MHZ);
+				hostapd_set_oper_chwidth(
+					hapd->iconf,
+					CONF_OPER_CHWIDTH_80P80MHZ);
 				hostapd_set_oper_centr_freq_seg1_idx(
 					hapd->iconf,
 					acs_res->vht_seg1_center_ch);
 			}
 		} else if (acs_res->ch_width == 160) {
-			hostapd_set_oper_chwidth(hapd->iconf, CHANWIDTH_160MHZ);
+			hostapd_set_oper_chwidth(hapd->iconf,
+						 CONF_OPER_CHWIDTH_160MHZ);
 			hostapd_set_oper_centr_freq_seg0_idx(
 				hapd->iconf, acs_res->vht_seg1_center_ch);
 		}
 	}
+
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->iface->conf->ieee80211be && acs_res->ch_width == 320) {
+		hostapd_set_oper_chwidth(hapd->iconf, CONF_OPER_CHWIDTH_320MHZ);
+		hostapd_set_oper_centr_freq_seg0_idx(
+			hapd->iconf, acs_res->vht_seg1_center_ch);
+		hostapd_set_oper_centr_freq_seg1_idx(hapd->iconf, 0);
+	}
+#endif /* CONFIG_IEEE80211BE */
 
 out:
 	ret = hostapd_acs_completed(hapd->iface, err);
@@ -1543,7 +1560,8 @@ static int hostapd_event_new_sta(struct hostapd_data *hapd, const u8 *addr)
 
 
 static void hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
-				   const u8 *data, size_t data_len)
+				   const u8 *data, size_t data_len,
+				   enum frame_encryption encrypted)
 {
 	struct hostapd_iface *iface = hapd->iface;
 	struct sta_info *sta;
@@ -1557,7 +1575,7 @@ static void hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
 		}
 	}
 
-	ieee802_1x_receive(hapd, src, data, data_len);
+	ieee802_1x_receive(hapd, src, data, data_len, encrypted);
 }
 
 #endif /* HOSTAPD */
@@ -1952,7 +1970,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 	case EVENT_EAPOL_RX:
 		hostapd_event_eapol_rx(hapd, data->eapol_rx.src,
 				       data->eapol_rx.data,
-				       data->eapol_rx.data_len);
+				       data->eapol_rx.data_len,
+				       data->eapol_rx.encrypted);
 		break;
 	case EVENT_ASSOC:
 		if (!data)

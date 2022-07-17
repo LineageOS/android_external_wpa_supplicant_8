@@ -1686,7 +1686,7 @@ static int hostapd_ctrl_iface_eapol_rx(struct hostapd_data *hapd, char *cmd)
 		return -1;
 	}
 
-	ieee802_1x_receive(hapd, src, buf, len);
+	ieee802_1x_receive(hapd, src, buf, len, FRAME_ENCRYPTION_UNKNOWN);
 	os_free(buf);
 
 	return 0;
@@ -2530,6 +2530,9 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 		break;
 	case 160:
 		bandwidth = CHAN_WIDTH_160;
+		break;
+	case 320:
+		bandwidth = CHAN_WIDTH_320;
 		break;
 	default:
 		bandwidth = CHAN_WIDTH_20;

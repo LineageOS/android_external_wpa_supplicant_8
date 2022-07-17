@@ -832,7 +832,17 @@ int hostapd_dpp_auth_init(struct hostapd_data *hapd, const char *cmd)
 	}
 
 	addr = get_param(cmd, " tcp_addr=");
-	if (addr) {
+	if (addr && os_strcmp(addr, "from-uri") == 0) {
+		os_free(addr);
+		if (!peer_bi->host) {
+			wpa_printf(MSG_INFO,
+				   "DPP: TCP address not available in peer URI");
+			return -1;
+		}
+		tcp = 1;
+		os_memcpy(&ipaddr, peer_bi->host, sizeof(ipaddr));
+		tcp_port = peer_bi->port;
+	} else if (addr) {
 		int res;
 
 		res = hostapd_parse_ip_addr(addr, &ipaddr);
@@ -2064,9 +2074,11 @@ hostapd_dpp_rx_pkex_exchange_req(struct hostapd_data *hapd, const u8 *src,
 
 try_relay:
 #ifdef CONFIG_DPP2
-	if (v2)
-		dpp_relay_rx_action(hapd->iface->interfaces->dpp,
-				    src, hdr, buf, len, freq, NULL, NULL, hapd);
+	if (v2 && dpp_relay_rx_action(hapd->iface->interfaces->dpp,
+				      src, hdr, buf, len, freq, NULL, NULL,
+				      hapd) != 0)
+		wpa_printf(MSG_DEBUG,
+			   "DPP: No Relay available for the message");
 #else /* CONFIG_DPP2 */
 	wpa_printf(MSG_DEBUG, "DPP: No relay functionality included - skip");
 #endif /* CONFIG_DPP2 */

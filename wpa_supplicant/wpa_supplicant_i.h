@@ -902,6 +902,7 @@ struct wpa_supplicant {
 	unsigned int own_scan_requested:1;
 	unsigned int own_scan_running:1;
 	unsigned int clear_driver_scan_cache:1;
+	unsigned int manual_non_coloc_6ghz:1;
 	unsigned int manual_scan_id;
 	int scan_interval; /* time in sec between scans to find suitable AP */
 	int normal_scans; /* normal scans run before sched_scan */
@@ -966,6 +967,7 @@ struct wpa_supplicant {
 	struct wpabuf *pending_eapol_rx;
 	struct os_reltime pending_eapol_rx_time;
 	u8 pending_eapol_rx_src[ETH_ALEN];
+	enum frame_encryption pending_eapol_encrypted;
 	unsigned int last_eapol_matches_bssid:1;
 	unsigned int eapol_failed:1;
 	unsigned int eap_expected_failure:1;
@@ -1522,6 +1524,7 @@ struct wpa_supplicant {
 	char *dpp_discovery_override;
 	char *dpp_groups_override;
 	unsigned int dpp_ignore_netaccesskey_mismatch:1;
+	unsigned int dpp_discard_public_action:1;
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_DPP */
 
@@ -1653,7 +1656,8 @@ int wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
 			      struct wpa_ssid *ssid);
 void wpa_supplicant_terminate_proc(struct wpa_global *global);
 void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
-			     const u8 *buf, size_t len);
+			     const u8 *buf, size_t len,
+			     enum frame_encryption encrypted);
 void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_clear_status(struct wpa_supplicant *wpa_s);
 void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid);
@@ -1890,7 +1894,7 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 int wpas_ctrl_iface_get_pref_freq_list_override(struct wpa_supplicant *wpa_s,
 						enum wpa_driver_if_type if_type,
 						unsigned int *num,
-						unsigned int *freq_list);
+						struct weighted_pcl *freq_list);
 
 int wpa_is_fils_supported(struct wpa_supplicant *wpa_s);
 int wpa_is_fils_sk_pfs_supported(struct wpa_supplicant *wpa_s);

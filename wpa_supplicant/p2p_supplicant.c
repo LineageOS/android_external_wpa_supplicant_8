@@ -129,7 +129,7 @@ static int wpas_p2p_join_start(struct wpa_supplicant *wpa_s, int freq,
 			       const u8 *ssid, size_t ssid_len);
 static int wpas_p2p_setup_freqs(struct wpa_supplicant *wpa_s, int freq,
 				int *force_freq, int *pref_freq, int go,
-				unsigned int *pref_freq_list,
+				struct weighted_pcl *pref_freq_list,
 				unsigned int *num_pref_freq);
 static void wpas_p2p_join_scan_req(struct wpa_supplicant *wpa_s, int freq,
 				   const u8 *ssid, size_t ssid_len);
@@ -705,7 +705,8 @@ static u8 p2ps_group_capability(void *ctx, u8 incoming, u8 role,
 	struct wpa_supplicant *go_wpa_s, *cli_wpa_s;
 	struct wpa_ssid *persistent_go;
 	int p2p_no_group_iface;
-	unsigned int pref_freq_list[P2P_MAX_PREF_CHANNELS], size;
+	struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
+	unsigned int size;
 
 	wpa_printf(MSG_DEBUG, "P2P: Conncap - in:%d role:%d", incoming, role);
 
@@ -4732,7 +4733,7 @@ static int wpas_prov_disc_resp_cb(void *ctx)
 
 static int wpas_p2p_get_pref_freq_list(void *ctx, int go,
 				       unsigned int *len,
-				       unsigned int *freq_list)
+				       struct weighted_pcl *freq_list)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
@@ -5708,7 +5709,7 @@ static int wpas_p2p_join_start(struct wpa_supplicant *wpa_s, int freq,
 
 static int wpas_p2p_setup_freqs(struct wpa_supplicant *wpa_s, int freq,
 				int *force_freq, int *pref_freq, int go,
-				unsigned int *pref_freq_list,
+				struct weighted_pcl *pref_freq_list,
 				unsigned int *num_pref_freq)
 {
 	struct wpa_used_freq_data *freqs;
@@ -5822,16 +5823,19 @@ static int wpas_p2p_setup_freqs(struct wpa_supplicant *wpa_s, int freq,
 				i = 0;
 				while (i < *num_pref_freq &&
 					(!p2p_supported_freq(wpa_s->global->p2p,
-						pref_freq_list[i]) ||
-					wpas_p2p_disallowed_freq(wpa_s->global,
-							pref_freq_list[i]))) {
+						pref_freq_list[i].freq) ||
+					wpas_p2p_disallowed_freq(
+						wpa_s->global,
+						pref_freq_list[i].freq) ||
+					!p2p_pref_freq_allowed(&pref_freq_list[i],
+						go))) {
 					wpa_printf(MSG_DEBUG,
 						"P2P: preferred_freq_list[%d]=%d is disallowed",
-						i, pref_freq_list[i]);
+						i, pref_freq_list[i].freq);
 					i++;
 				}
 				if (i != *num_pref_freq) {
-					best_freq = pref_freq_list[i];
+					best_freq = pref_freq_list[i].freq;
 					wpa_printf(MSG_DEBUG,
 						"P2P: Using preferred_freq_list[%d]=%d",
 						i, best_freq);
@@ -5955,7 +5959,8 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	enum wpa_driver_if_type iftype;
 	const u8 *if_addr;
 	struct wpa_ssid *ssid = NULL;
-	unsigned int pref_freq_list[P2P_MAX_PREF_CHANNELS], size;
+	struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
+	unsigned int size;
 
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
 		return -1;
@@ -6240,7 +6245,7 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 
 	if (!wpa_s->conf->num_p2p_pref_chan && !freq) {
 		unsigned int i, size = P2P_MAX_PREF_CHANNELS;
-		unsigned int pref_freq_list[P2P_MAX_PREF_CHANNELS];
+		struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
 		int res;
 
 		res = wpa_drv_get_pref_freq_list(wpa_s, WPA_IF_P2P_GO,
@@ -6252,16 +6257,19 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 			i = 0;
 			while (i < size &&
 			       (!p2p_supported_freq(wpa_s->global->p2p,
-						    pref_freq_list[i]) ||
-				wpas_p2p_disallowed_freq(wpa_s->global,
-							 pref_freq_list[i]))) {
+						    pref_freq_list[i].freq) ||
+				wpas_p2p_disallowed_freq(
+					wpa_s->global,
+					pref_freq_list[i].freq) ||
+				!p2p_pref_freq_allowed(&pref_freq_list[i],
+						       true))) {
 				wpa_printf(MSG_DEBUG,
 					   "P2P: preferred_freq_list[%d]=%d is disallowed",
-					   i, pref_freq_list[i]);
+					   i, pref_freq_list[i].freq);
 				i++;
 			}
 			if (i != size) {
-				freq = pref_freq_list[i];
+				freq = pref_freq_list[i].freq;
 				wpa_printf(MSG_DEBUG,
 					   "P2P: Using preferred_freq_list[%d]=%d",
 					   i, freq);
@@ -6740,8 +6748,8 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 
 			if (!is_6ghz &&
 			    ieee80211_freq_to_channel_ext(
-				    cand, -1, CHANWIDTH_USE_HT, &op_class,
-				    &chan) != NUM_HOSTAPD_MODES &&
+				    cand, -1, CONF_OPER_CHWIDTH_USE_HT,
+				    &op_class, &chan) != NUM_HOSTAPD_MODES &&
 			    wpas_p2p_verify_channel(
 				    wpa_s, hwmode, op_class, chan,
 				    BW40MINUS) == ALLOWED)
@@ -6749,8 +6757,8 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 
 			if (!supported && !is_6ghz &&
 			    ieee80211_freq_to_channel_ext(
-				    cand, 1, CHANWIDTH_USE_HT, &op_class,
-				    &chan) != NUM_HOSTAPD_MODES &&
+				    cand, 1, CONF_OPER_CHWIDTH_USE_HT,
+				    &op_class, &chan) != NUM_HOSTAPD_MODES &&
 			    wpas_p2p_verify_channel(
 				    wpa_s, hwmode, op_class, chan,
 				    BW40PLUS) == ALLOWED)
@@ -7636,7 +7644,8 @@ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	int force_freq = 0;
 	int res;
 	int no_pref_freq_given = pref_freq == 0;
-	unsigned int pref_freq_list[P2P_MAX_PREF_CHANNELS], size;
+	struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
+	unsigned int size;
 
 	if (wpas_p2p_check_6ghz(wpa_s, NULL, allow_6ghz, freq))
 		return -1;
@@ -7725,7 +7734,8 @@ int wpas_p2p_invite_group(struct wpa_supplicant *wpa_s, const char *ifname,
 	int persistent;
 	int freq = 0, force_freq = 0, pref_freq = 0;
 	int res;
-	unsigned int pref_freq_list[P2P_MAX_PREF_CHANNELS], size;
+	struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
+	unsigned int size;
 
 	wpa_s->p2p_persistent_go_freq = 0;
 	wpa_s->p2p_go_ht40 = 0;
@@ -9781,12 +9791,14 @@ static int wpas_p2p_move_go_csa(struct wpa_supplicant *wpa_s)
 		csa_settings.freq_params.center_freq2 = freq2;
 
 		switch (conf->vht_oper_chwidth) {
-		case CHANWIDTH_80MHZ:
-		case CHANWIDTH_80P80MHZ:
+		case CONF_OPER_CHWIDTH_80MHZ:
+		case CONF_OPER_CHWIDTH_80P80MHZ:
 			csa_settings.freq_params.bandwidth = 80;
 			break;
-		case CHANWIDTH_160MHZ:
+		case CONF_OPER_CHWIDTH_160MHZ:
 			csa_settings.freq_params.bandwidth = 160;
+			break;
+		default:
 			break;
 		}
 	}

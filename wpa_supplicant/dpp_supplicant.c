@@ -802,7 +802,17 @@ int wpas_dpp_auth_init(struct wpa_supplicant *wpa_s, const char *cmd)
 	}
 
 	addr = get_param(cmd, " tcp_addr=");
-	if (addr) {
+	if (addr && os_strcmp(addr, "from-uri") == 0) {
+		os_free(addr);
+		if (!peer_bi->host) {
+			wpa_printf(MSG_INFO,
+				   "DPP: TCP address not available in peer URI");
+			return -1;
+		}
+		tcp = 1;
+		os_memcpy(&ipaddr, peer_bi->host, sizeof(ipaddr));
+		tcp_port = peer_bi->port;
+	} else if (addr) {
 		int res;
 
 		res = hostapd_parse_ip_addr(addr, &ipaddr);
@@ -3140,6 +3150,13 @@ void wpas_dpp_rx_action(struct wpa_supplicant *wpa_s, const u8 *src,
 		return;
 	if (WPA_GET_BE24(buf) != OUI_WFA || buf[3] != DPP_OUI_TYPE)
 		return;
+#ifdef CONFIG_TESTING_OPTIONS
+	if (wpa_s->dpp_discard_public_action) {
+		wpa_printf(MSG_DEBUG,
+			   "TESTING: Discard received DPP Public Action frame");
+		return;
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
 	hdr = buf;
 	buf += 4;
 	len -= 4;

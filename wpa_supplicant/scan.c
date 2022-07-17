@@ -1341,6 +1341,12 @@ ssid_list_set:
 		}
 	}
 
+	if (wpa_s->last_scan_req == MANUAL_SCAN_REQ &&
+	    wpa_s->manual_non_coloc_6ghz) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Collocated 6 GHz logic is disabled");
+		params.non_coloc_6ghz = 1;
+	}
+
 	scan_params = &params;
 
 scan:
@@ -2915,6 +2921,7 @@ wpa_scan_clone_params(const struct wpa_driver_scan_params *src)
 	params->relative_adjust_band = src->relative_adjust_band;
 	params->relative_adjust_rssi = src->relative_adjust_rssi;
 	params->p2p_include_6ghz = src->p2p_include_6ghz;
+	params->non_coloc_6ghz = src->non_coloc_6ghz;
 	return params;
 
 failed:

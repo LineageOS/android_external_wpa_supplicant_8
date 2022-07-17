@@ -670,27 +670,27 @@ ChannelBandwidth getChannelBandwidth(struct hostapd_config *iconf)
 		   iconf->vht_oper_chwidth, iconf->ieee80211n,
 		   iconf->secondary_channel);
 	switch (iconf->vht_oper_chwidth) {
-	case CHANWIDTH_80MHZ:
+	case CONF_OPER_CHWIDTH_80MHZ:
 		return ChannelBandwidth::BANDWIDTH_80;
-	case CHANWIDTH_80P80MHZ:
+	case CONF_OPER_CHWIDTH_80P80MHZ:
 		return ChannelBandwidth::BANDWIDTH_80P80;
 		break;
-	case CHANWIDTH_160MHZ:
+	case CONF_OPER_CHWIDTH_160MHZ:
 		return ChannelBandwidth::BANDWIDTH_160;
 		break;
-	case CHANWIDTH_USE_HT:
+	case CONF_OPER_CHWIDTH_USE_HT:
 		if (iconf->ieee80211n) {
 			return iconf->secondary_channel != 0 ?
 				ChannelBandwidth::BANDWIDTH_40 : ChannelBandwidth::BANDWIDTH_20;
 		}
 		return ChannelBandwidth::BANDWIDTH_20_NOHT;
-	case CHANWIDTH_2160MHZ:
+	case CONF_OPER_CHWIDTH_2160MHZ:
 		return ChannelBandwidth::BANDWIDTH_2160;
-	case CHANWIDTH_4320MHZ:
+	case CONF_OPER_CHWIDTH_4320MHZ:
 		return ChannelBandwidth::BANDWIDTH_4320;
-	case CHANWIDTH_6480MHZ:
+	case CONF_OPER_CHWIDTH_6480MHZ:
 		return ChannelBandwidth::BANDWIDTH_6480;
-	case CHANWIDTH_8640MHZ:
+	case CONF_OPER_CHWIDTH_8640MHZ:
 		return ChannelBandwidth::BANDWIDTH_8640;
 	default:
 		return ChannelBandwidth::BANDWIDTH_INVALID;

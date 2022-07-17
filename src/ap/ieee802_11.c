@@ -4629,6 +4629,9 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 	if (hapd->conf->wpa && wpa_ie) {
 		enum wpa_validate_result res;
 
+		if (check_sa_query(hapd, sta, reassoc))
+			return WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
+
 		wpa_ie -= 2;
 		wpa_ie_len += 2;
 		if (sta->wpa_sm == NULL)
@@ -4651,9 +4654,6 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		resp = wpa_res_to_status_code(res);
 		if (resp != WLAN_STATUS_SUCCESS)
 			return resp;
-
-		if (check_sa_query(hapd, sta, reassoc))
-			return WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
 
 		if (wpa_auth_uses_mfp(sta->wpa_sm))
 			sta->flags |= WLAN_STA_MFP;
@@ -6589,7 +6589,8 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 			ieee802_1x_receive(
 				hapd, mgmt->da,
 				wpabuf_head(sta->pending_eapol_rx->buf),
-				wpabuf_len(sta->pending_eapol_rx->buf));
+				wpabuf_len(sta->pending_eapol_rx->buf),
+				sta->pending_eapol_rx->encrypted);
 		}
 		wpabuf_free(sta->pending_eapol_rx->buf);
 		os_free(sta->pending_eapol_rx);
@@ -7032,7 +7033,7 @@ u8 * hostapd_eid_txpower_envelope(struct hostapd_data *hapd, u8 *eid)
 #endif /* CONFIG_IEEE80211AX */
 
 	switch (hostapd_get_oper_chwidth(iconf)) {
-	case CHANWIDTH_USE_HT:
+	case CONF_OPER_CHWIDTH_USE_HT:
 		if (iconf->secondary_channel == 0) {
 			/* Max Transmit Power count = 0 (20 MHz) */
 			tx_pwr_count = 0;
@@ -7041,12 +7042,12 @@ u8 * hostapd_eid_txpower_envelope(struct hostapd_data *hapd, u8 *eid)
 			tx_pwr_count = 1;
 		}
 		break;
-	case CHANWIDTH_80MHZ:
+	case CONF_OPER_CHWIDTH_80MHZ:
 		/* Max Transmit Power count = 2 (20, 40, and 80 MHz) */
 		tx_pwr_count = 2;
 		break;
-	case CHANWIDTH_80P80MHZ:
-	case CHANWIDTH_160MHZ:
+	case CONF_OPER_CHWIDTH_80P80MHZ:
+	case CONF_OPER_CHWIDTH_160MHZ:
 		/* Max Transmit Power count = 3 (20, 40, 80, 160/80+80 MHz) */
 		tx_pwr_count = 3;
 		break;

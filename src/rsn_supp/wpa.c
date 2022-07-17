@@ -187,7 +187,7 @@ void wpa_sm_key_request(struct wpa_sm *sm, int error, int pairwise)
 	u8 bssid[ETH_ALEN], *rbuf, *key_mic, *mic;
 
 	if (pairwise && sm->wpa_deny_ptk0_rekey && !sm->use_ext_key_id &&
-	    wpa_sm_get_state(sm) == WPA_COMPLETED) {
+	    wpa_sm_get_state(sm) == WPA_COMPLETED && !error) {
 		wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
 			"WPA: PTK0 rekey not allowed, reconnecting");
 		wpa_sm_reconnect(sm);
@@ -553,6 +553,8 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
 		       sm->proto == WPA_PROTO_OSEN) ?
 		EAPOL_KEY_TYPE_RSN : EAPOL_KEY_TYPE_WPA;
 	key_info = ver | WPA_KEY_INFO_KEY_TYPE;
+	if (sm->ptk_set && sm->proto != WPA_PROTO_WPA)
+		key_info |= WPA_KEY_INFO_SECURE;
 	if (mic_len)
 		key_info |= WPA_KEY_INFO_MIC;
 	else
@@ -673,13 +675,21 @@ static void wpa_supplicant_process_1_of_4(struct wpa_sm *sm,
 					  const unsigned char *src_addr,
 					  const struct wpa_eapol_key *key,
 					  u16 ver, const u8 *key_data,
-					  size_t key_data_len)
+					  size_t key_data_len,
+					  enum frame_encryption encrypted)
 {
 	struct wpa_eapol_ie_parse ie;
 	struct wpa_ptk *ptk;
 	int res;
 	u8 *kde, *kde_buf = NULL;
 	size_t kde_len;
+
+	if (encrypted == FRAME_NOT_ENCRYPTED && sm->tk_set &&
+	    wpa_sm_pmf_enabled(sm)) {
+		wpa_printf(MSG_DEBUG,
+			   "RSN: Discard unencrypted EAPOL-Key msg 1/4 when TK is set and PMF is enabled");
+		return;
+	}
 
 	if (wpa_sm_get_network_ctx(sm) == NULL) {
 		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING, "WPA: No SSID info "
@@ -695,7 +705,6 @@ static void wpa_supplicant_process_1_of_4(struct wpa_sm *sm,
 		return;
 	}
 
-	wpa_sm_set_state(sm, WPA_4WAY_HANDSHAKE);
 	wpa_dbg(sm->ctx->msg_ctx, MSG_INFO, "WPA: RX message 1 of 4-Way "
 		"Handshake from " MACSTR " (ver=%d)", MAC2STR(src_addr), ver);
 
@@ -705,8 +714,11 @@ static void wpa_supplicant_process_1_of_4(struct wpa_sm *sm,
 		/* RSN: msg 1/4 should contain PMKID for the selected PMK */
 		wpa_hexdump(MSG_DEBUG, "RSN: msg 1/4 key data",
 			    key_data, key_data_len);
-		if (wpa_supplicant_parse_ies(key_data, key_data_len, &ie) < 0)
-			goto failed;
+		if (wpa_supplicant_parse_ies(key_data, key_data_len, &ie) < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "RSN: Discard EAPOL-Key msg 1/4 with invalid IEs/KDEs");
+			return;
+		}
 		if (ie.pmkid) {
 			wpa_hexdump(MSG_DEBUG, "RSN: PMKID from "
 				    "Authenticator", ie.pmkid, PMKID_LEN);
@@ -721,6 +733,8 @@ static void wpa_supplicant_process_1_of_4(struct wpa_sm *sm,
 	}
 	if (res)
 		goto failed;
+
+	wpa_sm_set_state(sm, WPA_4WAY_HANDSHAKE);
 
 	if (sm->renew_snonce) {
 		if (random_get_bytes(sm->snonce, WPA_NONCE_LEN)) {
@@ -969,6 +983,7 @@ static int wpa_supplicant_install_ptk(struct wpa_sm *sm,
 	os_memset(sm->ptk.tk, 0, WPA_TK_MAX_LEN);
 	sm->ptk.tk_len = 0;
 	sm->ptk.installed = 1;
+	sm->tk_set = true;
 
 	if (sm->wpa_ptk_rekey) {
 		eloop_cancel_timeout(wpa_sm_rekey_ptk, sm, NULL);
@@ -2476,6 +2491,7 @@ static int wpa_supp_aead_decrypt(struct wpa_sm *sm, u8 *buf, size_t buf_len,
  * @src_addr: Source MAC address of the EAPOL packet
  * @buf: Pointer to the beginning of the EAPOL data (EAPOL header)
  * @len: Length of the EAPOL frame
+ * @encrypted: Whether the frame was encrypted
  * Returns: 1 = WPA EAPOL-Key processed, 0 = not a WPA EAPOL-Key, -1 failure
  *
  * This function is called for each received EAPOL frame. Other than EAPOL-Key
@@ -2487,7 +2503,7 @@ static int wpa_supp_aead_decrypt(struct wpa_sm *sm, u8 *buf, size_t buf_len,
  * successful key handshake.
  */
 int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
-		    const u8 *buf, size_t len)
+		    const u8 *buf, size_t len, enum frame_encryption encrypted)
 {
 	size_t plen, data_len, key_data_len;
 	const struct ieee802_1x_hdr *hdr;
@@ -2722,7 +2738,8 @@ int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
 			/* 1/4 4-Way Handshake */
 			wpa_supplicant_process_1_of_4(sm, src_addr, key,
 						      ver, key_data,
-						      key_data_len);
+						      key_data_len,
+						      encrypted);
 		}
 	} else {
 		if ((mic_len && (key_info & WPA_KEY_INFO_MIC)) ||
@@ -3063,6 +3080,7 @@ void wpa_sm_notify_assoc(struct wpa_sm *sm, const u8 *bssid)
 		os_memset(&sm->gtk_wnm_sleep, 0, sizeof(sm->gtk_wnm_sleep));
 		os_memset(&sm->igtk, 0, sizeof(sm->igtk));
 		os_memset(&sm->igtk_wnm_sleep, 0, sizeof(sm->igtk_wnm_sleep));
+		sm->tk_set = false;
 	}
 
 #ifdef CONFIG_TDLS
@@ -3850,6 +3868,7 @@ void wpa_sm_drop_sa(struct wpa_sm *sm)
 	wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG, "WPA: Clear old PMK and PTK");
 	sm->ptk_set = 0;
 	sm->tptk_set = 0;
+	sm->tk_set = false;
 	sm->pmk_len = 0;
 	os_memset(sm->pmk, 0, sizeof(sm->pmk));
 	os_memset(&sm->ptk, 0, sizeof(sm->ptk));
@@ -3886,7 +3905,7 @@ int wpa_sm_has_ptk_installed(struct wpa_sm *sm)
 {
 	if (!sm)
 		return 0;
-	return sm->ptk.installed;
+	return sm->tk_set || sm->ptk.installed;
 }
 
 
@@ -5033,6 +5052,7 @@ int fils_process_assoc_resp(struct wpa_sm *sm, const u8 *resp, size_t len)
 	os_memset(sm->ptk.tk, 0, WPA_TK_MAX_LEN);
 	sm->ptk.tk_len = 0;
 	sm->ptk.installed = 1;
+	sm->tk_set = true;
 
 	/* FILS HLP Container */
 	fils_process_hlp_container(sm, ie_start, end - ie_start);

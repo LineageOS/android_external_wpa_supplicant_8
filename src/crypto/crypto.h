@@ -1086,16 +1086,20 @@ struct wpabuf * crypto_ec_key_get_pubkey_point(struct crypto_ec_key *key,
  * crypto_ec_key_get_public_key - Get EC public key as an EC point
  * @key: EC key from crypto_ec_key_parse/set_pub() or crypto_ec_key_parse_priv()
  * Returns: Public key as an EC point or %NULL on failure
+ *
+ * The caller needs to free the returned value with crypto_ec_point_deinit().
  */
-const struct crypto_ec_point *
+struct crypto_ec_point *
 crypto_ec_key_get_public_key(struct crypto_ec_key *key);
 
 /**
  * crypto_ec_key_get_private_key - Get EC private key as a bignum
  * @key: EC key from crypto_ec_key_parse/set_pub() or crypto_ec_key_parse_priv()
  * Returns: Private key as a bignum or %NULL on failure
+ *
+ * The caller needs to free the returned value with crypto_bignum_deinit().
  */
-const struct crypto_bignum *
+struct crypto_bignum *
 crypto_ec_key_get_private_key(struct crypto_ec_key *key);
 
 /**

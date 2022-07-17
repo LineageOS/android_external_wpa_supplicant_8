@@ -1718,7 +1718,7 @@ static int setup_interface2(struct hostapd_iface *iface)
 			goto fail;
 
 		if (iface->conf->op_class) {
-			int ch_width;
+			enum oper_chan_width ch_width;
 
 			ch_width = op_class_to_ch_width(iface->conf->op_class);
 			hostapd_set_oper_chwidth(iface->conf, ch_width);
@@ -1781,6 +1781,16 @@ static void fst_hostapd_get_channel_info_cb(void *ctx,
 	struct hostapd_data *hapd = ctx;
 
 	*hw_mode = ieee80211_freq_to_chan(hapd->iface->freq, channel);
+}
+
+
+static int fst_hostapd_get_hw_modes_cb(void *ctx,
+				       struct hostapd_hw_modes **modes)
+{
+	struct hostapd_data *hapd = ctx;
+
+	*modes = hapd->iface->hw_features;
+	return hapd->iface->num_hw_features;
 }
 
 
@@ -1876,9 +1886,11 @@ static const u8 * fst_hostapd_get_peer_next(void *ctx,
 void fst_hostapd_fill_iface_obj(struct hostapd_data *hapd,
 				struct fst_wpa_obj *iface_obj)
 {
+	os_memset(iface_obj, 0, sizeof(*iface_obj));
 	iface_obj->ctx = hapd;
 	iface_obj->get_bssid = fst_hostapd_get_bssid_cb;
 	iface_obj->get_channel_info = fst_hostapd_get_channel_info_cb;
+	iface_obj->get_hw_modes = fst_hostapd_get_hw_modes_cb;
 	iface_obj->set_ies = fst_hostapd_set_ies_cb;
 	iface_obj->send_action = fst_hostapd_send_action_cb;
 	iface_obj->get_mb_ie = fst_hostapd_get_mb_ie_cb;
@@ -3491,16 +3503,21 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
 	case 0:
 	case 20:
 	case 40:
-		hostapd_set_oper_chwidth(conf, CHANWIDTH_USE_HT);
+		hostapd_set_oper_chwidth(conf, CONF_OPER_CHWIDTH_USE_HT);
 		break;
 	case 80:
 		if (params->center_freq2)
-			hostapd_set_oper_chwidth(conf, CHANWIDTH_80P80MHZ);
+			hostapd_set_oper_chwidth(conf,
+						 CONF_OPER_CHWIDTH_80P80MHZ);
 		else
-			hostapd_set_oper_chwidth(conf, CHANWIDTH_80MHZ);
+			hostapd_set_oper_chwidth(conf,
+						 CONF_OPER_CHWIDTH_80MHZ);
 		break;
 	case 160:
-		hostapd_set_oper_chwidth(conf, CHANWIDTH_160MHZ);
+		hostapd_set_oper_chwidth(conf, CONF_OPER_CHWIDTH_160MHZ);
+		break;
+	case 320:
+		hostapd_set_oper_chwidth(conf, CONF_OPER_CHWIDTH_320MHZ);
 		break;
 	default:
 		return -1;
@@ -3538,15 +3555,15 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
 	switch (settings->freq_params.bandwidth) {
 	case 80:
 		if (settings->freq_params.center_freq2)
-			bandwidth = CHANWIDTH_80P80MHZ;
+			bandwidth = CONF_OPER_CHWIDTH_80P80MHZ;
 		else
-			bandwidth = CHANWIDTH_80MHZ;
+			bandwidth = CONF_OPER_CHWIDTH_80MHZ;
 		break;
 	case 160:
-		bandwidth = CHANWIDTH_160MHZ;
+		bandwidth = CONF_OPER_CHWIDTH_160MHZ;
 		break;
 	default:
-		bandwidth = CHANWIDTH_USE_HT;
+		bandwidth = CONF_OPER_CHWIDTH_USE_HT;
 		break;
 	}
 
@@ -3676,7 +3693,8 @@ void
 hostapd_switch_channel_fallback(struct hostapd_iface *iface,
 				const struct hostapd_freq_params *freq_params)
 {
-	int seg0_idx = 0, seg1_idx = 0, bw = CHANWIDTH_USE_HT;
+	int seg0_idx = 0, seg1_idx = 0;
+	enum oper_chan_width bw = CONF_OPER_CHWIDTH_USE_HT;
 
 	wpa_printf(MSG_DEBUG, "Restarting all CSA-related BSSes");
 
@@ -3689,16 +3707,19 @@ hostapd_switch_channel_fallback(struct hostapd_iface *iface,
 	case 0:
 	case 20:
 	case 40:
-		bw = CHANWIDTH_USE_HT;
+		bw = CONF_OPER_CHWIDTH_USE_HT;
 		break;
 	case 80:
 		if (freq_params->center_freq2)
-			bw = CHANWIDTH_80P80MHZ;
+			bw = CONF_OPER_CHWIDTH_80P80MHZ;
 		else
-			bw = CHANWIDTH_80MHZ;
+			bw = CONF_OPER_CHWIDTH_80MHZ;
 		break;
 	case 160:
-		bw = CHANWIDTH_160MHZ;
+		bw = CONF_OPER_CHWIDTH_160MHZ;
+		break;
+	case 320:
+		bw = CONF_OPER_CHWIDTH_320MHZ;
 		break;
 	default:
 		wpa_printf(MSG_WARNING, "Unknown CSA bandwidth: %d",
@@ -3792,7 +3813,7 @@ static void hostapd_switch_color_timeout_handler(void *eloop_data,
 
 	r = os_random() % HE_OPERATION_BSS_COLOR_MAX;
 	for (i = 0; i < HE_OPERATION_BSS_COLOR_MAX; i++) {
-		if (r && !(hapd->color_collision_bitmap & BIT(r)))
+		if (r && !(hapd->color_collision_bitmap & (1ULL << r)))
 			break;
 
 		r = (r + 1) % HE_OPERATION_BSS_COLOR_MAX;

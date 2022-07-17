@@ -735,16 +735,13 @@ static void wpa_free_sta_sm(struct wpa_state_machine *sm)
 {
 #ifdef CONFIG_P2P
 	if (WPA_GET_BE32(sm->ip_addr)) {
-		u32 start;
 		wpa_printf(MSG_DEBUG,
 			   "P2P: Free assigned IP address %u.%u.%u.%u from "
-			   MACSTR,
+			   MACSTR " (bit %u)",
 			   sm->ip_addr[0], sm->ip_addr[1],
 			   sm->ip_addr[2], sm->ip_addr[3],
-			   MAC2STR(sm->addr));
-		start = WPA_GET_BE32(sm->wpa_auth->conf.ip_addr_start);
-		bitfield_clear(sm->wpa_auth->ip_pool,
-			       WPA_GET_BE32(sm->ip_addr) - start);
+			   MAC2STR(sm->addr), sm->ip_addr_bit);
+		bitfield_clear(sm->wpa_auth->ip_pool, sm->ip_addr_bit);
 	}
 #endif /* CONFIG_P2P */
 	if (sm->GUpdateStationKeys) {
@@ -2204,6 +2201,7 @@ SM_STATE(WPA_PTK, PTKSTART)
 {
 	u8 buf[2 + RSN_SELECTOR_LEN + PMKID_LEN], *pmkid = NULL;
 	size_t pmkid_len = 0;
+	u16 key_info;
 
 	SM_ENTRY_MA(WPA_PTK, PTKSTART, wpa_ptk);
 	sm->PTKRequest = false;
@@ -2307,8 +2305,10 @@ SM_STATE(WPA_PTK, PTKSTART)
 	}
 	if (!pmkid)
 		pmkid_len = 0;
-	wpa_send_eapol(sm->wpa_auth, sm,
-		       WPA_KEY_INFO_ACK | WPA_KEY_INFO_KEY_TYPE, NULL,
+	key_info = WPA_KEY_INFO_ACK | WPA_KEY_INFO_KEY_TYPE;
+	if (sm->pairwise_set && sm->wpa != WPA_VERSION_WPA)
+		key_info |= WPA_KEY_INFO_SECURE;
+	wpa_send_eapol(sm->wpa_auth, sm, key_info, NULL,
 		       sm->ANonce, pmkid, pmkid_len, 0, 0);
 }
 
@@ -2892,6 +2892,7 @@ int fils_set_tk(struct wpa_state_machine *sm)
 		wpa_printf(MSG_DEBUG, "FILS: Failed to set TK to the driver");
 		return -1;
 	}
+	sm->pairwise_set = true;
 	sm->tk_already_set = true;
 
 	wpa_auth_store_ptksa(sm->wpa_auth, sm->addr, sm->pairwise,
@@ -3178,12 +3179,14 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 		if (idx >= 0) {
 			u32 start = WPA_GET_BE32(wpa_auth->conf.ip_addr_start);
 			bitfield_set(wpa_auth->ip_pool, idx);
+			sm->ip_addr_bit = idx;
 			WPA_PUT_BE32(sm->ip_addr, start + idx);
 			wpa_printf(MSG_DEBUG,
 				   "P2P: Assigned IP address %u.%u.%u.%u to "
-				   MACSTR, sm->ip_addr[0], sm->ip_addr[1],
+				   MACSTR " (bit %u)",
+				   sm->ip_addr[0], sm->ip_addr[1],
 				   sm->ip_addr[2], sm->ip_addr[3],
-				   MAC2STR(sm->addr));
+				   MAC2STR(sm->addr), sm->ip_addr_bit);
 		}
 	}
 #endif /* CONFIG_P2P */

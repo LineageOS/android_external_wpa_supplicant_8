@@ -41,25 +41,41 @@ static u16 ieee80211_eht_ppet_size(u16 ppe_thres_hdr, const u8 *phy_cap_info)
 }
 
 
-static u8 ieee80211_eht_mcs_set_size(const u8 *he_phy_cap,
+static u8 ieee80211_eht_mcs_set_size(enum hostapd_hw_mode mode, u8 opclass,
+				     const u8 *he_phy_cap,
 				     const u8 *eht_phy_cap)
 {
 	u8 sz = EHT_PHYCAP_MCS_NSS_LEN_20MHZ_PLUS;
+	bool band24, band5, band6;
 
-	if ((he_phy_cap[HE_PHYCAP_CHANNEL_WIDTH_SET_IDX] &
-	    (HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_IN_2G |
-	     HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G |
-	     HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
-	     HE_PHYCAP_CHANNEL_WIDTH_SET_80PLUS80MHZ_IN_5G)) == 0)
+	band24 = mode == HOSTAPD_MODE_IEEE80211B ||
+		mode == HOSTAPD_MODE_IEEE80211G ||
+		mode == NUM_HOSTAPD_MODES;
+	band5 = mode == HOSTAPD_MODE_IEEE80211A ||
+		mode == NUM_HOSTAPD_MODES;
+	band6 = is_6ghz_op_class(opclass);
+
+	if (band24 &&
+	    (he_phy_cap[HE_PHYCAP_CHANNEL_WIDTH_SET_IDX] &
+	     HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_IN_2G) == 0)
 		return EHT_PHYCAP_MCS_NSS_LEN_20MHZ_ONLY;
 
-	if (he_phy_cap[HE_PHYCAP_CHANNEL_WIDTH_SET_IDX] &
-	    (HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
-	     HE_PHYCAP_CHANNEL_WIDTH_SET_80PLUS80MHZ_IN_5G))
-		sz += EHT_PHYCAP_MCS_NSS_LEN_20MHZ_PLUS;
+	if (band5 &&
+	    (he_phy_cap[HE_PHYCAP_CHANNEL_WIDTH_SET_IDX] &
+	     (HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G |
+	      HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
+	      HE_PHYCAP_CHANNEL_WIDTH_SET_80PLUS80MHZ_IN_5G)) == 0)
+		return EHT_PHYCAP_MCS_NSS_LEN_20MHZ_ONLY;
 
-	if (eht_phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &
-	    EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK)
+	if (band5 &&
+	    (he_phy_cap[HE_PHYCAP_CHANNEL_WIDTH_SET_IDX] &
+	     (HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
+	      HE_PHYCAP_CHANNEL_WIDTH_SET_80PLUS80MHZ_IN_5G)))
+	    sz += EHT_PHYCAP_MCS_NSS_LEN_20MHZ_PLUS;
+
+	if (band6 &&
+	    (eht_phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &
+	     EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK))
 		sz += EHT_PHYCAP_MCS_NSS_LEN_20MHZ_PLUS;
 
 	return sz;
@@ -81,7 +97,8 @@ size_t hostapd_eid_eht_capab_len(struct hostapd_data *hapd,
 	if (!eht_cap->eht_supported)
 		return 0;
 
-	len += ieee80211_eht_mcs_set_size(mode->he_capab[opmode].phy_cap,
+	len += ieee80211_eht_mcs_set_size(mode->mode, hapd->iconf->op_class,
+					  mode->he_capab[opmode].phy_cap,
 					  eht_cap->phy_cap);
 	len += ieee80211_eht_ppet_size(WPA_GET_LE16(&eht_cap->ppet[0]),
 				       eht_cap->phy_cap);
@@ -133,7 +150,9 @@ u8 * hostapd_eid_eht_capab(struct hostapd_data *hapd, u8 *eid,
 
 	pos = cap->optional;
 
-	mcs_nss_len = ieee80211_eht_mcs_set_size(mode->he_capab[opmode].phy_cap,
+	mcs_nss_len = ieee80211_eht_mcs_set_size(mode->mode,
+						 hapd->iconf->op_class,
+						 mode->he_capab[opmode].phy_cap,
 						 eht_cap->phy_cap);
 	if (mcs_nss_len) {
 		os_memcpy(pos, eht_cap->mcs, mcs_nss_len);
@@ -157,7 +176,8 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
 {
 	struct hostapd_config *conf = hapd->iconf;
 	struct ieee80211_eht_operation *oper;
-	u8 *pos = eid, chwidth, seg0 = 0, seg1 = 0;
+	u8 *pos = eid, seg0 = 0, seg1 = 0;
+	enum oper_chan_width chwidth;
 
 	if (!hapd->iface->current_mode)
 		return eid;
@@ -177,9 +197,7 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
 	seg0 = hostapd_get_oper_centr_freq_seg0_idx(conf);
 
 	switch (chwidth) {
-#if 0 /* FIX: Need to clean up CHANWIDTH_* use for protocol vs. internal
-       * needs to be able to define this. */
-	case CHANWIDTH_320MHZ:
+	case CONF_OPER_CHWIDTH_320MHZ:
 		oper->oper_info.control |= EHT_OPER_CHANNEL_WIDTH_320MHZ;
 		seg1 = seg0;
 		if (hapd->iconf->channel < seg0)
@@ -187,8 +205,7 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
 		else
 			seg0 += 16;
 		break;
-#endif
-	case CHANWIDTH_160MHZ:
+	case CONF_OPER_CHWIDTH_160MHZ:
 		oper->oper_info.control |= EHT_OPER_CHANNEL_WIDTH_160MHZ;
 		seg1 = seg0;
 		if (hapd->iconf->channel < seg0)
@@ -196,10 +213,10 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
 		else
 			seg0 += 8;
 		break;
-	case CHANWIDTH_80MHZ:
+	case CONF_OPER_CHWIDTH_80MHZ:
 		oper->oper_info.control |= EHT_OPER_CHANNEL_WIDTH_80MHZ;
 		break;
-	case CHANWIDTH_USE_HT:
+	case CONF_OPER_CHWIDTH_USE_HT:
 		if (seg0)
 			oper->oper_info.control |= EHT_OPER_CHANNEL_WIDTH_40MHZ;
 		break;
@@ -257,7 +274,8 @@ static bool check_valid_eht_mcs(struct hostapd_data *hapd,
 	capab = (const struct ieee80211_eht_capabilities *) sta_eht_capab;
 	sta_mcs = capab->optional;
 
-	if (ieee80211_eht_mcs_set_size(mode->he_capab[opmode].phy_cap,
+	if (ieee80211_eht_mcs_set_size(mode->mode, hapd->iconf->op_class,
+				       mode->he_capab[opmode].phy_cap,
 				       mode->eht_capab[opmode].phy_cap) ==
 	    EHT_PHYCAP_MCS_NSS_LEN_20MHZ_ONLY)
 		return check_valid_eht_mcs_nss(
@@ -265,10 +283,14 @@ static bool check_valid_eht_mcs(struct hostapd_data *hapd,
 			EHT_PHYCAP_MCS_NSS_LEN_20MHZ_ONLY);
 
 	switch (hapd->iface->conf->eht_oper_chwidth) {
-	/* TODO: CHANWIDTH_320MHZ */
-	case CHANWIDTH_80P80MHZ:
-	case CHANWIDTH_160MHZ:
-		mcs_count = 2;
+	case CONF_OPER_CHWIDTH_320MHZ:
+		mcs_count++;
+		/* fall through */
+	case CONF_OPER_CHWIDTH_80P80MHZ:
+	case CONF_OPER_CHWIDTH_160MHZ:
+		mcs_count++;
+		break;
+	default:
 		break;
 	}
 
@@ -277,7 +299,9 @@ static bool check_valid_eht_mcs(struct hostapd_data *hapd,
 }
 
 
-static bool ieee80211_invalid_eht_cap_size(const u8 *he_cap, const u8 *eht_cap,
+static bool ieee80211_invalid_eht_cap_size(enum hostapd_hw_mode mode,
+					   u8 opclass,
+					   const u8 *he_cap, const u8 *eht_cap,
 					   size_t len)
 {
 	const struct ieee80211_he_capabilities *he_capab;
@@ -293,7 +317,8 @@ static bool ieee80211_invalid_eht_cap_size(const u8 *he_cap, const u8 *eht_cap,
 	if (len < cap_len)
 		return true;
 
-	cap_len += ieee80211_eht_mcs_set_size(he_phy_cap, cap->phy_cap);
+	cap_len += ieee80211_eht_mcs_set_size(mode, opclass, he_phy_cap,
+					      cap->phy_cap);
 	if (len < cap_len)
 		return true;
 
@@ -310,10 +335,14 @@ u16 copy_sta_eht_capab(struct hostapd_data *hapd, struct sta_info *sta,
 		       const u8 *he_capab, size_t he_capab_len,
 		       const u8 *eht_capab, size_t eht_capab_len)
 {
+	struct hostapd_hw_modes *c_mode = hapd->iface->current_mode;
+	enum hostapd_hw_mode mode = c_mode ? c_mode->mode : NUM_HOSTAPD_MODES;
+
 	if (!hapd->iconf->ieee80211be || hapd->conf->disable_11be ||
 	    !he_capab || he_capab_len < IEEE80211_HE_CAPAB_MIN_LEN ||
 	    !eht_capab ||
-	    ieee80211_invalid_eht_cap_size(he_capab, eht_capab,
+	    ieee80211_invalid_eht_cap_size(mode, hapd->iconf->op_class,
+					   he_capab, eht_capab,
 					   eht_capab_len) ||
 	    !check_valid_eht_mcs(hapd, eht_capab, opmode)) {
 		sta->flags &= ~WLAN_STA_EHT;

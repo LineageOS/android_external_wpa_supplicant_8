@@ -321,6 +321,13 @@ struct eapol_ctx {
 	 * @reason_string: Information to log about the event
 	 */
 	void (*open_ssl_failure_cb)(void *ctx, const char* reason_string);
+
+	/**
+	 * encryption_required - Check whether encryption is required
+	 * @ctx: eapol_ctx from eap_peer_sm_init() call
+	 * Returns: Whether the current session requires encryption
+	 */
+	bool (*encryption_required)(void *ctx);
 };
 
 
@@ -337,7 +344,7 @@ int eapol_sm_get_mib(struct eapol_sm *sm, char *buf, size_t buflen);
 void eapol_sm_configure(struct eapol_sm *sm, int heldPeriod, int authPeriod,
 			int startPeriod, int maxStart);
 int eapol_sm_rx_eapol(struct eapol_sm *sm, const u8 *src, const u8 *buf,
-		      size_t len);
+		      size_t len, enum frame_encryption encrypted);
 void eapol_sm_notify_tx_eapol_key(struct eapol_sm *sm);
 void eapol_sm_notify_portEnabled(struct eapol_sm *sm, bool enabled);
 void eapol_sm_notify_portValid(struct eapol_sm *sm, bool valid);
@@ -403,7 +410,8 @@ static inline void eapol_sm_configure(struct eapol_sm *sm, int heldPeriod,
 {
 }
 static inline int eapol_sm_rx_eapol(struct eapol_sm *sm, const u8 *src,
-				    const u8 *buf, size_t len)
+				    const u8 *buf, size_t len,
+				    enum frame_encryption encrypted)
 {
 	return 0;
 }

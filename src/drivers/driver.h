@@ -66,6 +66,7 @@ enum hostapd_chan_width_attr {
 	HOSTAPD_CHAN_WIDTH_40M  = BIT(3),
 	HOSTAPD_CHAN_WIDTH_80   = BIT(4),
 	HOSTAPD_CHAN_WIDTH_160  = BIT(5),
+	HOSTAPD_CHAN_WIDTH_320  = BIT(6),
 };
 
 /* Filter gratuitous ARP */
@@ -666,6 +667,16 @@ struct wpa_driver_scan_params {
 	 *
 	 */
 	unsigned int p2p_include_6ghz:1;
+
+	/**
+	 * non_coloc_6ghz - Force scanning of non-PSC 6 GHz channels
+	 *
+	 * If this is set, the driver should scan non-PSC channels from the
+	 * scan request even if neighbor reports from 2.4/5 GHz APs did not
+	 * report a co-located AP on these channels. The default is to scan
+	 * non-PSC channels only if a co-located AP was reported on the channel.
+	 */
+	unsigned int non_coloc_6ghz:1;
 
 	/*
 	 * NOTE: Whenever adding new parameters here, please make sure
@@ -2601,6 +2612,24 @@ enum nested_attr {
 	NESTED_ATTR_UNSPECIFIED = 2,
 };
 
+/* Preferred channel list information */
+
+/* GO role */
+#define WEIGHTED_PCL_GO BIT(0)
+/* P2P Client role */
+#define WEIGHTED_PCL_CLI BIT(1)
+/* Must be considered for operating channel */
+#define WEIGHTED_PCL_MUST_CONSIDER BIT(2)
+/* Should be excluded in GO negotiation */
+#define WEIGHTED_PCL_EXCLUDE BIT(3)
+
+/* Preferred channel list with weight */
+struct weighted_pcl {
+	u32 freq; /* MHz */
+	u8 weight;
+	u32 flag; /* bitmap for WEIGHTED_PCL_* */
+};
+
 /**
  * struct wpa_driver_ops - Driver interface API definition
  *
@@ -4445,14 +4474,17 @@ struct wpa_driver_ops {
 	 * @priv: Private driver interface data
 	 * @if_type: Interface type
 	 * @num: Number of channels
-	 * @freq_list: Preferred channel frequency list encoded in MHz values
+	 * @freq_list: Weighted preferred channel list
 	 * Returns 0 on success, -1 on failure
 	 *
 	 * This command can be used to query the preferred frequency list from
-	 * the driver specific to a particular interface type.
+	 * the driver specific to a particular interface type. The freq_list
+	 * array needs to have room for *num entries. *num will be updated to
+	 * indicate the number of entries fetched from the driver.
 	 */
 	int (*get_pref_freq_list)(void *priv, enum wpa_driver_if_type if_type,
-				  unsigned int *num, unsigned int *freq_list);
+				  unsigned int *num,
+				  struct weighted_pcl *freq_list);
 
 	/**
 	 * set_prob_oper_freq - Indicate probable P2P operating channel
@@ -5856,6 +5888,7 @@ union wpa_event_data {
 		const u8 *src;
 		const u8 *data;
 		size_t data_len;
+		enum frame_encryption encrypted;
 	} eapol_rx;
 
 	/**
@@ -6194,6 +6227,20 @@ static inline void drv_event_eapol_rx(void *ctx, const u8 *src, const u8 *data,
 	event.eapol_rx.src = src;
 	event.eapol_rx.data = data;
 	event.eapol_rx.data_len = data_len;
+	event.eapol_rx.encrypted = FRAME_ENCRYPTION_UNKNOWN;
+	wpa_supplicant_event(ctx, EVENT_EAPOL_RX, &event);
+}
+
+static inline void drv_event_eapol_rx2(void *ctx, const u8 *src, const u8 *data,
+				      size_t data_len,
+				       enum frame_encryption encrypted)
+{
+	union wpa_event_data event;
+	os_memset(&event, 0, sizeof(event));
+	event.eapol_rx.src = src;
+	event.eapol_rx.data = data;
+	event.eapol_rx.data_len = data_len;
+	event.eapol_rx.encrypted = encrypted;
 	wpa_supplicant_event(ctx, EVENT_EAPOL_RX, &event);
 }
 

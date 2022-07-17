@@ -429,7 +429,24 @@ enum chan_width {
 	CHAN_WIDTH_4320,
 	CHAN_WIDTH_6480,
 	CHAN_WIDTH_8640,
+	CHAN_WIDTH_320,
 	CHAN_WIDTH_UNKNOWN
+};
+
+/* VHT/EDMG/etc. channel widths
+ * Note: The first four values are used in hostapd.conf and as such, must
+ * maintain their defined values. Other values are used internally. */
+enum oper_chan_width {
+	CONF_OPER_CHWIDTH_USE_HT = 0,
+	CONF_OPER_CHWIDTH_80MHZ = 1,
+	CONF_OPER_CHWIDTH_160MHZ = 2,
+	CONF_OPER_CHWIDTH_80P80MHZ = 3,
+	CONF_OPER_CHWIDTH_2160MHZ,
+	CONF_OPER_CHWIDTH_4320MHZ,
+	CONF_OPER_CHWIDTH_6480MHZ,
+	CONF_OPER_CHWIDTH_8640MHZ,
+	CONF_OPER_CHWIDTH_40MHZ_6GHZ,
+	CONF_OPER_CHWIDTH_320MHZ,
 };
 
 enum key_flag {
@@ -473,6 +490,12 @@ enum ptk0_rekey_handling {
 	PTK0_REKEY_ALLOW_ALWAYS,
 	PTK0_REKEY_ALLOW_LOCAL_OK,
 	PTK0_REKEY_ALLOW_NEVER
+};
+
+enum frame_encryption {
+	FRAME_ENCRYPTION_UNKNOWN = -1,
+	FRAME_NOT_ENCRYPTED = 0,
+	FRAME_ENCRYPTED = 1
 };
 
 #endif /* DEFS_H */
