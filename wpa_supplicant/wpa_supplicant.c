@@ -7175,11 +7175,15 @@ struct wpa_supplicant * wpa_supplicant_add_iface(struct wpa_global *global,
 		return NULL;
 	}
 
-	/* Notify the control interfaces about new networks for non p2p mgmt
-	 * ifaces. */
-	if (iface->p2p_mgmt == 0) {
-		for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next)
+	/* Notify the control interfaces about new networks */
+	for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
+		if (iface->p2p_mgmt == 0) {
 			wpas_notify_network_added(wpa_s, ssid);
+		} else if (ssid->ssid_len > P2P_WILDCARD_SSID_LEN
+				&& os_strncmp((const char *) ssid->ssid,
+					P2P_WILDCARD_SSID, P2P_WILDCARD_SSID_LEN) == 0) {
+			wpas_notify_persistent_group_added(wpa_s, ssid);
+		}
 	}
 
 	wpa_s->next = global->ifaces;
