@@ -432,33 +432,16 @@ static int eap_sim_learn_ids(struct eap_sm *sm, struct eap_sim_data *data,
 		size_t identity_len = 0;
 		const u8 *realm = NULL;
 		size_t realm_len = 0;
-		struct eap_peer_config *config = eap_get_config(sm);
 
 		wpa_hexdump_ascii(MSG_DEBUG,
 				  "EAP-SIM: (encr) AT_NEXT_PSEUDONYM",
 				  attr->next_pseudonym,
 				  attr->next_pseudonym_len);
 		os_free(data->pseudonym);
-		/* Look for the realm of the permanent identity */
-		identity = eap_get_config_identity(sm, &identity_len);
-		if (identity) {
-			for (realm = identity, realm_len = identity_len;
-			     realm_len > 0; realm_len--, realm++) {
-				if (*realm == '@')
-					break;
-			}
-		}
-		// If no realm from the permanent identity, look for the
-		// realm of the anonymous identity.
-		if (realm_len == 0 && config && config->anonymous_identity
-		    && config->anonymous_identity_len > 0) {
-			for (realm = config->anonymous_identity,
-			    realm_len = config->anonymous_identity_len;
-			    realm_len > 0; realm_len--, realm++) {
-				if (*realm == '@')
-					break;
-			}
-		}
+
+		/* Get realm from identities to decorate pseudonym. */
+		realm = eap_get_config_realm(sm, &realm_len);
+
 		data->pseudonym = os_malloc(attr->next_pseudonym_len +
 					    realm_len);
 		if (data->pseudonym == NULL) {
