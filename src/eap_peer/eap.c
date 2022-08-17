@@ -2816,6 +2816,61 @@ const u8 * eap_get_config_identity(struct eap_sm *sm, size_t *len)
 	return config->identity;
 }
 
+static const u8 * strnchr(const u8 *str, size_t len, u8 needle) {
+	const u8 *cur = str;
+
+	if (NULL == str) return NULL;
+	if (0 >= len) return NULL;
+
+	while (cur < str + len) {
+		if (*cur == needle)
+			return cur;
+		cur++;
+	}
+	return NULL;
+}
+
+const u8 * eap_get_config_realm(struct eap_sm *sm, size_t *len) {
+	struct eap_peer_config *config = eap_get_config(sm);
+	const u8 *realm = NULL;
+	size_t realm_len = 0;
+	const u8 *identity = NULL;
+	size_t identity_len = 0;
+
+	if (!config)
+		return NULL;
+
+	/* Look for the realm of the permanent identity */
+	identity = eap_get_config_identity(sm, &identity_len);
+	realm = strnchr(identity, identity_len, '@');
+	if (NULL != realm) {
+		wpa_printf(MSG_DEBUG, "Get the realm from identity.");
+		*len = identity_len - (realm - identity);
+		return realm;
+	}
+
+	/* Look for the realm of the anonymous identity. */
+	realm = strnchr(config->anonymous_identity,
+	    config->anonymous_identity_len, '@');
+	if (NULL != realm) {
+		wpa_printf(MSG_DEBUG, "Get the realm from anonymous identity.");
+		*len = identity_len - (realm - identity);
+		return realm;
+	}
+
+	/* Look for the realm of the real identity. */
+	realm = strnchr(config->imsi_identity,
+	    config->imsi_identity_len, '@');
+	if (NULL != realm) {
+		wpa_printf(MSG_DEBUG, "Get the realm from IMSI identity.");
+		*len = identity_len - (realm - identity);
+		return realm;
+	}
+	wpa_printf(MSG_DEBUG, "No realm information in identities.");
+	*len = 0;
+	return NULL;
+}
+
 
 static int eap_get_ext_password(struct eap_sm *sm,
 				struct eap_peer_config *config)

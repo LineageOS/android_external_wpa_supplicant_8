@@ -392,6 +392,7 @@ const u8 * eap_get_config_password(struct eap_sm *sm, size_t *len);
 const u8 * eap_get_config_password2(struct eap_sm *sm, size_t *len, int *hash);
 const u8 * eap_get_config_new_password(struct eap_sm *sm, size_t *len);
 const u8 * eap_get_config_otp(struct eap_sm *sm, size_t *len);
+const u8 * eap_get_config_realm(struct eap_sm *sm, size_t *len);
 void eap_clear_config_otp(struct eap_sm *sm);
 const char * eap_get_config_phase1(struct eap_sm *sm);
 const char * eap_get_config_phase2(struct eap_sm *sm);
