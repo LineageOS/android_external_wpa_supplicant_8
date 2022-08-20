@@ -3473,14 +3473,22 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		ft_completed = wpa_fils_is_completed(wpa_s->wpa);
 
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
-	/* For driver based roaming, insert PSK during the initial association */
-	if (is_zero_ether_addr(wpa_s->bssid) &&
-		wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt)) {
-		/* In case the driver wants to handle re-assocs, pass it down the PMK. */
-		wpa_dbg(wpa_s, MSG_DEBUG, "Pass the PMK to the driver");
-		wpa_sm_install_pmk(wpa_s->wpa);
+	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK)) {
+		/*
+		 * For driver based roaming, insert PSK during
+		 * the initial association
+		 */
+		if (is_zero_ether_addr(wpa_s->bssid) &&
+			wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt)) {
+			/*
+			 * In case the driver wants to handle re-assocs,
+			 * pass it down the PMK.
+			 */
+			wpa_dbg(wpa_s, MSG_DEBUG, "Pass the PMK to the driver");
+			wpa_sm_install_pmk(wpa_s->wpa);
+		}
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+#endif
 
 	wpa_supplicant_set_state(wpa_s, WPA_ASSOCIATED);
 	if (os_memcmp(bssid, wpa_s->bssid, ETH_ALEN) != 0) {
@@ -3601,14 +3609,23 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		eapol_sm_notify_eap_success(wpa_s->eapol, true);
 	} else if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK) &&
 		   wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt)) {
-		/*
-		 * We are done; the driver will take care of RSN 4-way
-		 * handshake.
-		 */
-		wpa_supplicant_cancel_auth_timeout(wpa_s);
-		wpa_supplicant_set_state(wpa_s, WPA_COMPLETED);
-		eapol_sm_notify_portValid(wpa_s->eapol, true);
-		eapol_sm_notify_eap_success(wpa_s->eapol, true);
+		if (already_authorized) {
+			/*
+			 * We are done; the driver will take care of RSN 4-way
+			 * handshake.
+			 */
+			wpa_supplicant_cancel_auth_timeout(wpa_s);
+			wpa_supplicant_set_state(wpa_s, WPA_COMPLETED);
+			eapol_sm_notify_portValid(wpa_s->eapol, true);
+			eapol_sm_notify_eap_success(wpa_s->eapol, true);
+		} else {
+			/* Update port, WPA_COMPLETED state from
+			 * EVENT_PORT_AUTHORIZED context when driver is done
+			 * with 4way handshake.
+			 */
+			wpa_msg(wpa_s, MSG_INFO, "ASSOC INFO: wait for driver port "
+				"authorized indication");
+		}
 	} else if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X) &&
 		   wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt)) {
 		/*
