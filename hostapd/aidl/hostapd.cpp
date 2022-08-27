@@ -547,17 +547,18 @@ std::string CreateHostapdConfig(
 			iface_params.hwModeParams.enable80211AC ? 2 : 0);
 		break;
 	default:
-		if (!is_2Ghz_band_only && !is_60Ghz_used
-		    && iface_params.hwModeParams.enable80211AC) {
-			ht_cap_vht_oper_he_oper_chwidth_as_string =
+		if (!is_2Ghz_band_only && !is_60Ghz_used) {
+			if (iface_params.hwModeParams.enable80211AC) {
+				ht_cap_vht_oper_he_oper_chwidth_as_string =
 					"ht_capab=[HT40+]\n"
 					"vht_oper_chwidth=1\n";
-		}
+			}
 #ifdef CONFIG_IEEE80211AX
-		if (iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) {
-			ht_cap_vht_oper_he_oper_chwidth_as_string += "he_oper_chwidth=1";
-		}
+			if (iface_params.hwModeParams.enable80211AX) {
+				ht_cap_vht_oper_he_oper_chwidth_as_string += "he_oper_chwidth=1";
+			}
 #endif
+		}
 		break;
 	}
 
