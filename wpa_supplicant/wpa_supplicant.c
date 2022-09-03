@@ -1907,7 +1907,9 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 
 #ifdef CONFIG_DRIVER_NL80211_BRCM
 	if ((wpa_s->key_mgmt & WPA_KEY_MGMT_CROSS_AKM_ROAM) &&
-	    IS_CROSS_AKM_ROAM_KEY_MGMT(ssid->key_mgmt)) {
+		IS_CROSS_AKM_ROAM_KEY_MGMT(ssid->key_mgmt) &&
+		(wpa_s->group_cipher == WPA_CIPHER_CCMP) &&
+		(wpa_s->pairwise_cipher == WPA_CIPHER_CCMP)) {
 		wpa_s->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PSK;
 		wpa_dbg(wpa_s, MSG_INFO,
 			"WPA: Updating to KEY_MGMT SAE+PSK for seamless roaming");
