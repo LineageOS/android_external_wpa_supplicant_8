@@ -2850,8 +2850,9 @@ const u8 * eap_get_config_realm(struct eap_sm *sm, size_t *len) {
 	}
 
 	/* Look for the realm of the anonymous identity. */
-	realm = strnchr(config->anonymous_identity,
-	    config->anonymous_identity_len, '@');
+	identity = config->anonymous_identity;
+	identity_len = config->anonymous_identity_len;
+	realm = strnchr(identity, identity_len, '@');
 	if (NULL != realm) {
 		wpa_printf(MSG_DEBUG, "Get the realm from anonymous identity.");
 		*len = identity_len - (realm - identity);
@@ -2859,8 +2860,9 @@ const u8 * eap_get_config_realm(struct eap_sm *sm, size_t *len) {
 	}
 
 	/* Look for the realm of the real identity. */
-	realm = strnchr(config->imsi_identity,
-	    config->imsi_identity_len, '@');
+	identity = config->imsi_identity;
+	identity_len = config->imsi_identity_len;
+	realm = strnchr(identity, identity_len, '@');
 	if (NULL != realm) {
 		wpa_printf(MSG_DEBUG, "Get the realm from IMSI identity.");
 		*len = identity_len - (realm - identity);
