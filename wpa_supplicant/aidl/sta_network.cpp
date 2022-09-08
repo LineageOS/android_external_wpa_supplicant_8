@@ -2160,6 +2160,7 @@ ndk::ScopedAStatus StaNetwork::setKeyMgmtInternal(
 	if (key_mgmt_mask & WPA_KEY_MGMT_OWE) {
 		// Do not allow to connect to Open network when OWE is selected
 		wpa_ssid->owe_only = 1;
+		wpa_ssid->owe_ptk_workaround = 1;
 	}
 	wpa_ssid->key_mgmt = key_mgmt_mask;
 	wpa_printf(MSG_MSGDUMP, "key_mgmt: 0x%x", wpa_ssid->key_mgmt);
@@ -2488,6 +2489,26 @@ void StaNetwork::setFastTransitionKeyMgmt(uint32_t &key_mgmt_mask)
 			key_mgmt_mask |= WPA_KEY_MGMT_FT_SAE;
 		}
 #endif
+#ifdef CONFIG_FILS
+		if ((key_mgmt_mask & WPA_KEY_MGMT_FILS_SHA256) &&
+		    (capa.key_mgmt_iftype[WPA_IF_STATION] &
+			WPA_DRIVER_CAPA_KEY_MGMT_FT_FILS_SHA256)) {
+			key_mgmt_mask |= WPA_KEY_MGMT_FT_FILS_SHA256;
+		}
+
+		if ((key_mgmt_mask & WPA_KEY_MGMT_FILS_SHA384) &&
+		    (capa.key_mgmt_iftype[WPA_IF_STATION] &
+			WPA_DRIVER_CAPA_KEY_MGMT_FT_FILS_SHA384)) {
+			key_mgmt_mask |= WPA_KEY_MGMT_FT_FILS_SHA384;
+		}
+#endif
+#ifdef CONFIG_SUITEB192
+		if ((key_mgmt_mask & WPA_KEY_MGMT_IEEE8021X_SUITE_B_192) &&
+		    (capa.key_mgmt_iftype[WPA_IF_STATION] &
+			WPA_DRIVER_CAPA_KEY_MGMT_FT_802_1X_SHA384)) {
+			key_mgmt_mask |= WPA_KEY_MGMT_FT_IEEE8021X_SHA384;
+		}
+#endif
 #endif
 	}
 
@@ -2510,6 +2531,20 @@ void StaNetwork::resetFastTransitionKeyMgmt(uint32_t &key_mgmt_mask)
 #ifdef CONFIG_SAE
 	if (key_mgmt_mask & WPA_KEY_MGMT_SAE) {
 		key_mgmt_mask &= ~WPA_KEY_MGMT_FT_SAE;
+	}
+#endif
+#ifdef CONFIG_FILS
+	if (key_mgmt_mask & WPA_KEY_MGMT_FILS_SHA256) {
+		key_mgmt_mask &= ~WPA_KEY_MGMT_FT_FILS_SHA256;
+	}
+
+	if (key_mgmt_mask & WPA_KEY_MGMT_FILS_SHA384) {
+		key_mgmt_mask &= ~WPA_KEY_MGMT_FT_FILS_SHA384;
+	}
+#endif
+#ifdef CONFIG_SUITEB192
+	if (key_mgmt_mask & WPA_KEY_MGMT_IEEE8021X_SUITE_B_192) {
+		key_mgmt_mask &= ~WPA_KEY_MGMT_FT_IEEE8021X_SHA384;
 	}
 #endif
 #endif
