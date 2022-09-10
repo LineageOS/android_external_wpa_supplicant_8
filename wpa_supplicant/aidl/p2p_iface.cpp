@@ -470,7 +470,7 @@ int joinGroup(
 
 	if (wpas_p2p_group_add_persistent(
 		wpa_s, wpa_network, 0, 0, 0, 0, ht40, vht,
-		CHANWIDTH_USE_HT, he, 0, NULL, 0, 0, is6GhzAllowed(wpa_s))) {
+		CONF_OPER_CHWIDTH_USE_HT, he, 0, NULL, 0, 0, is6GhzAllowed(wpa_s))) {
 		ret = -1;
 	}
 
@@ -1305,13 +1305,14 @@ std::pair<std::string, ndk::ScopedAStatus> P2pIface::connectInternal(
 	int he = wpa_s->conf->p2p_go_he;
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+	int edmg = wpa_s->conf->p2p_go_edmg;
 	const char* pin =
 		pre_selected_pin.length() > 0 ? pre_selected_pin.data() : nullptr;
 	bool auto_join = !join_existing_group;
 	int new_pin = wpas_p2p_connect(
 		wpa_s, peer_address.data(), pin, wps_method, persistent, auto_join,
 		join_existing_group, false, go_intent_signed, 0, 0, -1, false, ht40,
-		vht, CHANWIDTH_USE_HT, he, 0, nullptr, 0, is6GhzAllowed(wpa_s));
+		vht, CONF_OPER_CHWIDTH_USE_HT, he, edmg, nullptr, 0, is6GhzAllowed(wpa_s));
 	if (new_pin < 0) {
 		return {"", createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
@@ -1412,6 +1413,7 @@ ndk::ScopedAStatus P2pIface::reinvokeInternal(
 	int he = wpa_s->conf->p2p_go_he;
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+	int edmg = wpa_s->conf->p2p_go_edmg;
 	struct wpa_ssid* ssid =
 		wpa_config_get_network(wpa_s->conf, persistent_network_id);
 	if (ssid == NULL || ssid->disabled != 2) {
@@ -1419,7 +1421,7 @@ ndk::ScopedAStatus P2pIface::reinvokeInternal(
 	}
 	if (wpas_p2p_invite(
 		wpa_s, peer_address.data(), ssid, NULL, 0, 0, ht40, vht,
-		CHANWIDTH_USE_HT, 0, he, 0, is6GhzAllowed(wpa_s))) {
+		CONF_OPER_CHWIDTH_USE_HT, 0, he, edmg, is6GhzAllowed(wpa_s))) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
@@ -1856,12 +1858,13 @@ ndk::ScopedAStatus P2pIface::addGroupInternal(
 	int he = wpa_s->conf->p2p_go_he;
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+	int edmg = wpa_s->conf->p2p_go_edmg;
 	struct wpa_ssid* ssid =
 		wpa_config_get_network(wpa_s->conf, persistent_network_id);
 	if (ssid == NULL) {
 		if (wpas_p2p_group_add(
 			wpa_s, persistent, 0, 0, ht40, vht,
-			CHANWIDTH_USE_HT, he, 0, is6GhzAllowed(wpa_s))) {
+			CONF_OPER_CHWIDTH_USE_HT, he, edmg, is6GhzAllowed(wpa_s))) {
 			return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 		} else {
 			return ndk::ScopedAStatus::ok();
@@ -1869,7 +1872,7 @@ ndk::ScopedAStatus P2pIface::addGroupInternal(
 	} else if (ssid->disabled == 2) {
 		if (wpas_p2p_group_add_persistent(
 			wpa_s, ssid, 0, 0, 0, 0, ht40, vht,
-			CHANWIDTH_USE_HT, he, 0, NULL, 0, 0, is6GhzAllowed(wpa_s))) {
+			CONF_OPER_CHWIDTH_USE_HT, he, edmg, NULL, 0, 0, is6GhzAllowed(wpa_s))) {
 			return createStatus(SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN);
 		} else {
 			return ndk::ScopedAStatus::ok();
@@ -1887,6 +1890,7 @@ ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
 	int he = wpa_s->conf->p2p_go_he;
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+	int edmg = wpa_s->conf->p2p_go_edmg;
 
 	if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
 		return createStatus(SupplicantStatusCode::FAILURE_IFACE_DISABLED);
@@ -1914,7 +1918,7 @@ ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
 
 		if (wpas_p2p_group_add(
 			wpa_s, persistent, freq, 0, ht40, vht,
-			CHANWIDTH_USE_HT, he, 0, is6GhzAllowed(wpa_s))) {
+			CONF_OPER_CHWIDTH_USE_HT, he, edmg, is6GhzAllowed(wpa_s))) {
 			return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 		}
 		return ndk::ScopedAStatus::ok();
