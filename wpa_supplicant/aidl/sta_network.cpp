@@ -2142,6 +2142,7 @@ ndk::ScopedAStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& s
 		return ndk::ScopedAStatus::ok();
 	}
 
+	new_entry->external = true;
 	wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, new_entry);
 
 	return ndk::ScopedAStatus::ok();
