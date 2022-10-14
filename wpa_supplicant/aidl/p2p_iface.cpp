@@ -338,9 +338,7 @@ struct wpa_ssid* addGroupClientNetwork(
 
 void joinScanWrapper(void *eloop_ctx, void *timeout_ctx)
 {
-	struct wpa_supplicant *wpa_s = (struct wpa_supplicant *) eloop_ctx;
-
-	if (pending_join_scan_callback != NULL) {
+	if (pending_join_scan_callback) {
 		pending_join_scan_callback();
 	}
 }
@@ -1371,7 +1369,6 @@ ndk::ScopedAStatus P2pIface::removeGroupInternal(const std::string& group_ifname
 	if (!wpa_group_s) {
 		return createStatus(SupplicantStatusCode::FAILURE_IFACE_UNKNOWN);
 	}
-	wpa_group_s->global->p2p_go_found_external_scan = 0;
 	if (wpas_p2p_group_remove(wpa_group_s, group_ifname.c_str())) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
@@ -1970,10 +1967,8 @@ ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
 		struct wpa_bss *bss = findBssBySsid(
 			wpa_s, peer_address.data(), ssid.data(), ssid.size());
 		if (bss) {
-			wpa_s->global->p2p_go_found_external_scan = 1;
 			if (0 != joinGroup(wpa_s, bss->bssid, ssid, passphrase)) {
 				wpa_printf(MSG_ERROR, "P2P: Failed to join a group.");
-				wpa_s->global->p2p_go_found_external_scan = 0;
 			}
 			// no need to notify group join failure here,
 			// it will be handled by wpas_p2p_group_add_persistent
