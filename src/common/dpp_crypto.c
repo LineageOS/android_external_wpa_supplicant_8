@@ -1437,7 +1437,7 @@ dpp_pkex_get_role_elem(const struct dpp_curve_params *curve, int init)
 
 struct crypto_ec_point *
 dpp_pkex_derive_Qi(const struct dpp_curve_params *curve, const u8 *mac_init,
-		   const char *code, const char *identifier,
+		   const char *code, size_t code_len, const char *identifier,
 		   struct crypto_ec **ret_ec)
 {
 	u8 hash[DPP_MAX_HASH_LEN];
@@ -1465,9 +1465,9 @@ dpp_pkex_derive_Qi(const struct dpp_curve_params *curve, const u8 *mac_init,
 		len[num_elem] = os_strlen(identifier);
 		num_elem++;
 	}
-	wpa_hexdump_ascii_key(MSG_DEBUG, "DPP: code", code, os_strlen(code));
+	wpa_hexdump_ascii_key(MSG_DEBUG, "DPP: code", code, code_len);
 	addr[num_elem] = (const u8 *) code;
-	len[num_elem] = os_strlen(code);
+	len[num_elem] = code_len;
 	num_elem++;
 	if (dpp_hash_vector(curve, num_elem, addr, len, hash) < 0)
 		goto fail;
@@ -1512,7 +1512,7 @@ fail:
 
 struct crypto_ec_point *
 dpp_pkex_derive_Qr(const struct dpp_curve_params *curve, const u8 *mac_resp,
-		   const char *code, const char *identifier,
+		   const char *code, size_t code_len, const char *identifier,
 		   struct crypto_ec **ret_ec)
 {
 	u8 hash[DPP_MAX_HASH_LEN];
@@ -1540,9 +1540,9 @@ dpp_pkex_derive_Qr(const struct dpp_curve_params *curve, const u8 *mac_resp,
 		len[num_elem] = os_strlen(identifier);
 		num_elem++;
 	}
-	wpa_hexdump_ascii_key(MSG_DEBUG, "DPP: code", code, os_strlen(code));
+	wpa_hexdump_ascii_key(MSG_DEBUG, "DPP: code", code, code_len);
 	addr[num_elem] = (const u8 *) code;
-	len[num_elem] = os_strlen(code);
+	len[num_elem] = code_len;
 	num_elem++;
 	if (dpp_hash_vector(curve, num_elem, addr, len, hash) < 0)
 		goto fail;
@@ -1590,7 +1590,7 @@ int dpp_pkex_derive_z(const u8 *mac_init, const u8 *mac_resp,
 		      u8 ver_init, u8 ver_resp,
 		      const u8 *Mx, size_t Mx_len,
 		      const u8 *Nx, size_t Nx_len,
-		      const char *code,
+		      const char *code, size_t code_len,
 		      const u8 *Kx, size_t Kx_len,
 		      u8 *z, unsigned int hash_len)
 {
@@ -1615,7 +1615,7 @@ int dpp_pkex_derive_z(const u8 *mac_init, const u8 *mac_resp,
 		info_len = 2 * ETH_ALEN;
 	else
 		info_len = 2;
-	info_len += Mx_len + Nx_len + os_strlen(code);
+	info_len += Mx_len + Nx_len + code_len;
 	info = os_malloc(info_len);
 	if (!info)
 		return -1;
@@ -1633,7 +1633,7 @@ int dpp_pkex_derive_z(const u8 *mac_init, const u8 *mac_resp,
 	pos += Mx_len;
 	os_memcpy(pos, Nx, Nx_len);
 	pos += Nx_len;
-	os_memcpy(pos, code, os_strlen(code));
+	os_memcpy(pos, code, code_len);
 
 	/* HKDF-Expand(PRK, info, L) */
 	if (hash_len == 32)
@@ -2367,6 +2367,7 @@ fail:
 
 
 #ifdef CONFIG_DPP3
+
 int dpp_derive_auth_i(struct dpp_authentication *auth, u8 *auth_i)
 {
 	int ret = -1, res;
@@ -2454,6 +2455,47 @@ fail:
 	wpabuf_free(pex);
 	return ret;
 }
+
+
+int dpp_hpke_suite(int iana_group, enum hpke_kem_id *kem_id,
+		   enum hpke_kdf_id *kdf_id, enum hpke_aead_id *aead_id)
+{
+	switch (iana_group) {
+	case 19:
+		*kem_id = HPKE_DHKEM_P256_HKDF_SHA256;
+		*kdf_id = HPKE_KDF_HKDF_SHA256;
+		*aead_id = HPKE_AEAD_AES_128_GCM;
+		return 0;
+	case 20:
+		*kem_id = HPKE_DHKEM_P384_HKDF_SHA384;
+		*kdf_id = HPKE_KDF_HKDF_SHA384;
+		*aead_id = HPKE_AEAD_AES_256_GCM;
+		return 0;
+	case 21:
+		*kem_id = HPKE_DHKEM_P521_HKDF_SHA512;
+		*kdf_id = HPKE_KDF_HKDF_SHA512;
+		*aead_id = HPKE_AEAD_AES_256_GCM;
+		return 0;
+	case 28:
+		*kem_id = HPKE_DHKEM_P256_HKDF_SHA256;
+		*kdf_id = HPKE_KDF_HKDF_SHA256;
+		*aead_id = HPKE_AEAD_AES_128_GCM;
+		return 0;
+	case 29:
+		*kem_id = HPKE_DHKEM_P384_HKDF_SHA384;
+		*kdf_id = HPKE_KDF_HKDF_SHA384;
+		*aead_id = HPKE_AEAD_AES_256_GCM;
+		return 0;
+	case 30:
+		*kem_id = HPKE_DHKEM_P521_HKDF_SHA512;
+		*kdf_id = HPKE_KDF_HKDF_SHA512;
+		*aead_id = HPKE_AEAD_AES_256_GCM;
+		return 0;
+	}
+
+	return -1;
+}
+
 #endif /* CONFIG_DPP3 */
 
 

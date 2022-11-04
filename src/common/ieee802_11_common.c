@@ -3031,3 +3031,38 @@ enum chan_width get_sta_operation_chan_width(
 			? CHAN_WIDTH_80P80 : CHAN_WIDTH_80;
 	return ap_operation_chan_width;
 }
+
+const u8 * get_ml_ie(const u8 *ies, size_t len, u8 type)
+{
+	const struct element *elem;
+
+	if (!ies)
+		return NULL;
+
+	for_each_element_extid(elem, WLAN_EID_EXT_MULTI_LINK, ies, len) {
+		if (elem->datalen >= 2 &&
+		    (elem->data[1] & MULTI_LINK_CONTROL_TYPE_MASK) == type)
+			return &elem->id;
+	}
+
+	return NULL;
+}
+
+
+const u8 * get_basic_mle_mld_addr(const u8 *buf, size_t len)
+{
+	const size_t mld_addr_pos =
+		2 /* Control field */ +
+		1 /* Common Info Length field */;
+	const size_t fixed_len = mld_addr_pos +
+		ETH_ALEN /* MLD MAC Address field */;
+
+	if (len < fixed_len)
+		return NULL;
+
+	if ((buf[0] & MULTI_LINK_CONTROL_TYPE_MASK) !=
+	    MULTI_LINK_CONTROL_TYPE_BASIC)
+		return NULL;
+
+	return &buf[mld_addr_pos];
+}

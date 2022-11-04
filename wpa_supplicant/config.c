@@ -804,8 +804,12 @@ static int wpa_config_parse_key_mgmt(const struct parse_data *data,
 #ifdef CONFIG_SAE
 		else if (os_strcmp(start, "SAE") == 0)
 			val |= WPA_KEY_MGMT_SAE;
+		else if (os_strcmp(start, "SAE-EXT-KEY") == 0)
+			val |= WPA_KEY_MGMT_SAE_EXT_KEY;
 		else if (os_strcmp(start, "FT-SAE") == 0)
 			val |= WPA_KEY_MGMT_FT_SAE;
+		else if (os_strcmp(start, "FT-SAE-EXT-KEY") == 0)
+			val |= WPA_KEY_MGMT_FT_SAE_EXT_KEY;
 #endif /* CONFIG_SAE */
 #ifdef CONFIG_HS20
 		else if (os_strcmp(start, "OSEN") == 0)
@@ -1004,8 +1008,28 @@ static char * wpa_config_write_key_mgmt(const struct parse_data *data,
 		pos += ret;
 	}
 
+	if (ssid->key_mgmt & WPA_KEY_MGMT_SAE_EXT_KEY) {
+		ret = os_snprintf(pos, end - pos, "%sSAE-EXT-KEY",
+				  pos == buf ? "" : " ");
+		if (os_snprintf_error(end - pos, ret)) {
+			end[-1] = '\0';
+			return buf;
+		}
+		pos += ret;
+	}
+
 	if (ssid->key_mgmt & WPA_KEY_MGMT_FT_SAE) {
 		ret = os_snprintf(pos, end - pos, "%sFT-SAE",
+				  pos == buf ? "" : " ");
+		if (os_snprintf_error(end - pos, ret)) {
+			end[-1] = '\0';
+			return buf;
+		}
+		pos += ret;
+	}
+
+	if (ssid->key_mgmt & WPA_KEY_MGMT_FT_SAE_EXT_KEY) {
+		ret = os_snprintf(pos, end - pos, "%sFT-SAE-EXT-KEY",
 				  pos == buf ? "" : " ");
 		if (os_snprintf_error(end - pos, ret)) {
 			end[-1] = '\0';
@@ -2630,6 +2654,7 @@ static const struct parse_data ssid_fields[] = {
 	{ STR_LEN(dpp_csign) },
 	{ STR_LEN(dpp_pp_key) },
 	{ INT_RANGE(dpp_pfs, 0, 2) },
+	{ INT_RANGE(dpp_connector_privacy, 0, 1) },
 #endif /* CONFIG_DPP */
 	{ INT_RANGE(owe_group, 0, 65535) },
 	{ INT_RANGE(owe_only, 0, 1) },
@@ -2970,6 +2995,8 @@ void wpa_config_free(struct wpa_config *config)
 #endif /* CONFIG_MBO */
 	os_free(config->dpp_name);
 	os_free(config->dpp_mud_url);
+	os_free(config->dpp_extra_conf_req_name);
+	os_free(config->dpp_extra_conf_req_value);
 
 	os_free(config);
 }
@@ -5302,6 +5329,9 @@ static const struct global_parse_data global_fields[] = {
 	{ INT_RANGE(dpp_config_processing, 0, 2), 0 },
 	{ STR(dpp_name), 0 },
 	{ STR(dpp_mud_url), 0 },
+	{ STR(dpp_extra_conf_req_name), 0 },
+	{ STR(dpp_extra_conf_req_value), 0 },
+	{ INT_RANGE(dpp_connector_privacy_default, 0, 1), 0 },
 #endif /* CONFIG_DPP */
 	{ INT_RANGE(coloc_intf_reporting, 0, 1), 0 },
 	{ INT_RANGE(bss_no_flush_when_down, 0, 1), 0 },

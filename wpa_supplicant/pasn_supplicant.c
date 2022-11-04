@@ -23,11 +23,13 @@
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
 #include "bss.h"
+#include "scan.h"
 #include "config.h"
 
 static const int dot11RSNAConfigPMKLifetime = 43200;
 
 struct wpa_pasn_auth_work {
+	u8 own_addr[ETH_ALEN];
 	u8 bssid[ETH_ALEN];
 	int akmp;
 	int cipher;
@@ -52,6 +54,8 @@ static void wpas_pasn_auth_work_timeout(void *eloop_ctx, void *timeout_ctx)
 	wpa_printf(MSG_DEBUG, "PASN: Auth work timeout - stopping auth");
 
 	wpas_pasn_auth_stop(wpa_s);
+
+	wpas_pasn_auth_work_done(wpa_s, PASN_STATUS_FAILURE);
 }
 
 
@@ -111,7 +115,7 @@ static struct wpabuf * wpas_pasn_wd_sae_commit(struct wpa_supplicant *wpa_s)
 	}
 
 	ret = sae_prepare_commit_pt(&pasn->sae, pasn->ssid->pt,
-				    wpa_s->own_addr, pasn->bssid,
+				    pasn->own_addr, pasn->bssid,
 				    NULL, NULL);
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "PASN: Failed to prepare SAE commit");
@@ -284,6 +288,281 @@ static int wpas_pasn_sae_setup_pt(struct wpa_supplicant *wpa_s,
 }
 
 #endif /* CONFIG_SAE */
+
+
+static int wpas_pasn_get_params_from_bss(struct wpa_supplicant *wpa_s,
+					 struct pasn_peer *peer)
+{
+	int ret;
+	const u8 *rsne, *rsnxe;
+	struct wpa_bss *bss;
+	struct wpa_ie_data rsne_data;
+	int sel, key_mgmt, pairwise_cipher;
+	int network_id = 0, group = 19;
+	struct wpa_ssid *ssid = NULL;
+	size_t ssid_str_len = 0;
+	const u8 *ssid_str = NULL;
+	const u8 *bssid = peer->peer_addr;
+
+	bss = wpa_bss_get_bssid(wpa_s, bssid);
+	if (!bss) {
+		wpa_supplicant_update_scan_results(wpa_s);
+		bss = wpa_bss_get_bssid(wpa_s, bssid);
+		if (!bss) {
+			wpa_printf(MSG_DEBUG, "PASN: BSS not found");
+			return -1;
+		}
+	}
+
+	rsne = wpa_bss_get_ie(bss, WLAN_EID_RSN);
+	if (!rsne) {
+		wpa_printf(MSG_DEBUG, "PASN: BSS without RSNE");
+		return -1;
+	}
+
+	ret = wpa_parse_wpa_ie(rsne, *(rsne + 1) + 2, &rsne_data);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed parsing RSNE data");
+		return -1;
+	}
+
+	rsnxe = wpa_bss_get_ie(bss, WLAN_EID_RSNX);
+
+	ssid_str_len = bss->ssid_len;
+	ssid_str = bss->ssid;
+
+	/* Get the network configuration based on the obtained SSID */
+	for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
+		if (!wpas_network_disabled(wpa_s, ssid) &&
+		    ssid_str_len == ssid->ssid_len &&
+		    os_memcmp(ssid_str, ssid->ssid, ssid_str_len) == 0)
+			break;
+	}
+
+	if (ssid)
+		network_id = ssid->id;
+
+	sel = rsne_data.pairwise_cipher;
+	if (ssid && ssid->pairwise_cipher)
+		sel &= ssid->pairwise_cipher;
+
+	wpa_printf(MSG_DEBUG, "PASN: peer pairwise 0x%x, select 0x%x",
+		   rsne_data.pairwise_cipher, sel);
+
+	pairwise_cipher = wpa_pick_pairwise_cipher(sel, 1);
+	if (pairwise_cipher < 0) {
+		wpa_msg(wpa_s, MSG_WARNING,
+			"PASN: Failed to select pairwise cipher");
+		return -1;
+	}
+
+	sel = rsne_data.key_mgmt;
+	if (ssid && ssid->key_mgmt)
+		sel &= ssid->key_mgmt;
+
+	wpa_printf(MSG_DEBUG, "PASN: peer AKMP 0x%x, select 0x%x",
+		   rsne_data.key_mgmt, sel);
+#ifdef CONFIG_SAE
+	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE) || !ssid)
+		sel &= ~(WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_SAE_EXT_KEY |
+			 WPA_KEY_MGMT_FT_SAE | WPA_KEY_MGMT_FT_SAE_EXT_KEY);
+#endif /* CONFIG_SAE */
+#ifdef CONFIG_IEEE80211R
+	if (!(wpa_s->drv_flags & (WPA_DRIVER_FLAGS_SME |
+				  WPA_DRIVER_FLAGS_UPDATE_FT_IES)))
+		sel &= ~WPA_KEY_MGMT_FT;
+#endif /* CONFIG_IEEE80211R */
+	if (0) {
+#ifdef CONFIG_IEEE80211R
+#ifdef CONFIG_SHA384
+	} else if ((sel & WPA_KEY_MGMT_FT_IEEE8021X_SHA384) &&
+		   os_strcmp(wpa_supplicant_get_eap_mode(wpa_s), "LEAP") != 0) {
+		key_mgmt = WPA_KEY_MGMT_FT_IEEE8021X_SHA384;
+		wpa_printf(MSG_DEBUG, "PASN: using KEY_MGMT FT/802.1X-SHA384");
+		if (ssid && !ssid->ft_eap_pmksa_caching &&
+		    pmksa_cache_get_current(wpa_s->wpa)) {
+			/* PMKSA caching with FT may have interoperability
+			 * issues, so disable that case by default for now.
+			 */
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Disable PMKSA caching for FT/802.1X connection");
+			pmksa_cache_clear_current(wpa_s->wpa);
+		}
+#endif /* CONFIG_SHA384 */
+#endif /* CONFIG_IEEE80211R */
+#ifdef CONFIG_SAE
+	} else if ((sel & WPA_KEY_MGMT_SAE_EXT_KEY) &&
+		   (ieee802_11_rsnx_capab(rsnxe,
+					   WLAN_RSNX_CAPAB_SAE_H2E)) &&
+		   (wpas_pasn_sae_setup_pt(wpa_s, ssid, group) == 0)) {
+		key_mgmt = WPA_KEY_MGMT_SAE_EXT_KEY;
+		wpa_printf(MSG_DEBUG, "PASN: using KEY_MGMT SAE (ext key)");
+	} else if ((sel & WPA_KEY_MGMT_SAE) &&
+		   (ieee802_11_rsnx_capab(rsnxe,
+					   WLAN_RSNX_CAPAB_SAE_H2E)) &&
+		   (wpas_pasn_sae_setup_pt(wpa_s, ssid, group) == 0)) {
+		key_mgmt = WPA_KEY_MGMT_SAE;
+		wpa_printf(MSG_DEBUG, "PASN: using KEY_MGMT SAE");
+#endif /* CONFIG_SAE */
+#ifdef CONFIG_FILS
+	} else if (sel & WPA_KEY_MGMT_FILS_SHA384) {
+		key_mgmt = WPA_KEY_MGMT_FILS_SHA384;
+		wpa_printf(MSG_DEBUG, "PASN: using KEY_MGMT FILS-SHA384");
+	} else if (sel & WPA_KEY_MGMT_FILS_SHA256) {
+		key_mgmt = WPA_KEY_MGMT_FILS_SHA256;
+		wpa_printf(MSG_DEBUG, "PASN: using KEY_MGMT FILS-SHA256");
+#endif /* CONFIG_FILS */
+#ifdef CONFIG_IEEE80211R
+	} else if ((sel & WPA_KEY_MGMT_FT_IEEE8021X) &&
+		   os_strcmp(wpa_supplicant_get_eap_mode(wpa_s), "LEAP") != 0) {
+		key_mgmt = WPA_KEY_MGMT_FT_IEEE8021X;
+		wpa_printf(MSG_DEBUG, "PASN: using KEY_MGMT FT/802.1X");
+		if (ssid && !ssid->ft_eap_pmksa_caching &&
+		    pmksa_cache_get_current(wpa_s->wpa)) {
+			/* PMKSA caching with FT may have interoperability
+			 * issues, so disable that case by default for now.
+			 */
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Disable PMKSA caching for FT/802.1X connection");
+			pmksa_cache_clear_current(wpa_s->wpa);
+		}
+	} else if (sel & WPA_KEY_MGMT_FT_PSK) {
+		key_mgmt = WPA_KEY_MGMT_FT_PSK;
+		wpa_printf(MSG_DEBUG, "PASN: using KEY_MGMT FT/PSK");
+#endif /* CONFIG_IEEE80211R */
+	} else if (sel & WPA_KEY_MGMT_PASN) {
+		key_mgmt = WPA_KEY_MGMT_PASN;
+		wpa_printf(MSG_DEBUG, "PASN: using KEY_MGMT PASN");
+	} else {
+		wpa_printf(MSG_DEBUG, "PASN: invalid AKMP");
+		return -1;
+	}
+
+	peer->akmp = key_mgmt;
+	peer->cipher = pairwise_cipher;
+	peer->network_id = network_id;
+	peer->group = group;
+	return 0;
+}
+
+
+static int wpas_pasn_set_keys_from_cache(struct wpa_supplicant *wpa_s,
+					 const u8 *own_addr, const u8 *bssid,
+					 int cipher, int akmp)
+{
+	struct ptksa_cache_entry *entry;
+
+	entry = ptksa_cache_get(wpa_s->ptksa, bssid, cipher);
+	if (!entry) {
+		wpa_printf(MSG_DEBUG, "PASN: peer " MACSTR
+			   " not present in PTKSA cache", MAC2STR(bssid));
+		return -1;
+	}
+
+	if (os_memcmp(entry->own_addr, own_addr, ETH_ALEN) != 0) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: own addr " MACSTR " and PTKSA entry own addr "
+			   MACSTR " differ",
+			   MAC2STR(own_addr), MAC2STR(entry->own_addr));
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "PASN: " MACSTR " present in PTKSA cache",
+		   MAC2STR(bssid));
+	wpa_drv_set_secure_ranging_ctx(wpa_s, own_addr, bssid, cipher,
+				       entry->ptk.tk_len,
+				       entry->ptk.tk,
+				       entry->ptk.ltf_keyseed_len,
+				       entry->ptk.ltf_keyseed, 0);
+	return 0;
+}
+
+
+static void wpas_pasn_configure_next_peer(struct wpa_supplicant *wpa_s,
+					  struct pasn_auth *pasn_params)
+{
+	struct pasn_peer *peer;
+	u8 comeback_len = 0;
+	const u8 *comeback = NULL;
+
+	if (!pasn_params)
+		return;
+
+	while (wpa_s->pasn_count < pasn_params->num_peers) {
+		peer = &pasn_params->peer[wpa_s->pasn_count];
+
+		if (os_memcmp(wpa_s->bssid, peer->peer_addr, ETH_ALEN) == 0) {
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Associated peer is not expected");
+			peer->status = PASN_STATUS_FAILURE;
+			wpa_s->pasn_count++;
+			continue;
+		}
+
+		if (wpas_pasn_set_keys_from_cache(wpa_s, peer->own_addr,
+						  peer->peer_addr,
+						  peer->cipher,
+						  peer->akmp) == 0) {
+			peer->status = PASN_STATUS_SUCCESS;
+			wpa_s->pasn_count++;
+			continue;
+		}
+
+		if (wpas_pasn_get_params_from_bss(wpa_s, peer)) {
+			peer->status = PASN_STATUS_FAILURE;
+			wpa_s->pasn_count++;
+			continue;
+		}
+
+		if (wpas_pasn_auth_start(wpa_s, peer->own_addr,
+					 peer->peer_addr, peer->akmp,
+					 peer->cipher, peer->group,
+					 peer->network_id,
+					 comeback, comeback_len)) {
+			peer->status = PASN_STATUS_FAILURE;
+			wpa_s->pasn_count++;
+			continue;
+		}
+		wpa_printf(MSG_DEBUG, "PASN: Sent PASN auth start for " MACSTR,
+			   MAC2STR(peer->peer_addr));
+		return;
+	}
+
+	if (wpa_s->pasn_count == pasn_params->num_peers) {
+		wpa_drv_send_pasn_resp(wpa_s, pasn_params);
+		wpa_printf(MSG_DEBUG, "PASN: Response sent");
+		os_free(wpa_s->pasn_params);
+		wpa_s->pasn_params = NULL;
+	}
+}
+
+
+void wpas_pasn_auth_work_done(struct wpa_supplicant *wpa_s, int status)
+{
+	if (!wpa_s->pasn_params)
+		return;
+
+	wpa_s->pasn_params->peer[wpa_s->pasn_count].status = status;
+	wpa_s->pasn_count++;
+	wpas_pasn_configure_next_peer(wpa_s, wpa_s->pasn_params);
+}
+
+
+static void wpas_pasn_delete_peers(struct wpa_supplicant *wpa_s,
+				   struct pasn_auth *pasn_params)
+{
+	struct pasn_peer *peer;
+	unsigned int i;
+
+	if (!pasn_params)
+		return;
+
+	for (i = 0; i < pasn_params->num_peers; i++) {
+		peer = &pasn_params->peer[i];
+		wpas_pasn_deauthenticate(wpa_s, peer->own_addr,
+					 peer->peer_addr);
+	}
+}
 
 
 #ifdef CONFIG_FILS
@@ -685,7 +964,7 @@ static struct wpabuf * wpas_pasn_build_auth_1(struct wpa_supplicant *wpa_s,
 	wrapped_data = wpas_pasn_get_wrapped_data_format(pasn);
 
 	wpa_pasn_build_auth_header(buf, pasn->bssid,
-				   wpa_s->own_addr, pasn->bssid,
+				   pasn->own_addr, pasn->bssid,
 				   pasn->trans_seq + 1, WLAN_STATUS_SUCCESS);
 
 	pmkid = NULL;
@@ -732,11 +1011,11 @@ static struct wpabuf * wpas_pasn_build_auth_1(struct wpa_supplicant *wpa_s,
 	/* Add own RNSXE */
 	capab = 0;
 	capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
-	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF)
+	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA)
 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_LTF);
-	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_RTT)
+	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_RTT_STA)
 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_RTT);
-	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG)
+	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_STA)
 		capab |= BIT(WLAN_RSNX_CAPAB_PROT_RANGE_NEG);
 	wpa_pasn_add_rsnxe(buf, capab);
 
@@ -788,7 +1067,7 @@ static struct wpabuf * wpas_pasn_build_auth_3(struct wpa_supplicant *wpa_s)
 	wrapped_data = wpas_pasn_get_wrapped_data_format(pasn);
 
 	wpa_pasn_build_auth_header(buf, pasn->bssid,
-				   wpa_s->own_addr, pasn->bssid,
+				   pasn->own_addr, pasn->bssid,
 				   pasn->trans_seq + 1, WLAN_STATUS_SUCCESS);
 
 	wrapped_data_buf = wpas_pasn_get_wrapped_data(wpa_s);
@@ -816,7 +1095,7 @@ static struct wpabuf * wpas_pasn_build_auth_3(struct wpa_supplicant *wpa_s)
 	data_len = wpabuf_len(buf) - IEEE80211_HDRLEN;
 
 	ret = pasn_mic(pasn->ptk.kck, pasn->akmp, pasn->cipher,
-		       wpa_s->own_addr, pasn->bssid,
+		       pasn->own_addr, pasn->bssid,
 		       pasn->hash, mic_len * 2, data, data_len, mic);
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "PASN: frame 3: Failed MIC calculation");
@@ -990,9 +1269,9 @@ static int wpas_pasn_set_pmk(struct wpa_supplicant *wpa_s,
 }
 
 
-static int wpas_pasn_start(struct wpa_supplicant *wpa_s, const u8 *bssid,
-			   int akmp, int cipher, u16 group, int freq,
-			   const u8 *beacon_rsne, u8 beacon_rsne_len,
+static int wpas_pasn_start(struct wpa_supplicant *wpa_s, const u8 *own_addr,
+			   const u8 *bssid, int akmp, int cipher, u16 group,
+			   int freq, const u8 *beacon_rsne, u8 beacon_rsne_len,
 			   const u8 *beacon_rsnxe, u8 beacon_rsnxe_len,
 			   int network_id, struct wpabuf *comeback)
 {
@@ -1080,7 +1359,7 @@ static int wpas_pasn_start(struct wpa_supplicant *wpa_s, const u8 *bssid,
 	pasn->group = group;
 	pasn->freq = freq;
 
-	derive_kdk = (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF) &&
+	derive_kdk = (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA) &&
 		ieee802_11_rsnx_capab(beacon_rsnxe,
 				      WLAN_RSNX_CAPAB_SECURE_LTF);
 #ifdef CONFIG_TESTING_OPTIONS
@@ -1093,6 +1372,13 @@ static int wpas_pasn_start(struct wpa_supplicant *wpa_s, const u8 *bssid,
 		pasn->kdk_len = 0;
 	wpa_printf(MSG_DEBUG, "PASN: kdk_len=%zu", pasn->kdk_len);
 
+	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA) &&
+	    ieee802_11_rsnx_capab(beacon_rsnxe, WLAN_RSNX_CAPAB_SECURE_LTF))
+		pasn->secure_ltf = true;
+	else
+		pasn->secure_ltf = false;
+
+	os_memcpy(pasn->own_addr, own_addr, ETH_ALEN);
 	os_memcpy(pasn->bssid, bssid, ETH_ALEN);
 
 	wpa_printf(MSG_DEBUG,
@@ -1207,8 +1493,9 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 
 	rsnxe = wpa_bss_get_ie(bss, WLAN_EID_RSNX);
 
-	ret = wpas_pasn_start(wpa_s, awork->bssid, awork->akmp, awork->cipher,
-			      awork->group, bss->freq, rsne, *(rsne + 1) + 2,
+	ret = wpas_pasn_start(wpa_s, awork->own_addr, awork->bssid, awork->akmp,
+			      awork->cipher, awork->group, bss->freq,
+			      rsne, *(rsne + 1) + 2,
 			      rsnxe, rsnxe ? *(rsnxe + 1) + 2 : 0,
 			      awork->network_id, awork->comeback);
 	if (ret) {
@@ -1230,7 +1517,8 @@ fail:
 }
 
 
-int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s, const u8 *bssid,
+int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s,
+			 const u8 *own_addr, const u8 *bssid,
 			 int akmp, int cipher, u16 group, int network_id,
 			 const u8 *comeback, size_t comeback_len)
 {
@@ -1272,6 +1560,7 @@ int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s, const u8 *bssid,
 	if (!awork)
 		return -1;
 
+	os_memcpy(awork->own_addr, own_addr, ETH_ALEN);
 	os_memcpy(awork->bssid, bssid, ETH_ALEN);
 	awork->akmp = akmp;
 	awork->cipher = cipher;
@@ -1321,16 +1610,26 @@ static int wpas_pasn_immediate_retry(struct wpa_supplicant *wpa_s,
 	int akmp = pasn->akmp;
 	int cipher = pasn->cipher;
 	u16 group = pasn->group;
+	u8 own_addr[ETH_ALEN];
 	u8 bssid[ETH_ALEN];
 	int network_id = pasn->ssid ? pasn->ssid->id : 0;
 
 	wpa_printf(MSG_DEBUG, "PASN: Immediate retry");
+	os_memcpy(own_addr, pasn->own_addr, ETH_ALEN);
 	os_memcpy(bssid, pasn->bssid, ETH_ALEN);
 	wpas_pasn_reset(wpa_s);
 
-	return wpas_pasn_auth_start(wpa_s, bssid, akmp, cipher, group,
+	return wpas_pasn_auth_start(wpa_s, own_addr, bssid, akmp, cipher, group,
 				    network_id,
 				    params->comeback, params->comeback_len);
+}
+
+
+static void wpas_pasn_deauth_cb(struct ptksa_cache_entry *entry)
+{
+	struct wpa_supplicant *wpa_s = entry->ctx;
+
+	wpas_pasn_deauthenticate(wpa_s, entry->own_addr, entry->addr);
 }
 
 
@@ -1358,7 +1657,7 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 		return -2;
 
 	/* Not our frame; do nothing */
-	if (os_memcmp(mgmt->da, wpa_s->own_addr, ETH_ALEN) != 0 ||
+	if (os_memcmp(mgmt->da, pasn->own_addr, ETH_ALEN) != 0 ||
 	    os_memcmp(mgmt->sa, pasn->bssid, ETH_ALEN) != 0 ||
 	    os_memcmp(mgmt->bssid, pasn->bssid, ETH_ALEN) != 0)
 		return -2;
@@ -1382,9 +1681,7 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 	    status != WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY) {
 		wpa_printf(MSG_DEBUG,
 			   "PASN: Authentication rejected - status=%u", status);
-		pasn->status = status;
-		wpas_pasn_auth_stop(wpa_s);
-		return -1;
+		goto fail;
 	}
 
 	if (ieee802_11_parse_elems(mgmt->u.auth.variable,
@@ -1518,13 +1815,22 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 	}
 
 	ret = pasn_pmk_to_ptk(pasn->pmk, pasn->pmk_len,
-			      wpa_s->own_addr, pasn->bssid,
+			      pasn->own_addr, pasn->bssid,
 			      wpabuf_head(secret), wpabuf_len(secret),
 			      &pasn->ptk, pasn->akmp, pasn->cipher,
 			      pasn->kdk_len);
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "PASN: Failed to derive PTK");
 		goto fail;
+	}
+
+	if (pasn->secure_ltf) {
+		ret = wpa_ltf_keyseed(&pasn->ptk, pasn->akmp, pasn->cipher);
+		if (ret) {
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Failed to derive LTF keyseed");
+			goto fail;
+		}
 	}
 
 	wpabuf_free(wrapped_data);
@@ -1534,7 +1840,7 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 
 	/* Verify the MIC */
 	ret = pasn_mic(pasn->ptk.kck, pasn->akmp, pasn->cipher,
-		       pasn->bssid, wpa_s->own_addr,
+		       pasn->bssid, pasn->own_addr,
 		       wpabuf_head(pasn->beacon_rsne_rsnxe),
 		       wpabuf_len(pasn->beacon_rsne_rsnxe),
 		       (u8 *) &mgmt->u.auth,
@@ -1567,8 +1873,10 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 
 	wpa_printf(MSG_DEBUG, "PASN: Success sending last frame. Store PTK");
 
-	ptksa_cache_add(wpa_s->ptksa, pasn->bssid, pasn->cipher,
-			dot11RSNAConfigPMKLifetime, &pasn->ptk);
+	ptksa_cache_add(wpa_s->ptksa, pasn->own_addr, pasn->bssid,
+			pasn->cipher, dot11RSNAConfigPMKLifetime, &pasn->ptk,
+			wpa_s->pasn_params ? wpas_pasn_deauth_cb : NULL,
+			wpa_s->pasn_params ? wpa_s : NULL);
 
 	forced_memzero(&pasn->ptk, sizeof(pasn->ptk));
 
@@ -1590,7 +1898,62 @@ fail:
 		pasn->status = status;
 
 	wpas_pasn_auth_stop(wpa_s);
+
+	wpas_pasn_auth_work_done(wpa_s, PASN_STATUS_FAILURE);
 	return -1;
+}
+
+
+void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
+			    struct pasn_auth *pasn_auth)
+{
+	struct pasn_peer *src, *dst;
+	unsigned int i, num_peers = pasn_auth->num_peers;
+
+	if (wpa_s->pasn_params) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: auth_trigger: Already in progress");
+		return;
+	}
+
+	if (!num_peers || num_peers > WPAS_MAX_PASN_PEERS) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: auth trigger: Invalid number of peers");
+		return;
+	}
+
+	wpa_s->pasn_params = os_zalloc(sizeof(struct pasn_auth));
+	if (!wpa_s->pasn_params) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: auth trigger: Failed to allocate a buffer");
+		return;
+	}
+
+	wpa_s->pasn_count = 0;
+	wpa_s->pasn_params->num_peers = num_peers;
+
+	for (i = 0; i < num_peers; i++) {
+		dst = &wpa_s->pasn_params->peer[i];
+		src = &pasn_auth->peer[i];
+		os_memcpy(dst->own_addr, wpa_s->own_addr, ETH_ALEN);
+		os_memcpy(dst->peer_addr, src->peer_addr, ETH_ALEN);
+		dst->ltf_keyseed_required = src->ltf_keyseed_required;
+		dst->status = PASN_STATUS_SUCCESS;
+
+		if (!is_zero_ether_addr(src->own_addr)) {
+			os_memcpy(dst->own_addr, src->own_addr, ETH_ALEN);
+			wpa_printf(MSG_DEBUG, "PASN: Own (source) MAC addr: "
+				   MACSTR, MAC2STR(dst->own_addr));
+		}
+	}
+
+	if (pasn_auth->action == PASN_ACTION_DELETE_SECURE_RANGING_CONTEXT) {
+		wpas_pasn_delete_peers(wpa_s, wpa_s->pasn_params);
+		os_free(wpa_s->pasn_params);
+		wpa_s->pasn_params = NULL;
+	} else if (pasn_auth->action == PASN_ACTION_AUTH) {
+		wpas_pasn_configure_next_peer(wpa_s, wpa_s->pasn_params);
+	}
 }
 
 
@@ -1621,7 +1984,7 @@ int wpas_pasn_auth_tx_status(struct wpa_supplicant *wpa_s,
 
 	/* Not our frame; do nothing */
 	if (os_memcmp(mgmt->da, pasn->bssid, ETH_ALEN) ||
-	    os_memcmp(mgmt->sa, wpa_s->own_addr, ETH_ALEN) ||
+	    os_memcmp(mgmt->sa, pasn->own_addr, ETH_ALEN) ||
 	    os_memcmp(mgmt->bssid, pasn->bssid, ETH_ALEN))
 		return -1;
 
@@ -1653,14 +2016,25 @@ int wpas_pasn_auth_tx_status(struct wpa_supplicant *wpa_s,
 		 * Either frame was not ACKed or it was ACKed but the trans_seq
 		 * != 1, i.e., not expecting an RX frame, so we are done.
 		 */
+		if (!wpa_s->pasn_params) {
+			wpas_pasn_auth_stop(wpa_s);
+			return 0;
+		}
+
+		wpas_pasn_set_keys_from_cache(wpa_s, pasn->own_addr,
+					      pasn->bssid, pasn->cipher,
+					      pasn->akmp);
 		wpas_pasn_auth_stop(wpa_s);
+
+		wpas_pasn_auth_work_done(wpa_s, PASN_STATUS_SUCCESS);
 	}
 
 	return 0;
 }
 
 
-int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *bssid)
+int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *own_addr,
+			     const u8 *bssid)
 {
 	struct wpa_bss *bss;
 	struct wpabuf *buf;
@@ -1672,6 +2046,9 @@ int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *bssid)
 			   "PASN: Cannot deauthenticate from current BSS");
 		return -1;
 	}
+
+	wpa_drv_set_secure_ranging_ctx(wpa_s, own_addr, bssid, 0, 0, NULL, 0,
+				       NULL, 1);
 
 	wpa_printf(MSG_DEBUG, "PASN: deauth: Flushing all PTKSA entries for "
 		   MACSTR, MAC2STR(bssid));
@@ -1696,7 +2073,7 @@ int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *bssid)
 					     (WLAN_FC_STYPE_DEAUTH << 4));
 
 	os_memcpy(deauth->da, bssid, ETH_ALEN);
-	os_memcpy(deauth->sa, wpa_s->own_addr, ETH_ALEN);
+	os_memcpy(deauth->sa, own_addr, ETH_ALEN);
 	os_memcpy(deauth->bssid, bssid, ETH_ALEN);
 	deauth->u.deauth.reason_code =
 		host_to_le16(WLAN_REASON_PREV_AUTH_NOT_VALID);

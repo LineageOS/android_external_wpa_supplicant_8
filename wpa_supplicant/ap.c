@@ -176,9 +176,8 @@ no_vht:
 		conf, conf->channel + conf->secondary_channel * 2);
 	hostapd_set_oper_chwidth(conf, CONF_OPER_CHWIDTH_USE_HT);
 	ieee80211_freq_to_channel_ext(ssid->frequency, 0,
-		   conf->vht_oper_chwidth,
-		   &conf->op_class,
-		   &conf->channel);
+				      conf->vht_oper_chwidth,
+				      &conf->op_class, &conf->channel);
 }
 
 

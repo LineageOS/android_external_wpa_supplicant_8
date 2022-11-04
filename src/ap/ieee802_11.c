@@ -982,7 +982,8 @@ void sae_accept_sta(struct hostapd_data *hapd, struct sta_info *sta)
 	sta->sae->peer_commit_scalar_accepted = sta->sae->peer_commit_scalar;
 	sta->sae->peer_commit_scalar = NULL;
 	wpa_auth_pmksa_add_sae(hapd->wpa_auth, sta->addr,
-			       sta->sae->pmk, sta->sae->pmkid);
+			       sta->sae->pmk, sta->sae->pmk_len,
+			       sta->sae->pmkid, sta->sae->akmp);
 	sae_sme_send_external_auth_status(hapd, sta, WLAN_STATUS_SUCCESS);
 }
 
@@ -1233,6 +1234,10 @@ static int sae_status_success(struct hostapd_data *hapd, u16 status_code)
 	if (sae_pwe == 0 && sae_pk)
 		sae_pwe = 2;
 #endif /* CONFIG_SAE_PK */
+	if (sae_pwe == 0 &&
+	    (hapd->conf->wpa_key_mgmt &
+	     (WPA_KEY_MGMT_SAE_EXT_KEY | WPA_KEY_MGMT_FT_SAE_EXT_KEY)))
+		sae_pwe = 2;
 
 	return ((sae_pwe == 0 || sae_pwe == 3) &&
 		status_code == WLAN_STATUS_SUCCESS) ||
@@ -2514,7 +2519,8 @@ static int pasn_wd_handle_sae_confirm(struct hostapd_data *hapd,
 	 * restrict this only for PASN.
 	 */
 	wpa_auth_pmksa_add_sae(hapd->wpa_auth, sta->addr,
-			       pasn->sae.pmk, pasn->sae.pmkid);
+			       pasn->sae.pmk, pasn->sae.pmk_len,
+			       pasn->sae.pmkid, pasn->sae.akmp);
 	return 0;
 }
 
@@ -2659,6 +2665,15 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed to derive PTK");
 		goto fail;
+	}
+
+	if (pasn->secure_ltf) {
+		ret = wpa_ltf_keyseed(&pasn->ptk, pasn->akmp, pasn->cipher);
+		if (ret) {
+			wpa_printf(MSG_DEBUG,
+				   "PASN: FILS: Failed to derive LTF keyseed");
+			goto fail;
+		}
 	}
 
 	wpa_printf(MSG_DEBUG, "PASN: PTK successfully derived");
@@ -2842,6 +2857,38 @@ static struct wpabuf * pasn_get_wrapped_data(struct hostapd_data *hapd,
 }
 
 
+static int pasn_set_keys_from_cache(struct hostapd_data *hapd,
+				    const u8 *own_addr, const u8 *sta_addr,
+				    int cipher, int akmp)
+{
+	struct ptksa_cache_entry *entry;
+
+	entry = ptksa_cache_get(hapd->ptksa, sta_addr, cipher);
+	if (!entry) {
+		wpa_printf(MSG_DEBUG, "PASN: peer " MACSTR
+			   " not present in PTKSA cache", MAC2STR(sta_addr));
+		return -1;
+	}
+
+	if (os_memcmp(entry->own_addr, own_addr, ETH_ALEN) != 0) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: own addr " MACSTR " and PTKSA entry own addr "
+			   MACSTR " differ",
+			   MAC2STR(own_addr), MAC2STR(entry->own_addr));
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "PASN: " MACSTR " present in PTKSA cache",
+		   MAC2STR(sta_addr));
+	hostapd_drv_set_secure_ranging_ctx(hapd, own_addr, sta_addr, cipher,
+					   entry->ptk.tk_len, entry->ptk.tk,
+					   entry->ptk.ltf_keyseed_len,
+					   entry->ptk.ltf_keyseed, 0);
+
+	return 0;
+}
+
+
 static int
 pasn_derive_keys(struct hostapd_data *hapd, struct sta_info *sta,
 		 const u8 *cached_pmk, size_t cached_pmk_len,
@@ -2896,6 +2943,16 @@ pasn_derive_keys(struct hostapd_data *hapd, struct sta_info *sta,
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "PASN: Failed to derive PTK");
 		return -1;
+	}
+
+	if (sta->pasn->secure_ltf) {
+		ret = wpa_ltf_keyseed(&sta->pasn->ptk, sta->pasn->akmp,
+				      sta->pasn->cipher);
+		if (ret) {
+			wpa_printf(MSG_DEBUG,
+				   "PASN: Failed to derive LTF keyseed");
+			return -1;
+		}
 	}
 
 	wpa_printf(MSG_DEBUG, "PASN: PTK successfully derived");
@@ -3161,7 +3218,7 @@ static void handle_auth_pasn_1(struct hostapd_data *hapd, struct sta_info *sta,
 	sta->pasn->akmp = rsn_data.key_mgmt;
 	sta->pasn->cipher = rsn_data.pairwise_cipher;
 
-	derive_kdk = (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF) &&
+	derive_kdk = (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_AP) &&
 		ieee802_11_rsnx_capab_len(elems.rsnxe, elems.rsnxe_len,
 					  WLAN_RSNX_CAPAB_SECURE_LTF);
 #ifdef CONFIG_TESTING_OPTIONS
@@ -3173,6 +3230,13 @@ static void handle_auth_pasn_1(struct hostapd_data *hapd, struct sta_info *sta,
 	else
 		sta->pasn->kdk_len = 0;
 	wpa_printf(MSG_DEBUG, "PASN: kdk_len=%zu", sta->pasn->kdk_len);
+
+	if ((hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_AP) &&
+	    ieee802_11_rsnx_capab_len(elems.rsnxe, elems.rsnxe_len,
+				      WLAN_RSNX_CAPAB_SECURE_LTF))
+		sta->pasn->secure_ltf = true;
+	else
+		sta->pasn->secure_ltf = false;
 
 	if (!elems.pasn_params || !elems.pasn_params_len) {
 		wpa_printf(MSG_DEBUG,
@@ -3496,8 +3560,10 @@ static void handle_auth_pasn_3(struct hostapd_data *hapd, struct sta_info *sta,
 	wpa_printf(MSG_INFO,
 		   "PASN: Success handling transaction == 3. Store PTK");
 
-	ptksa_cache_add(hapd->ptksa, sta->addr, sta->pasn->cipher, 43200,
-			&sta->pasn->ptk);
+	ptksa_cache_add(hapd->ptksa, hapd->own_addr, sta->addr,
+			sta->pasn->cipher, 43200, &sta->pasn->ptk, NULL, NULL);
+	pasn_set_keys_from_cache(hapd, hapd->own_addr, sta->addr,
+				 sta->pasn->cipher, sta->pasn->akmp);
 fail:
 	ap_free_sta(hapd, sta);
 }
@@ -4686,7 +4752,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		    sta->auth_alg == WLAN_AUTH_OPEN) {
 			struct rsn_pmksa_cache_entry *sa;
 			sa = wpa_auth_sta_get_pmksa(sta->wpa_sm);
-			if (!sa || sa->akmp != WPA_KEY_MGMT_SAE) {
+			if (!sa || !wpa_key_mgmt_sae(sa->akmp)) {
 				wpa_printf(MSG_DEBUG,
 					   "SAE: No PMKSA cache entry found for "
 					   MACSTR, MAC2STR(sta->addr));
@@ -7450,7 +7516,7 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 				break;
 
 			*eid++ = RNR_NEIGHBOR_AP_OFFSET_UNKNOWN;
-			os_memcpy(eid, bss->conf->bssid, ETH_ALEN);
+			os_memcpy(eid, bss->own_addr, ETH_ALEN);
 			eid += ETH_ALEN;
 			os_memcpy(eid, &bss->conf->ssid.short_ssid, 4);
 			eid += 4;

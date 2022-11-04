@@ -3833,6 +3833,10 @@ static enum chan_allowed wpas_p2p_verify_channel(struct wpa_supplicant *wpa_s,
 	int flag = 0;
 	enum chan_allowed res, res2;
 
+	if (is_6ghz_op_class(op_class) && !is_6ghz_psc_frequency(
+			p2p_channel_to_freq(op_class, channel)))
+		return NOT_ALLOWED;
+
 	res2 = res = has_channel(wpa_s->global, mode, op_class, channel, &flag);
 	if (bw == BW40MINUS) {
 		if (!(flag & HOSTAPD_CHAN_HT40MINUS))
@@ -9770,10 +9774,13 @@ static int wpas_p2p_move_go_csa(struct wpa_supplicant *wpa_s)
 
 	if (conf->hw_mode != wpa_s->ap_iface->current_mode->mode &&
 	    (wpa_s->ap_iface->current_mode->mode != HOSTAPD_MODE_IEEE80211A ||
+	     is_6ghz_freq(wpa_s->ap_iface->freq) ||
 	     conf->hw_mode != HOSTAPD_MODE_IEEE80211G)) {
 		wpa_dbg(wpa_s, MSG_INFO,
-			"P2P CSA: CSA from Hardware mode %d to %d is not supported",
-			wpa_s->ap_iface->current_mode->mode, conf->hw_mode);
+			"P2P CSA: CSA from hardware mode %d%s to %d is not supported",
+			wpa_s->ap_iface->current_mode->mode,
+			is_6ghz_freq(wpa_s->ap_iface->freq) ? " (6 GHz)" : "",
+			conf->hw_mode);
 		ret = -1;
 		goto out;
 	}

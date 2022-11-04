@@ -17,6 +17,7 @@
 #include "ap_config.h"
 #include "ap_drv_ops.h"
 #include "wpa_auth.h"
+#include "dpp_hostapd.h"
 #include "ieee802_11.h"
 
 
@@ -412,8 +413,7 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx)
 			*pos |= 0x01;
 #endif /* CONFIG_FILS */
 #ifdef CONFIG_IEEE80211AX
-		if (hapd->iconf->ieee80211ax &&
-		    hostapd_get_he_twt_responder(hapd, IEEE80211_MODE_AP))
+		if (hostapd_get_he_twt_responder(hapd, IEEE80211_MODE_AP))
 			*pos |= 0x40; /* Bit 78 - TWT responder */
 #endif /* CONFIG_IEEE80211AX */
 		break;
@@ -873,7 +873,7 @@ u8 * hostapd_eid_owe_trans(struct hostapd_data *hapd, u8 *eid,
 size_t hostapd_eid_dpp_cc_len(struct hostapd_data *hapd)
 {
 #ifdef CONFIG_DPP2
-	if (hapd->conf->dpp_configurator_connectivity)
+	if (hostapd_dpp_configurator_connectivity(hapd))
 		return 6;
 #endif /* CONFIG_DPP2 */
 	return 0;
@@ -885,7 +885,7 @@ u8 * hostapd_eid_dpp_cc(struct hostapd_data *hapd, u8 *eid, size_t len)
 	u8 *pos = eid;
 
 #ifdef CONFIG_DPP2
-	if (!hapd->conf->dpp_configurator_connectivity || len < 6)
+	if (!hostapd_dpp_configurator_connectivity(hapd) || len < 6)
 		return pos;
 
 	*pos++ = WLAN_EID_VENDOR_SPECIFIC;
@@ -1063,7 +1063,8 @@ u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len)
 
 	if (wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt) &&
 	    (hapd->conf->sae_pwe == 1 || hapd->conf->sae_pwe == 2 ||
-	     hostapd_sae_pw_id_in_use(hapd->conf) || sae_pk) &&
+	     hostapd_sae_pw_id_in_use(hapd->conf) || sae_pk ||
+	     wpa_key_mgmt_sae_ext_key(hapd->conf->wpa_key_mgmt)) &&
 	    hapd->conf->sae_pwe != 3) {
 		capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
 #ifdef CONFIG_SAE_PK
@@ -1072,11 +1073,11 @@ u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len)
 #endif /* CONFIG_SAE_PK */
 	}
 
-	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF)
+	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_AP)
 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_LTF);
-	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_RTT)
+	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_RTT_AP)
 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_RTT);
-	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG)
+	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_AP)
 		capab |= BIT(WLAN_RSNX_CAPAB_PROT_RANGE_NEG);
 
 	flen = (capab & 0xff00) ? 2 : 1;

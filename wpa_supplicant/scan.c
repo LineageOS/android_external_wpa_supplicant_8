@@ -1371,8 +1371,6 @@ scan:
 	    (wpa_s->p2p_in_invitation || wpa_s->p2p_in_provisioning) &&
 	    !is_p2p_allow_6ghz(wpa_s->global->p2p) &&
 	    is_6ghz_supported(wpa_s)) {
-		int i;
-
 		/* Exclude 6 GHz channels from the full scan for P2P connection
 		 * since the 6 GHz band is disabled for P2P uses. */
 		wpa_printf(MSG_DEBUG,
@@ -1929,6 +1927,18 @@ const u8 * wpa_scan_get_ie(const struct wpa_scan_res *res, u8 ie)
 		ie_len = res->beacon_ie_len;
 
 	return get_ie((const u8 *) (res + 1), ie_len, ie);
+}
+
+
+const u8 * wpa_scan_get_ml_ie(const struct wpa_scan_res *res, u8 type)
+{
+	size_t ie_len = res->ie_len;
+
+	/* Use the Beacon frame IEs if res->ie_len is not available */
+	if (!ie_len)
+		ie_len = res->beacon_ie_len;
+
+	return get_ml_ie((const u8 *) (res + 1), ie_len, type);
 }
 
 
