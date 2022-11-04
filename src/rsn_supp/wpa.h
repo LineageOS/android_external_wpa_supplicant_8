@@ -93,6 +93,11 @@ struct wpa_sm_ctx {
 	void (*transition_disable)(void *ctx, u8 bitmap);
 	void (*store_ptk)(void *ctx, u8 *addr, int cipher,
 			  u32 life_time, const struct wpa_ptk *ptk);
+#ifdef CONFIG_PASN
+	int (*set_ltf_keyseed)(void *ctx, const u8 *own_addr,
+			       const u8 *peer_addr, size_t ltf_keyseed_len,
+			       const u8 *ltf_keyseed);
+#endif /* CONFIG_PASN */
 };
 
 
@@ -582,5 +587,6 @@ void wpa_sm_set_fils_cache_id(struct wpa_sm *sm, const u8 *fils_cache_id);
 void wpa_sm_set_dpp_z(struct wpa_sm *sm, const struct wpabuf *z);
 void wpa_pasn_pmksa_cache_add(struct wpa_sm *sm, const u8 *pmk, size_t pmk_len,
 			      const u8 *pmkid, const u8 *bssid, int key_mgmt);
+void wpa_pasn_sm_set_caps(struct wpa_sm *sm, unsigned int flags2);
 
 #endif /* WPA_H */

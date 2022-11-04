@@ -482,6 +482,7 @@ int hostapd_setup_sae_pt(struct hostapd_bss_config *conf)
 	struct sae_password_entry *pw;
 
 	if ((conf->sae_pwe == 0 && !hostapd_sae_pw_id_in_use(conf) &&
+	     !wpa_key_mgmt_sae_ext_key(conf->wpa_key_mgmt) &&
 	     !hostapd_sae_pk_in_use(conf)) ||
 	    conf->sae_pwe == 3 ||
 	    !wpa_key_mgmt_sae(conf->wpa_key_mgmt))
@@ -949,6 +950,8 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 #ifdef CONFIG_DPP
 	os_free(conf->dpp_name);
 	os_free(conf->dpp_mud_url);
+	os_free(conf->dpp_extra_conf_req_name);
+	os_free(conf->dpp_extra_conf_req_value);
 	os_free(conf->dpp_connector);
 	wpabuf_free(conf->dpp_netaccesskey);
 	wpabuf_free(conf->dpp_csign);

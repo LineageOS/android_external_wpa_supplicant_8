@@ -523,6 +523,14 @@ static inline int wpa_drv_signal_monitor(struct wpa_supplicant *wpa_s,
 int wpa_drv_signal_poll(struct wpa_supplicant *wpa_s,
 			struct wpa_signal_info *si);
 
+static inline int wpa_drv_mlo_signal_poll(struct wpa_supplicant *wpa_s,
+					  struct wpa_mlo_signal_info *mlo_si)
+{
+	if (wpa_s->driver->mlo_signal_poll)
+		return wpa_s->driver->mlo_signal_poll(wpa_s->drv_priv, mlo_si);
+	return -1;
+}
+
 static inline int wpa_drv_channel_info(struct wpa_supplicant *wpa_s,
 				       struct wpa_channel_info *ci)
 {
@@ -1115,6 +1123,51 @@ static inline int wpa_drv_dpp_listen(struct wpa_supplicant *wpa_s, bool enable)
 	if (!wpa_s->driver->dpp_listen)
 		return 0;
 	return wpa_s->driver->dpp_listen(wpa_s->drv_priv, enable);
+}
+
+static inline int wpa_drv_send_pasn_resp(struct wpa_supplicant *wpa_s,
+					 struct pasn_auth *params)
+{
+	if (!wpa_s->driver->send_pasn_resp)
+		return -1;
+	return wpa_s->driver->send_pasn_resp(wpa_s->drv_priv, params);
+}
+
+static inline int wpa_drv_set_secure_ranging_ctx(struct wpa_supplicant *wpa_s,
+						 const u8 *own_addr,
+						 const u8 *peer_addr,
+						 u32 cipher, u8 tk_len,
+						 const u8 *tk,
+						 u8 ltf_keyseed_len,
+						 const u8 *ltf_keyseed,
+						 u32 action)
+{
+	struct secure_ranging_params params;
+
+	if (!wpa_s->driver->set_secure_ranging_ctx)
+		return -1;
+
+	os_memset(&params, 0, sizeof(params));
+	params.action = action;
+	params.own_addr = own_addr;
+	params.peer_addr = peer_addr;
+	params.cipher = cipher;
+	params.tk_len = tk_len;
+	params.tk = tk;
+	params.ltf_keyseed_len = ltf_keyseed_len;
+	params.ltf_keyseed = ltf_keyseed;
+
+	return wpa_s->driver->set_secure_ranging_ctx(wpa_s->drv_priv, &params);
+}
+
+static inline int
+wpas_drv_get_sta_mlo_info(struct wpa_supplicant *wpa_s,
+			  struct driver_sta_mlo_info *mlo_info)
+{
+	if (!wpa_s->driver->get_sta_mlo_info)
+		return 0;
+
+	return wpa_s->driver->get_sta_mlo_info(wpa_s->drv_priv, mlo_info);
 }
 
 #endif /* DRIVER_I_H */

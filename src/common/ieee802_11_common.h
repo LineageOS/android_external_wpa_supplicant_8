@@ -343,6 +343,8 @@ struct wpabuf * ieee802_11_defrag_data(struct ieee802_11_elems *elems,
 				       const u8 *data, u8 len);
 struct wpabuf * ieee802_11_defrag(struct ieee802_11_elems *elems,
 				  u8 eid, u8 eid_ext);
+const u8 * get_ml_ie(const u8 *ies, size_t len, u8 type);
+const u8 * get_basic_mle_mld_addr(const u8 *buf, size_t len);
 
 int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx);
 

@@ -420,19 +420,24 @@ static int acs_usable_bw160_chan(const struct hostapd_channel_data *chan)
 static int acs_survey_is_sufficient(struct freq_survey *survey)
 {
 	if (!(survey->filled & SURVEY_HAS_NF)) {
-		wpa_printf(MSG_INFO, "ACS: Survey is missing noise floor");
+		wpa_printf(MSG_INFO,
+			   "ACS: Survey for freq %d is missing noise floor",
+			   survey->freq);
 		return 0;
 	}
 
 	if (!(survey->filled & SURVEY_HAS_CHAN_TIME)) {
-		wpa_printf(MSG_INFO, "ACS: Survey is missing channel time");
+		wpa_printf(MSG_INFO,
+			   "ACS: Survey for freq %d is missing channel time",
+			   survey->freq);
 		return 0;
 	}
 
 	if (!(survey->filled & SURVEY_HAS_CHAN_TIME_BUSY) &&
 	    !(survey->filled & SURVEY_HAS_CHAN_TIME_RX)) {
 		wpa_printf(MSG_INFO,
-			   "ACS: Survey is missing RX and busy time (at least one is required)");
+			   "ACS: Survey for freq %d is missing RX and busy time (at least one is required)",
+			   survey->freq);
 		return 0;
 	}
 
@@ -551,6 +556,10 @@ static void acs_survey_mode_interference_factor(
 			continue;
 
 		if (chan->max_tx_power < iface->conf->min_tx_power)
+			continue;
+
+		if ((chan->flag & HOSTAPD_CHAN_INDOOR_ONLY) &&
+		    iface->conf->country[2] == 0x4f)
 			continue;
 
 		wpa_printf(MSG_DEBUG, "ACS: Survey analysis for channel %d (%d MHz)",
@@ -685,6 +694,10 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
 			continue;
 
 		if (chan->max_tx_power < iface->conf->min_tx_power)
+			continue;
+
+		if ((chan->flag & HOSTAPD_CHAN_INDOOR_ONLY) &&
+		    iface->conf->country[2] == 0x4f)
 			continue;
 
 		if (!chan_bw_allowed(chan, bw, 1, 1)) {
@@ -996,7 +1009,8 @@ static void acs_study(struct hostapd_iface *iface)
 
 	err = hostapd_select_hw_mode(iface);
 	if (err) {
-		wpa_printf(MSG_ERROR, "ACS: Could not (err: %d) select hw_mode for freq=%d channel=%d",
+		wpa_printf(MSG_ERROR,
+			   "ACS: Could not (err: %d) select hw_mode for freq=%d channel=%d",
 			err, iface->freq, iface->conf->channel);
 		err = -1;
 		goto fail;
@@ -1074,6 +1088,10 @@ static int * acs_request_scan_add_freqs(struct hostapd_iface *iface,
 			continue;
 
 		if (chan->max_tx_power < iface->conf->min_tx_power)
+			continue;
+
+		if ((chan->flag & HOSTAPD_CHAN_INDOOR_ONLY) &&
+		    iface->conf->country[2] == 0x4f)
 			continue;
 
 		*freq++ = chan->freq;
