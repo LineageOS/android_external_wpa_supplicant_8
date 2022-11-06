@@ -2031,10 +2031,6 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_DENY_PTK0_REKEY, 0);
 	}
 
-	if (wpa_key_mgmt_cross_akm(wpa_s->key_mgmt) &&
-	    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME))
-		wpas_update_allowed_key_mgmt(wpa_s, ssid);
-
 #ifdef CONFIG_DRIVER_NL80211_BRCM
 	if ((wpa_s->key_mgmt & WPA_KEY_MGMT_CROSS_AKM_ROAM) &&
 		IS_CROSS_AKM_ROAM_KEY_MGMT(ssid->key_mgmt) &&
@@ -2044,6 +2040,10 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		wpa_dbg(wpa_s, MSG_INFO,
 			"WPA: Updating to KEY_MGMT SAE+PSK for seamless roaming");
 	}
+#else
+	if (wpa_key_mgmt_cross_akm(wpa_s->key_mgmt) &&
+	    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME))
+		wpas_update_allowed_key_mgmt(wpa_s, ssid);
 #endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 	return 0;
