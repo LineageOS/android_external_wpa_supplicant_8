@@ -312,10 +312,14 @@ static int ieee802_11_parse_extension(const u8 *pos, size_t elen,
 		elems->pasn_params_len = elen;
 		break;
 	case WLAN_EID_EXT_EHT_CAPABILITIES:
+		if (elen < EHT_CAPABILITIES_IE_MIN_LEN)
+			break;
 		elems->eht_capabilities = pos;
 		elems->eht_capabilities_len = elen;
 		break;
 	case WLAN_EID_EXT_EHT_OPERATION:
+		if (elen < EHT_OPERATION_IE_MIN_LEN)
+			break;
 		elems->eht_operation = pos;
 		elems->eht_operation_len = elen;
 		break;
@@ -2851,6 +2855,7 @@ struct supported_chan_width get_supported_channel_width(
 	struct supported_chan_width supported_width;
 	supported_width.is_160_supported = 0;
 	supported_width.is_80p80_supported = 0;
+	supported_width.is_320_supported = 0;
 	if (elems == NULL)
 		return supported_width;
 
@@ -2858,6 +2863,8 @@ struct supported_chan_width get_supported_channel_width(
 		(struct ieee80211_vht_capabilities *) elems->vht_capabilities;
 	struct ieee80211_he_capabilities *hecaps =
 		(struct ieee80211_he_capabilities *) elems->he_capabilities;
+	struct ieee80211_eht_capabilities *ehtcaps =
+		(struct ieee80211_eht_capabilities *) elems->eht_capabilities;
 
 	if (vhtcaps) {
 		le32 vht_capabilities_info =
@@ -2875,8 +2882,16 @@ struct supported_chan_width get_supported_channel_width(
 		if (channel_width_set & HE_PHYCAP_CHANNEL_WIDTH_SET_80PLUS80MHZ_IN_5G)
 			supported_width.is_80p80_supported = 1;
 	}
-	wpa_printf(MSG_DEBUG, " IE indicate 160 supported: %u, 80+80 supported: %u",
-        supported_width.is_160_supported, supported_width.is_80p80_supported);
+	if (ehtcaps) {
+		if (ehtcaps->phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &
+		    EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK)
+			supported_width.is_320_supported = 1;
+	}
+	wpa_printf(MSG_DEBUG,
+		   " IE indicates 320 supported: %u, 160 supported: %u, 80+80 supported: %u",
+		   supported_width.is_320_supported,
+		   supported_width.is_160_supported,
+		   supported_width.is_80p80_supported);
 	return supported_width;
 }
 
@@ -2986,6 +3001,39 @@ static enum chan_width get_he_operation_channel_width(
 	return channel_width;
 }
 
+/* Parse EHT operation IE to get EHT operation channel width */
+static enum chan_width get_eht_operation_channel_width(
+				struct ieee80211_eht_operation *eht_oper,
+				int eht_oper_len)
+{
+	enum chan_width channel_width = CHAN_WIDTH_UNKNOWN;
+	if (!(eht_oper->oper_params & EHT_OPER_INFO_PRESENT) ||
+	    eht_oper_len < (EHT_OPERATION_IE_MIN_LEN + EHT_OPER_INFO_MIN_LEN))
+		return channel_width;
+
+	switch (eht_oper->oper_info.control & EHT_OPER_CHANNEL_WIDTH_MASK) {
+	case EHT_OPER_CHANNEL_WIDTH_20MHZ:
+		channel_width = CHAN_WIDTH_20;
+		break;
+	case EHT_OPER_CHANNEL_WIDTH_40MHZ:
+		channel_width = CHAN_WIDTH_40;
+		break;
+	case EHT_OPER_CHANNEL_WIDTH_80MHZ:
+		channel_width = CHAN_WIDTH_80;
+		break;
+	case EHT_OPER_CHANNEL_WIDTH_160MHZ:
+		channel_width = CHAN_WIDTH_160;
+		break;
+	case EHT_OPER_CHANNEL_WIDTH_320MHZ:
+		channel_width = CHAN_WIDTH_320;
+		break;
+	default:
+		break;
+	}
+	wpa_printf(MSG_DEBUG, " EHT operation CBW: %u", channel_width);
+	return channel_width;
+}
+
 /* Parse HT/VHT/HE operation IEs to get operation channel width */
 enum chan_width get_operation_channel_width(struct ieee802_11_elems *elems)
 {
@@ -2999,7 +3047,14 @@ enum chan_width get_operation_channel_width(struct ieee802_11_elems *elems)
 	    (struct ieee80211_vht_operation_info *) elems->vht_operation;
 	struct ieee80211_he_operation *he_oper =
 	    (struct ieee80211_he_operation *) elems->he_operation;
-	if (he_oper)
+	struct ieee80211_eht_operation *eht_oper =
+	    (struct ieee80211_eht_operation *) elems->eht_operation;
+
+	if (eht_oper)
+		channel_width = get_eht_operation_channel_width(
+			eht_oper, elems->eht_operation_len);
+
+	if (channel_width == CHAN_WIDTH_UNKNOWN && he_oper)
 		channel_width = get_he_operation_channel_width(
 			he_oper, elems->he_operation_len);
 
@@ -3023,7 +3078,11 @@ enum chan_width get_sta_operation_chan_width(
 				enum chan_width ap_operation_chan_width,
 				struct supported_chan_width sta_supported_chan_width)
 {
-	if (ap_operation_chan_width == CHAN_WIDTH_160)
+	if (ap_operation_chan_width == CHAN_WIDTH_320 &&
+	    sta_supported_chan_width.is_320_supported)
+		return CHAN_WIDTH_320;
+	if (ap_operation_chan_width == CHAN_WIDTH_160 ||
+	    ap_operation_chan_width == CHAN_WIDTH_320)
 		return (sta_supported_chan_width.is_160_supported)
 			? CHAN_WIDTH_160 : CHAN_WIDTH_80;
 	if (ap_operation_chan_width == CHAN_WIDTH_80P80)

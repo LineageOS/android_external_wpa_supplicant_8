@@ -3076,7 +3076,8 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 				get_supported_channel_width(&req_elems);
 			enum chan_width ap_operation_chan_width =
 				get_operation_channel_width(&resp_elems);
-			if (wpa_s->connection_vht || wpa_s->connection_he) {
+			if (wpa_s->connection_vht || wpa_s->connection_he ||
+			    wpa_s->connection_eht) {
 				wpa_s->connection_channel_bandwidth =
 					get_sta_operation_chan_width(ap_operation_chan_width,
 					sta_supported_chan_width);
