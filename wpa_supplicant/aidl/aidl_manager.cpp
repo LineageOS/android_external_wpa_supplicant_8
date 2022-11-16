@@ -1350,14 +1350,24 @@ void AidlManager::notifyP2pGroupStarted(
 		dev->flags |= P2P_DEV_REPORTED | P2P_DEV_REPORTED_ONCE;
 	}
 
+	P2pGroupStartedEventParams params;
+	params.groupInterfaceName = misc_utils::charBufToString(wpa_group_s->ifname);
+	params.isGroupOwner = aidl_is_go;
+	params.ssid = byteArrToVec(ssid->ssid, ssid->ssid_len);
+	params.frequencyMHz = aidl_freq;
+	params.psk = aidl_psk;
+	params.passphrase = misc_utils::charBufToString(ssid->passphrase);
+	params.isPersistent = aidl_is_persistent;
+	params.goDeviceAddress = macAddrToVec(wpa_group_s->go_dev_addr);
+	if (!aidl_is_go) {
+		// Send the GO interface MAC address in GC for link-local IPv6 calculation.
+		params.goInterfaceAddress = macAddrToVec(wpa_group_s->current_bss->bssid);
+	}
+
 	callWithEachP2pIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
-		std::bind(
-		&ISupplicantP2pIfaceCallback::onGroupStarted,
-		std::placeholders::_1, misc_utils::charBufToString(wpa_group_s->ifname),
-		aidl_is_go, byteArrToVec(ssid->ssid, ssid->ssid_len),
-		aidl_freq, aidl_psk, misc_utils::charBufToString(ssid->passphrase),
-		macAddrToVec(wpa_group_s->go_dev_addr), aidl_is_persistent));
+		std::bind(&ISupplicantP2pIfaceCallback::onGroupStartedWithParams,
+		std::placeholders::_1, params));
 }
 
 void AidlManager::notifyP2pGroupRemoved(

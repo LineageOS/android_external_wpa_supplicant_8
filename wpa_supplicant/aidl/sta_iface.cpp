@@ -50,6 +50,7 @@ enum WifiChannelWidthInMhz {
   WIDTH_80P80 = 4,
   WIDTH_5	 = 5,
   WIDTH_10	= 6,
+  WIDTH_320	= 7,
   WIDTH_INVALID = -1
 };
 
@@ -1747,7 +1748,9 @@ StaIface::getConnectionCapabilitiesInternal()
 
 	if (wpa_s->connection_set) {
 		capa.legacyMode = LegacyMode::UNKNOWN;
-		if (wpa_s->connection_he) {
+		if (wpa_s->connection_eht) {
+			capa.technology = WifiTechnology::EHT;
+		} else if (wpa_s->connection_he) {
 			capa.technology = WifiTechnology::HE;
 		} else if (wpa_s->connection_vht) {
 			capa.technology = WifiTechnology::VHT;
@@ -1777,6 +1780,9 @@ StaIface::getConnectionCapabilitiesInternal()
 			break;
 		case CHAN_WIDTH_80P80:
 			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_80P80;
+			break;
+		case CHAN_WIDTH_320:
+			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_320;
 			break;
 		default:
 			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
@@ -1930,7 +1936,23 @@ ndk::ScopedAStatus StaIface::removeAllQosPoliciesInternal()
 
 std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoInternal()
 {
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	MloLinksInfo linksInfo;
+	MloLink link;
+
+	if (!wpa_s->valid_links)
+		 return {linksInfo, ndk::ScopedAStatus::ok()};
+
+	for (int i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+		if (!(wpa_s->valid_links & BIT(i)))
+			continue;
+
+		wpa_printf(MSG_DEBUG, "Add MLO Link ID %d info", i);
+		link.linkId = i;
+		link.staLinkMacAddress.assign(wpa_s->links[i].addr, wpa_s->links[i].addr + ETH_ALEN);
+		linksInfo.links.push_back(link);
+	}
+
 	return {linksInfo, ndk::ScopedAStatus::ok()};
 }
 

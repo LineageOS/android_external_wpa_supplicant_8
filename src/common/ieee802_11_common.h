@@ -351,6 +351,7 @@ int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx);
 struct supported_chan_width {
 	u8 is_160_supported;
 	u8 is_80p80_supported;
+	u8 is_320_supported;
 };
 
 struct supported_chan_width get_supported_channel_width(struct ieee802_11_elems *elems);
