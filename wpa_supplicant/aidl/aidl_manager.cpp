@@ -1359,10 +1359,8 @@ void AidlManager::notifyP2pGroupStarted(
 	params.passphrase = misc_utils::charBufToString(ssid->passphrase);
 	params.isPersistent = aidl_is_persistent;
 	params.goDeviceAddress = macAddrToVec(wpa_group_s->go_dev_addr);
-	if (!aidl_is_go) {
-		// Send the GO interface MAC address in GC for link-local IPv6 calculation.
-		params.goInterfaceAddress = macAddrToVec(wpa_group_s->current_bss->bssid);
-	}
+	params.goInterfaceAddress = aidl_is_go ? macAddrToVec(wpa_group_s->own_addr) :
+			macAddrToVec(wpa_group_s->current_bss->bssid);
 
 	callWithEachP2pIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
