@@ -22,6 +22,7 @@
 #include <aidl/android/hardware/wifi/supplicant/NetworkResponseEapSimUmtsAuthParams.h>
 #include <aidl/android/hardware/wifi/supplicant/SaeH2eMode.h>
 #include <aidl/android/hardware/wifi/supplicant/DppConnectionKeys.h>
+#include <aidl/android/hardware/wifi/supplicant/TlsVersion.h>
 
 extern "C"
 {
@@ -173,6 +174,8 @@ public:
 	::ndk::ScopedAStatus enableSaePkOnlyMode(bool in_enable) override;
 	::ndk::ScopedAStatus setRoamingConsortiumSelection(
 		const std::vector<uint8_t>& in_selectedRcoi) override;
+	::ndk::ScopedAStatus setMinimumTlsVersionEapPhase1Param(
+		TlsVersion in_tlsVersion) override;
 
 private:
 	// Corresponding worker functions for the AIDL methods.
@@ -302,6 +305,7 @@ private:
 	ndk::ScopedAStatus enableSaePkOnlyModeInternal(bool enable);
 	ndk::ScopedAStatus setRoamingConsortiumSelectionInternal(
 		const std::vector<uint8_t>& selectedRcoi);
+	ndk::ScopedAStatus setMinimumTlsVersionEapPhase1ParamInternal(TlsVersion tlsVersion);
 
 	struct wpa_ssid* retrieveNetworkPtr();
 	struct wpa_supplicant* retrieveIfacePtr();

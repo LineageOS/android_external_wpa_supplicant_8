@@ -871,6 +871,14 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		&StaNetwork::setRoamingConsortiumSelectionInternal, in_selectedRcoi);
 }
 
+::ndk::ScopedAStatus StaNetwork::setMinimumTlsVersionEapPhase1Param(
+	TlsVersion in_tlsVersion)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+		&StaNetwork::setMinimumTlsVersionEapPhase1ParamInternal, in_tlsVersion);
+}
+
 std::pair<uint32_t, ndk::ScopedAStatus> StaNetwork::getIdInternal()
 {
 	return {network_id_, ndk::ScopedAStatus::ok()};
@@ -2005,10 +2013,13 @@ ndk::ScopedAStatus StaNetwork::enableTlsSuiteBEapPhase1ParamInternal(bool enable
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	int val = enable == true ? 1 : 0;
-	std::string suiteb_phase1("tls_suiteb=" + std::to_string(val));
+	std::string phase1_params("tls_suiteb=" + std::to_string(val));
+	if (wpa_ssid->eap.phase1 != NULL) {
+		phase1_params.append(wpa_ssid->eap.phase1);
+	}
 
 	if (setStringKeyFieldAndResetState(
-		suiteb_phase1.c_str(), &(wpa_ssid->eap.phase1), "phase1")) {
+		phase1_params.c_str(), &(wpa_ssid->eap.phase1), "phase1")) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
@@ -2595,6 +2606,41 @@ ndk::ScopedAStatus StaNetwork::enableSaePkOnlyModeInternal(bool enable)
 #else
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 #endif
+}
+
+ndk::ScopedAStatus StaNetwork::setMinimumTlsVersionEapPhase1ParamInternal(TlsVersion tlsVersion)
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	std::string phase1_params;
+	if (wpa_ssid->eap.phase1 != NULL) {
+		phase1_params.append(wpa_ssid->eap.phase1);
+	}
+	if (tlsVersion < TlsVersion::TLS_V1_0) {
+		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+	}
+	// Fallback to disable lower version TLS cascadingly.
+	switch (tlsVersion) {
+		case TlsVersion::TLS_V1_3:
+			phase1_params.append("tls_disable_tlsv1_2=1");
+			FALLTHROUGH_INTENDED;
+		case TlsVersion::TLS_V1_2:
+			phase1_params.append("tls_disable_tlsv1_1=1");
+			FALLTHROUGH_INTENDED;
+		case TlsVersion::TLS_V1_1:
+			phase1_params.append("tls_disable_tlsv1_0=1");
+			FALLTHROUGH_INTENDED;
+		case TlsVersion::TLS_V1_0:
+			FALLTHROUGH_INTENDED;
+		default:
+			// no restriction
+			break;
+	}
+
+	if (setStringKeyFieldAndResetState(
+		phase1_params.c_str(), &(wpa_ssid->eap.phase1), "phase1")) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+	return ndk::ScopedAStatus::ok();
 }
 
 }  // namespace supplicant
