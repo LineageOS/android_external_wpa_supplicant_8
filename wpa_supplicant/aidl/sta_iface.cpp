@@ -1823,6 +1823,12 @@ StaIface::getWpaDriverCapabilitiesInternal()
 
 	mask |= static_cast<uint32_t>(WpaDriverCapabilitiesMask::TRUST_ON_FIRST_USE);
 
+	mask |= static_cast<uint32_t>(WpaDriverCapabilitiesMask::SET_TLS_MINIMUM_VERSION);
+
+#ifdef EAP_TLSV1_3
+	mask |= static_cast<uint32_t>(WpaDriverCapabilitiesMask::TLS_V1_3);
+#endif
+
 	wpa_printf(MSG_DEBUG, "Driver capability mask: 0x%x", mask);
 
 	return {static_cast<WpaDriverCapabilitiesMask>(mask),
