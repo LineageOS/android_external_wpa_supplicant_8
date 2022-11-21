@@ -318,3 +318,9 @@ filegroup {
     ],
 
 }
+
+// This manifest can used by a vendor apex module for hostapd as well.
+filegroup {
+    name: "android.hardware.wifi.hostapd.xml",
+    srcs: ["android.hardware.wifi.hostapd.xml"],
+}
