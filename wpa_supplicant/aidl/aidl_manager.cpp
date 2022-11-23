@@ -39,6 +39,7 @@ constexpr size_t kUmtsAutnLenBytes = EAP_AKA_AUTN_LEN;
 const std::vector<uint8_t> kZeroBssid = {0, 0, 0, 0, 0, 0};
 
 using aidl::android::hardware::wifi::supplicant::GsmRand;
+using aidl::android::hardware::wifi::supplicant::KeyMgmtMask;
 
 /**
  * Check if the provided |wpa_supplicant| structure represents a P2P iface or
@@ -662,6 +663,8 @@ int AidlManager::notifyStateChange(struct wpa_supplicant *wpa_s)
 		aidl_ssid.assign(
 			wpa_s->current_ssid->ssid,
 			wpa_s->current_ssid->ssid + wpa_s->current_ssid->ssid_len);
+		wpa_printf(MSG_INFO, "assoc key_mgmt 0x%x network key_mgmt 0x%x",
+			wpa_s->key_mgmt, wpa_s->current_ssid->key_mgmt);
 	}
 	std::vector<uint8_t> bssid;
 	// wpa_supplicant sets the |pending_bssid| field when it starts a
@@ -681,12 +684,12 @@ int AidlManager::notifyStateChange(struct wpa_supplicant *wpa_s)
 	std::function<
 		ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
 		func = std::bind(
-			&ISupplicantStaIfaceCallback::onStateChanged,
+			&ISupplicantStaIfaceCallback::onStateChangedWithAkm,
 			std::placeholders::_1,
 			static_cast<StaIfaceCallbackState>(
 				wpa_s->wpa_state),
 				bssid, aidl_network_id, aidl_ssid,
-				fils_hlp_sent);
+				fils_hlp_sent, (KeyMgmtMask) wpa_s->key_mgmt);
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname), func);
 	return 0;
