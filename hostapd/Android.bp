@@ -169,6 +169,35 @@ hostapd_cflags_cc_defaults {
         "-Wno-unused-variable",
         "-Wno-macro-redefined",
     ],
+    // Similar to suppressing clang compiler warnings, here we
+    // suppress clang-tidy warnings to reduce noises in Android build.log.
+    tidy_checks: [
+        "-android-cloexec-*",
+        "-bugprone-branch-clone",
+        "-bugprone-macro-parentheses",
+        "-bugprone-misplaced-widening-cast",
+        "-bugprone-signal-handler",
+        "-bugprone-signed-char-misuse",
+        "-bugprone-sizeof-expression",
+        "-bugprone-suspicious-string-compare",
+        "-bugprone-too-small-loop-variable",
+        "-cert-err34-c",
+        "-cert-msc30-c",
+        "-cert-msc50-cpp",
+        "-cert-msc54-cpp",
+        "-cert-sig30-c",
+        "-cert-str34-c",
+        "-clang-analyzer-core.NullDereference",
+        "-clang-analyzer-core.UndefinedBinaryOperatorResult",
+        "-clang-analyzer-deadcode.DeadStores",
+        "-clang-analyzer-optin.performance.Padding",
+        "-clang-analyzer-optin.portability.UnixAPI",
+        "-clang-analyzer-security.insecureAPI.UncheckedReturn",
+        "-clang-analyzer-unix.cstring.NullArg",
+        "-clang-analyzer-unix.Malloc",
+        "-clang-diagnostic-unused-but-set-variable",
+        "-misc-redundant-expression",
+    ],
 }
 
 
