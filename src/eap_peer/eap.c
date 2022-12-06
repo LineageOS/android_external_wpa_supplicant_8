@@ -1684,6 +1684,7 @@ struct wpabuf * eap_sm_buildIdentity(struct eap_sm *sm, int id, int encrypted)
 	struct wpabuf *resp;
 	const u8 *identity;
 	size_t identity_len;
+	struct wpabuf *privacy_identity = NULL;
 
 	if (config == NULL) {
 		wpa_printf(MSG_WARNING, "EAP: buildIdentity: configuration "
@@ -1705,6 +1706,30 @@ struct wpabuf * eap_sm_buildIdentity(struct eap_sm *sm, int id, int encrypted)
 		identity = config->machine_identity;
 		identity_len = config->machine_identity_len;
 		wpa_hexdump_ascii(MSG_DEBUG, "EAP: using machine identity",
+				  identity, identity_len);
+	} else if (config->imsi_privacy_key && config->identity &&
+		   config->identity_len > 0) {
+		const u8 *pos = config->identity;
+		const u8 *end = config->identity + config->identity_len;
+
+		privacy_identity = wpabuf_alloc(9 + config->identity_len);
+		if (!privacy_identity)
+			return NULL;
+
+		/* Include method prefix */
+		if (*pos == '0' || *pos == '1' || *pos == '6')
+			wpabuf_put_u8(privacy_identity, *pos);
+		wpabuf_put_str(privacy_identity, "anonymous");
+
+		/* Include realm */
+		while (pos < end && *pos != '@')
+			pos++;
+		wpabuf_put_data(privacy_identity, pos, end - pos);
+
+		identity = wpabuf_head(privacy_identity);
+		identity_len = wpabuf_len(privacy_identity);
+		wpa_hexdump_ascii(MSG_DEBUG,
+				  "EAP: using IMSI privacy anonymous identity",
 				  identity, identity_len);
 	} else {
 		identity = config->identity;
@@ -1742,6 +1767,7 @@ struct wpabuf * eap_sm_buildIdentity(struct eap_sm *sm, int id, int encrypted)
 		return NULL;
 
 	wpabuf_put_data(resp, identity, identity_len);
+	wpabuf_free(privacy_identity);
 
 	return resp;
 }
@@ -2156,6 +2182,11 @@ static void eap_peer_sm_tls_event(void *ctx, enum tls_event ev,
 		else
 			eap_notify_status(sm, "remote TLS alert",
 					  data->alert.description);
+		break;
+	case TLS_UNSAFE_RENEGOTIATION_DISABLED:
+		wpa_printf(MSG_INFO,
+			   "TLS handshake failed due to the server not supporting safe renegotiation (RFC 5746); phase1 parameter allow_unsafe_renegotiation=1 can be used to work around this");
+		eap_notify_status(sm, "unsafe server renegotiation", "failure");
 		break;
 	}
 
@@ -2783,6 +2814,63 @@ const u8 * eap_get_config_identity(struct eap_sm *sm, size_t *len)
 
 	*len = config->identity_len;
 	return config->identity;
+}
+
+static const u8 * strnchr(const u8 *str, size_t len, u8 needle) {
+	const u8 *cur = str;
+
+	if (NULL == str) return NULL;
+	if (0 >= len) return NULL;
+
+	while (cur < str + len) {
+		if (*cur == needle)
+			return cur;
+		cur++;
+	}
+	return NULL;
+}
+
+const u8 * eap_get_config_realm(struct eap_sm *sm, size_t *len) {
+	struct eap_peer_config *config = eap_get_config(sm);
+	const u8 *realm = NULL;
+	size_t realm_len = 0;
+	const u8 *identity = NULL;
+	size_t identity_len = 0;
+
+	if (!config)
+		return NULL;
+
+	/* Look for the realm of the permanent identity */
+	identity = eap_get_config_identity(sm, &identity_len);
+	realm = strnchr(identity, identity_len, '@');
+	if (NULL != realm) {
+		wpa_printf(MSG_DEBUG, "Get the realm from identity.");
+		*len = identity_len - (realm - identity);
+		return realm;
+	}
+
+	/* Look for the realm of the anonymous identity. */
+	identity = config->anonymous_identity;
+	identity_len = config->anonymous_identity_len;
+	realm = strnchr(identity, identity_len, '@');
+	if (NULL != realm) {
+		wpa_printf(MSG_DEBUG, "Get the realm from anonymous identity.");
+		*len = identity_len - (realm - identity);
+		return realm;
+	}
+
+	/* Look for the realm of the real identity. */
+	identity = config->imsi_identity;
+	identity_len = config->imsi_identity_len;
+	realm = strnchr(identity, identity_len, '@');
+	if (NULL != realm) {
+		wpa_printf(MSG_DEBUG, "Get the realm from IMSI identity.");
+		*len = identity_len - (realm - identity);
+		return realm;
+	}
+	wpa_printf(MSG_DEBUG, "No realm information in identities.");
+	*len = 0;
+	return NULL;
 }
 
 
