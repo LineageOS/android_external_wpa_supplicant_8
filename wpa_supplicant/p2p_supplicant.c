@@ -8899,7 +8899,7 @@ static void wpas_p2p_remove_client_go(struct wpa_supplicant *wpa_s,
 				hapd->conf->ssid.wpa_psk = psk->next;
 			rem = psk;
 			psk = psk->next;
-			os_free(rem);
+			bin_clear_free(rem, sizeof(*rem));
 		} else {
 			prev = psk;
 			psk = psk->next;
@@ -9730,9 +9730,12 @@ static int wpas_p2p_move_go_csa(struct wpa_supplicant *wpa_s)
 		goto out;
 	}
 
-	if (conf->hw_mode != wpa_s->ap_iface->current_mode->mode) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"P2P CSA: CSA to a different band is not supported");
+	if (conf->hw_mode != wpa_s->ap_iface->current_mode->mode &&
+	    (wpa_s->ap_iface->current_mode->mode != HOSTAPD_MODE_IEEE80211A ||
+	     conf->hw_mode != HOSTAPD_MODE_IEEE80211G)) {
+		wpa_dbg(wpa_s, MSG_INFO,
+			"P2P CSA: CSA from Hardware mode %d to %d is not supported",
+			wpa_s->ap_iface->current_mode->mode, conf->hw_mode);
 		ret = -1;
 		goto out;
 	}

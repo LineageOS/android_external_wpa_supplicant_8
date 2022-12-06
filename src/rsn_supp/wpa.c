@@ -2024,6 +2024,13 @@ static int wpa_supplicant_send_2_of_2(struct wpa_sm *sm,
 	u8 *rbuf, *key_mic;
 	size_t kde_len = 0;
 
+#ifdef CONFIG_TESTING_OPTIONS
+	if (sm->disable_eapol_g2_tx) {
+		wpa_printf(MSG_INFO, "TEST: Disable sending EAPOL-Key 2/2");
+		return 0;
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
+
 #ifdef CONFIG_OCV
 	if (wpa_sm_ocv_enabled(sm))
 		kde_len = OCV_OCI_KDE_LEN;
@@ -3381,6 +3388,9 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
 	case WPA_PARAM_OCI_FREQ_FILS_ASSOC:
 		sm->oci_freq_override_fils_assoc = value;
 		break;
+	case WPA_PARAM_DISABLE_EAPOL_G2_TX:
+		sm->disable_eapol_g2_tx = value;
+		break;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_DPP2
 	case WPA_PARAM_DPP_PFS:
@@ -3897,7 +3907,7 @@ void wpa_sm_external_pmksa_cache_flush(struct wpa_sm *sm, void *network_ctx)
 	pmksa_cache_flush(sm->pmksa, network_ctx, NULL, 0, true);
 }
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 void wpa_sm_install_pmk(struct wpa_sm *sm)
 {
 	/* In case the driver wants to handle re-assocs, pass it down the PMK. */
@@ -3936,7 +3946,8 @@ void wpa_sm_notify_brcm_ft_reassoc(struct wpa_sm *sm, const u8 *bssid)
 			"WPA: Updated KCK and KEK after FT reassoc");
 	}
 }
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+
 
 #ifdef CONFIG_WNM
 int wpa_wnmsleep_install_key(struct wpa_sm *sm, u8 subelem_id, u8 *buf)

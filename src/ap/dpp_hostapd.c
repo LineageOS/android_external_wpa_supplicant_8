@@ -31,6 +31,7 @@ static void hostapd_dpp_init_timeout(void *eloop_ctx, void *timeout_ctx);
 static int hostapd_dpp_auth_init_next(struct hostapd_data *hapd);
 static void hostapd_dpp_set_testing_options(struct hostapd_data *hapd,
 					    struct dpp_authentication *auth);
+static void hostapd_dpp_start_gas_client(struct hostapd_data *hapd);
 #ifdef CONFIG_DPP2
 static void hostapd_dpp_reconfig_reply_wait_timeout(void *eloop_ctx,
 						    void *timeout_ctx);
@@ -346,14 +347,8 @@ static int hostapd_dpp_pkex_done(void *ctx, void *conn,
 #endif /* CONFIG_DPP2 */
 
 
-enum hostapd_dpp_pkex_ver {
-	PKEX_VER_AUTO,
-	PKEX_VER_ONLY_1,
-	PKEX_VER_ONLY_2,
-};
-
 static int hostapd_dpp_pkex_init(struct hostapd_data *hapd,
-				 enum hostapd_dpp_pkex_ver ver,
+				 enum dpp_pkex_ver ver,
 				 const struct hostapd_ip_addr *ipaddr,
 				 int tcp_port)
 {
@@ -1160,6 +1155,21 @@ static int hostapd_dpp_handle_key_pkg(struct hostapd_data *hapd,
 }
 
 
+#ifdef CONFIG_DPP3
+static void hostapd_dpp_build_new_key(void *eloop_ctx, void *timeout_ctx)
+{
+	struct hostapd_data *hapd = eloop_ctx;
+	struct dpp_authentication *auth = hapd->dpp_auth;
+
+	if (!auth || !auth->waiting_new_key)
+		return;
+
+	wpa_printf(MSG_DEBUG, "DPP: Build config request with a new key");
+	hostapd_dpp_start_gas_client(hapd);
+}
+#endif /* CONFIG_DPP3 */
+
+
 static void hostapd_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
 				    enum gas_query_ap_result result,
 				    const struct wpabuf *adv_proto,
@@ -1169,6 +1179,7 @@ static void hostapd_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
 	const u8 *pos;
 	struct dpp_authentication *auth = hapd->dpp_auth;
 	enum dpp_status_error status = DPP_STATUS_CONFIG_REJECTED;
+	int res;
 
 	if (!auth || !auth->auth_success) {
 		wpa_printf(MSG_DEBUG, "DPP: No matching exchange in progress");
@@ -1199,7 +1210,16 @@ static void hostapd_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
 		goto fail;
 	}
 
-	if (dpp_conf_resp_rx(auth, resp) < 0) {
+	res = dpp_conf_resp_rx(auth, resp);
+#ifdef CONFIG_DPP3
+	if (res == -3) {
+		wpa_printf(MSG_DEBUG, "DPP: New protocol key needed");
+		eloop_register_timeout(0, 0, hostapd_dpp_build_new_key, hapd,
+				       NULL);
+		return;
+	}
+#endif /* CONFIG_DPP3 */
+	if (res < 0) {
 		wpa_printf(MSG_DEBUG, "DPP: Configuration attempt failed");
 		goto fail;
 	}
@@ -1986,6 +2006,17 @@ hostapd_dpp_rx_pkex_exchange_req(struct hostapd_data *hapd, const u8 *src,
 	wpa_printf(MSG_DEBUG, "DPP: PKEX Exchange Request from " MACSTR,
 		   MAC2STR(src));
 
+	if (hapd->dpp_pkex_ver == PKEX_VER_ONLY_1 && v2) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Ignore PKEXv2 Exchange Request when configured to be PKEX v1 only");
+		return;
+	}
+	if (hapd->dpp_pkex_ver == PKEX_VER_ONLY_2 && !v2) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Ignore PKEXv1 Exchange Request when configured to be PKEX v2 only");
+		return;
+	}
+
 	/* TODO: Support multiple PKEX codes by iterating over all the enabled
 	 * values here */
 
@@ -2349,6 +2380,13 @@ void hostapd_dpp_gas_status_handler(struct hostapd_data *hapd, int ok)
 	if (!auth)
 		return;
 
+#ifdef CONFIG_DPP3
+	if (auth->waiting_new_key && ok) {
+		wpa_printf(MSG_DEBUG, "DPP: Waiting for a new key");
+		return;
+	}
+#endif /* CONFIG_DPP3 */
+
 	wpa_printf(MSG_DEBUG, "DPP: Configuration exchange completed (ok=%d)",
 		   ok);
 	eloop_cancel_timeout(hostapd_dpp_reply_wait_timeout, hapd, NULL);
@@ -2409,6 +2447,11 @@ int hostapd_dpp_pkex_add(struct hostapd_data *hapd, const char *cmd)
 {
 	struct dpp_bootstrap_info *own_bi;
 	const char *pos, *end;
+#ifdef CONFIG_DPP3
+		enum dpp_pkex_ver ver = PKEX_VER_AUTO;
+#else /* CONFIG_DPP3 */
+		enum dpp_pkex_ver ver = PKEX_VER_ONLY_1;
+#endif /* CONFIG_DPP3 */
 	int tcp_port = DPP_TCP_PORT;
 	struct hostapd_ip_addr *ipaddr = NULL;
 #ifdef CONFIG_DPP2
@@ -2474,27 +2517,22 @@ int hostapd_dpp_pkex_add(struct hostapd_data *hapd, const char *cmd)
 	if (!hapd->dpp_pkex_code)
 		return -1;
 
+	pos = os_strstr(cmd, " ver=");
+	if (pos) {
+		int v;
+
+		pos += 5;
+		v = atoi(pos);
+		if (v == 1)
+			ver = PKEX_VER_ONLY_1;
+		else if (v == 2)
+			ver = PKEX_VER_ONLY_2;
+		else
+			return -1;
+	}
+	hapd->dpp_pkex_ver = ver;
+
 	if (os_strstr(cmd, " init=1")) {
-#ifdef CONFIG_DPP3
-		enum hostapd_dpp_pkex_ver ver = PKEX_VER_AUTO;
-#else /* CONFIG_DPP3 */
-		enum hostapd_dpp_pkex_ver ver = PKEX_VER_ONLY_1;
-#endif /* CONFIG_DPP3 */
-
-		pos = os_strstr(cmd, " ver=");
-		if (pos) {
-			int v;
-
-			pos += 5;
-			v = atoi(pos);
-			if (v == 1)
-				ver = PKEX_VER_ONLY_1;
-			else if (v == 2)
-				ver = PKEX_VER_ONLY_2;
-			else
-				return -1;
-		}
-
 		if (hostapd_dpp_pkex_init(hapd, ver, ipaddr, tcp_port) < 0)
 			return -1;
 	} else {
@@ -2646,6 +2684,9 @@ void hostapd_dpp_deinit(struct hostapd_data *hapd)
 	if (hapd->iface->interfaces)
 		dpp_controller_stop_for_ctx(hapd->iface->interfaces->dpp, hapd);
 #endif /* CONFIG_DPP2 */
+#ifdef CONFIG_DPP3
+	eloop_cancel_timeout(hostapd_dpp_build_new_key, hapd, NULL);
+#endif /* CONFIG_DPP3 */
 	dpp_auth_deinit(hapd->dpp_auth);
 	hapd->dpp_auth = NULL;
 	hostapd_dpp_pkex_remove(hapd, "*");

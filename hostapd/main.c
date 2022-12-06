@@ -15,6 +15,7 @@
 #include "utils/common.h"
 #include "utils/eloop.h"
 #include "utils/uuid.h"
+#include "crypto/crypto.h"
 #include "crypto/random.h"
 #include "crypto/tls.h"
 #include "common/version.h"
@@ -725,7 +726,6 @@ int main(int argc, char *argv[])
 		case 'v':
 			show_version();
 			exit(1);
-			break;
 		case 'g':
 			if (hostapd_get_global_ctrl_iface(&interfaces, optarg))
 				return -1;
@@ -947,6 +947,7 @@ int main(int argc, char *argv[])
 
 	fst_global_deinit();
 
+	crypto_unload();
 	os_program_deinit();
 
 	return ret;
