@@ -2529,6 +2529,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INTe(sim_num, sim_num) },
 	{ STRe(imsi_privacy_cert, imsi_privacy_cert) },
 	{ STRe(imsi_privacy_attr, imsi_privacy_attr) },
+	{ INTe(strict_conservative_peer_mode, strict_conservative_peer_mode) },
 	{ STRe(openssl_ciphers, openssl_ciphers) },
 	{ INTe(erp, erp) },
 #endif /* IEEE8021X_EAPOL */
@@ -3953,6 +3954,11 @@ int wpa_config_set_cred(struct wpa_cred *cred, const char *var,
 		return 0;
 	}
 
+	if (os_strcmp(var, "strict_conservative_peer_mode") == 0) {
+		cred->strict_conservative_peer_mode = atoi(val);
+		return 0;
+	}
+
 	if (line) {
 		wpa_printf(MSG_ERROR, "Line %d: unknown cred field '%s'.",
 			   line, var);
@@ -4108,6 +4114,9 @@ char * wpa_config_get_cred_no_key(struct wpa_cred *cred, const char *var)
 
 	if (os_strcmp(var, "imsi_privacy_attr") == 0)
 		return alloc_strdup(cred->imsi_privacy_attr);
+
+	if (os_strcmp(var, "strict_conservative_peer_mode") == 0)
+		return alloc_int_str(cred->strict_conservative_peer_mode);
 
 	if (os_strcmp(var, "milenage") == 0) {
 		if (!(cred->milenage))

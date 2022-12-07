@@ -708,6 +708,11 @@ static struct wpabuf * eap_aka_response_identity(struct eap_sm *sm,
 		identity_len = data->pseudonym_len;
 		eap_aka_clear_identities(sm, data, CLEAR_REAUTH_ID);
 	} else if (id_req != NO_ID_REQ) {
+		if (id_req == PERMANENT_ID && eap_get_config_strict_conservative_peer_mode(sm)) {
+			wpa_printf(MSG_INFO,
+				   "EAP-AKA: reject permanent identity in conservative peer mode");
+			return eap_aka_client_error(data, id, EAP_AKA_UNABLE_TO_PROCESS_PACKET);
+		}
 		identity = eap_get_config_identity(sm, &identity_len);
 		if (identity) {
 			int ids = CLEAR_PSEUDONYM | CLEAR_REAUTH_ID;

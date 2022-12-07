@@ -1731,6 +1731,9 @@ struct wpabuf * eap_sm_buildIdentity(struct eap_sm *sm, int id, int encrypted)
 		wpa_hexdump_ascii(MSG_DEBUG,
 				  "EAP: using IMSI privacy anonymous identity",
 				  identity, identity_len);
+	} else if (config->strict_conservative_peer_mode) {
+		wpa_printf(MSG_DEBUG, "EAP: never use real identity in conservative peer mode.");
+		return NULL;
 	} else {
 		identity = config->identity;
 		identity_len = config->identity_len;
@@ -2815,6 +2818,24 @@ const u8 * eap_get_config_identity(struct eap_sm *sm, size_t *len)
 	*len = config->identity_len;
 	return config->identity;
 }
+
+
+/**
+ * eap_get_config_strict_conservative_peer_mode - get the value of
+ * strict conservative peer mode in eap_peer_config.
+ * @sm: Pointer to EAP state machine allocated with eap_peer_sm_init()
+*/
+int eap_get_config_strict_conservative_peer_mode(struct eap_sm *sm)
+{
+	struct eap_peer_config *config;
+	config = eap_get_config(sm);
+	if (config) {
+		return config->strict_conservative_peer_mode;
+	}
+
+	return 0;
+}
+
 
 static const u8 * strnchr(const u8 *str, size_t len, u8 needle) {
 	const u8 *cur = str;
