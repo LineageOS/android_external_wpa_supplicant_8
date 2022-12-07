@@ -338,6 +338,18 @@ struct eap_peer_config {
 	char *imsi_privacy_attr;
 
 	/**
+	 * strict_conservative_peer_mode - Whether the strict conservative peer
+	 * mode is enabled or not
+	 *
+	 * This field is used to handle the reponse of AT_PERMANENT_ID_REQ
+	 * for EAP-SIM/AKA/AKA', in convervative peer mode, a client error would
+	 * be sent to the server, but it allows to send the permanent identity
+	 * in some special cases according to 4.6.2 of RFC 4187; With the strict
+	 * mode, it never send the permanent identity to server for privacy concern.
+	 */
+	int strict_conservative_peer_mode;
+
+	/**
 	 * machine_identity - EAP Identity for machine credential
 	 *
 	 * This field is used to set the machine identity or NAI for cases where

@@ -1077,6 +1077,12 @@ static int interworking_connect_3gpp(struct wpa_supplicant *wpa_s,
 			goto fail;
 	}
 
+	if (cred->strict_conservative_peer_mode) {
+		if (wpa_config_set_quoted(ssid, "strict_conservative_peer_mode",
+					  "1") < 0)
+			goto fail;
+	}
+
 	wpa_s->next_ssid = ssid;
 	wpa_config_update_prio_list(wpa_s->conf);
 	if (!only_add)

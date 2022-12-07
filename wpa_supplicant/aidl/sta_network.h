@@ -85,6 +85,8 @@ public:
 		const std::vector<uint8_t>& in_identity) override;
 	::ndk::ScopedAStatus setEapEncryptedImsiIdentity(
 		const std::vector<uint8_t>& in_identity) override;
+	::ndk::ScopedAStatus setStrictConservativePeerMode(
+		bool in_enable) override;
 	::ndk::ScopedAStatus setEapAnonymousIdentity(
 		const std::vector<uint8_t>& in_identity) override;
 	::ndk::ScopedAStatus setEapPassword(
@@ -212,6 +214,8 @@ private:
 		const std::vector<uint8_t>& identity);
 	ndk::ScopedAStatus setEapEncryptedImsiIdentityInternal(
 		const std::vector<uint8_t>& identity);
+	ndk::ScopedAStatus setStrictConservativePeerModeInternal(
+		bool enable);
 	ndk::ScopedAStatus setEapAnonymousIdentityInternal(
 		const std::vector<uint8_t>& identity);
 	ndk::ScopedAStatus setEapPasswordInternal(

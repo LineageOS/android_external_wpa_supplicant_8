@@ -304,6 +304,15 @@ bool StaNetwork::isValid()
 		in_identity);
 }
 
+::ndk::ScopedAStatus StaNetwork::setStrictConservativePeerMode(
+	bool in_enable)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+		&StaNetwork::setStrictConservativePeerModeInternal,
+		in_enable);
+}
+
 ::ndk::ScopedAStatus StaNetwork::setEapAnonymousIdentity(
 	const std::vector<uint8_t>& in_identity)
 {
@@ -1243,6 +1252,13 @@ ndk::ScopedAStatus StaNetwork::setEapEncryptedImsiIdentityInternal(
 		&(wpa_ssid->eap.identity_len), "eap encrypted imsi identity")) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
+	return ndk::ScopedAStatus::ok();
+}
+
+ndk::ScopedAStatus StaNetwork::setStrictConservativePeerModeInternal(bool enable)
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	wpa_ssid->eap.strict_conservative_peer_mode = enable ? 1 : 0;
 	return ndk::ScopedAStatus::ok();
 }
 

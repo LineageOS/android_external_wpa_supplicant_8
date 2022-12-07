@@ -1044,6 +1044,9 @@ static void wpa_config_write_cred(FILE *f, struct wpa_cred *cred)
 	if (cred->imsi_privacy_attr)
 		fprintf(f, "\timsi_privacy_attr=\"%s\"\n",
 			cred->imsi_privacy_attr);
+	if (cred->strict_conservative_peer_mode)
+		fprintf(f,"\tstrict_conservative_peer_mode=\"%d\"\n",
+			cred->strict_conservative_peer_mode);
 }
 
 
