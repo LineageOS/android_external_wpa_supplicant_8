@@ -125,8 +125,11 @@ public:
 		const u8 *p2p_dev_addr);
 	void notifyEapError(struct wpa_supplicant *wpa_s, int error_code);
 	void notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
-			struct wpa_ssid *config);
+		struct wpa_ssid *config,
+		bool conn_status_requested);
 	void notifyDppConfigSent(struct wpa_supplicant *wpa_s);
+	void notifyDppConnectionStatusSent(struct wpa_supplicant *wpa_s,
+		enum dpp_status_error result);
 	void notifyDppSuccess(struct wpa_supplicant *wpa_s, DppEventType code);
 	void notifyDppFailure(struct wpa_supplicant *wpa_s,
 			DppFailureCode code);

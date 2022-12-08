@@ -1956,6 +1956,21 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 		wpa_printf(MSG_DEBUG, "Add MLO Link ID %d info", i);
 		link.linkId = i;
 		link.staLinkMacAddress.assign(wpa_s->links[i].addr, wpa_s->links[i].addr + ETH_ALEN);
+		// TODO (b/259710591): Once suppllicant implements TID-to-link
+		// mapping, copy it here. Mapping can be changed in two
+		// scenarios
+		//    1. Mandatory mapping from AP
+		//    2. Negotiated mapping
+		// After association, framework call this API to get
+		// MloLinksInfo. If there is an update in mapping later, notify
+		// framework on the change using the callback,
+		// ISupplicantStaIfaceCallback.onMloLinksInfoChanged() with
+		// reason code as TID_TO_LINK_MAP. In absence of an advertised
+		// mapping by the AP, a default TID-to-link mapping is assumed
+		// unless an individual TID-to-link mapping is successfully
+		// negotiated.
+		link.tidsUplinkMap = 0xFF;
+		link.tidsDownlinkMap = 0xFF;
 		linksInfo.links.push_back(link);
 	}
 

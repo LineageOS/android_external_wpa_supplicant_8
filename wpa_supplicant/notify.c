@@ -1103,13 +1103,13 @@ void wpas_notify_mesh_peer_disconnected(struct wpa_supplicant *wpa_s,
 /* DPP Success notifications */
 
 void wpas_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
-	    struct wpa_ssid *ssid)
+	    struct wpa_ssid *ssid, bool conn_status_requested)
 {
 #ifdef CONFIG_DPP
 	if (!wpa_s)
 		return;
 
-	wpas_aidl_notify_dpp_config_received(wpa_s, ssid);
+	wpas_aidl_notify_dpp_config_received(wpa_s, ssid, conn_status_requested);
 #endif /* CONFIG_DPP */
 }
 
@@ -1121,6 +1121,17 @@ void wpas_notify_dpp_config_sent(struct wpa_supplicant *wpa_s)
 
 	wpas_aidl_notify_dpp_config_sent(wpa_s);
 #endif /* CONFIG_DPP */
+}
+
+void wpas_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
+	    enum dpp_status_error result)
+{
+#ifdef CONFIG_DPP2
+	if (!wpa_s)
+		return;
+
+	wpas_aidl_notify_dpp_connection_status_sent(wpa_s, result);
+#endif /* CONFIG_DPP2 */
 }
 
 /* DPP Progress notifications */
