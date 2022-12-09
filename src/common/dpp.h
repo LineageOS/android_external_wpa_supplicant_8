@@ -296,6 +296,7 @@ struct dpp_authentication {
 	enum dpp_status_error auth_resp_status;
 	enum dpp_status_error conf_resp_status;
 	enum dpp_status_error force_conf_resp_status;
+	enum dpp_status_error conn_result_status;
 	u8 peer_mac_addr[ETH_ALEN];
 	u8 i_nonce[DPP_MAX_NONCE_LEN];
 	u8 r_nonce[DPP_MAX_NONCE_LEN];
@@ -340,6 +341,7 @@ struct dpp_authentication {
 	int connect_on_tx_status;
 	int waiting_conf_result;
 	int waiting_conn_status_result;
+	int tx_conn_status_result_started;
 	int auth_success;
 	bool reconfig_success;
 	struct wpabuf *conf_req;

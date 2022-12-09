@@ -419,12 +419,21 @@ void wpas_dpp_send_conn_status_result(struct wpa_supplicant *wpa_s,
 		DPP_EVENT_TX "dst=" MACSTR " freq=%u type=%d",
 		MAC2STR(auth->peer_mac_addr), auth->curr_freq,
 		DPP_PA_CONNECTION_STATUS_RESULT);
-	offchannel_send_action(wpa_s, auth->curr_freq,
-			       auth->peer_mac_addr, wpa_s->own_addr, broadcast,
-			       wpabuf_head(msg), wpabuf_len(msg),
-			       500, wpas_dpp_tx_status, 0);
+	if (offchannel_send_action(wpa_s, auth->curr_freq,
+				   auth->peer_mac_addr, wpa_s->own_addr, broadcast,
+				   wpabuf_head(msg), wpabuf_len(msg),
+				   500, wpas_dpp_tx_status, 0) < 0) {
+		wpas_notify_dpp_connection_status_sent(wpa_s, result);
+		wpabuf_free(msg);
+		dpp_auth_deinit(wpa_s->dpp_auth);
+		wpa_s->dpp_auth = NULL;
+		return;
+	}
+
 	wpabuf_free(msg);
 
+	auth->conn_result_status = result;
+	auth->tx_conn_status_result_started = 1;
 	/* This exchange will be terminated in the TX status handler */
 	auth->remove_on_tx_status = 1;
 
@@ -491,6 +500,9 @@ static void wpas_dpp_tx_status(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_DPP2 */
 
 	if (wpa_s->dpp_auth->remove_on_tx_status) {
+		if (auth->tx_conn_status_result_started) {
+			wpas_notify_dpp_connection_status_sent(wpa_s, auth->conn_result_status);
+		}
 		wpa_printf(MSG_DEBUG,
 			   "DPP: Terminate authentication exchange due to a request to do so on TX status");
 		eloop_cancel_timeout(wpas_dpp_init_timeout, wpa_s, NULL);
@@ -1476,7 +1488,7 @@ static int wpas_dpp_process_config(struct wpa_supplicant *wpa_s,
 
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_NETWORK_ID "%d", ssid->id);
 
-	wpas_notify_dpp_config_received(wpa_s, ssid);
+	wpas_notify_dpp_config_received(wpa_s, ssid, auth->conn_status_requested ? 1 : 0);
 
 	if (wpa_s->conf->dpp_config_processing == 2)
 		ssid->disabled = 0;
@@ -1829,7 +1841,7 @@ fail:
 		wpabuf_free(msg);
 
 		/* This exchange will be terminated in the TX status handler */
-		if (wpa_s->conf->dpp_config_processing < 2 ||
+		if (wpa_s->conf->dpp_config_processing < 1 ||
 		    wpa_s->dpp_conf_backup_received)
 			auth->remove_on_tx_status = 1;
 		return;

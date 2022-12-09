@@ -180,8 +180,10 @@ void wpas_notify_hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s,
 void wpas_notify_hs20_rx_terms_and_conditions_acceptance(
 		struct wpa_supplicant *wpa_s, const char *url);
 void wpas_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
-	    struct wpa_ssid *ssid);
+		struct wpa_ssid *ssid, bool conn_status_requested);
 void wpas_notify_dpp_config_sent(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
+		enum dpp_status_error result);
 void wpas_notify_dpp_auth_success(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_not_compatible(struct wpa_supplicant *wpa_s);

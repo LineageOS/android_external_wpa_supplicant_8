@@ -671,7 +671,7 @@ void wpas_aidl_notify_eap_error(struct wpa_supplicant *wpa_s, int error_code)
 }
 
 void wpas_aidl_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
-		struct wpa_ssid *ssid)
+		struct wpa_ssid *ssid, bool conn_status_requested)
 {
 	if (!wpa_s || !ssid)
 		return;
@@ -684,12 +684,27 @@ void wpas_aidl_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
 	if (!aidl_manager)
 		return;
 
-	aidl_manager->notifyDppConfigReceived(wpa_s, ssid);
+	aidl_manager->notifyDppConfigReceived(wpa_s, ssid, conn_status_requested);
 }
 
 void wpas_aidl_notify_dpp_config_sent(struct wpa_supplicant *wpa_s)
 {
 	wpas_aidl_notify_dpp_success(wpa_s, DppEventType::CONFIGURATION_SENT);
+}
+
+void wpas_aidl_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
+                                                 enum dpp_status_error result)
+{
+	if (!wpa_s)
+		return;
+
+	wpa_printf(MSG_DEBUG, "wpas_aidl_notify_dpp_connection_status_sent %d ", result);
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	aidl_manager->notifyDppConnectionStatusSent(wpa_s, result);
 }
 
 /* DPP Progress notifications */

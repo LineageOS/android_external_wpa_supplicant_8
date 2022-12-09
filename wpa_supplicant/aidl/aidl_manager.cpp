@@ -1570,19 +1570,18 @@ void AidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
  * @param config Configuration object
  */
 void AidlManager::notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
-		struct wpa_ssid *config)
+		struct wpa_ssid *config, bool conn_status_requested)
 {
-	DppAkm securityAkm;
-	DppConnectionKeys aidl_keys{};
 	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
+	DppConfigurationData aidl_dpp_config_data = {};
 
 	if ((config->key_mgmt & WPA_KEY_MGMT_SAE) &&
 			(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE)) {
-		securityAkm = DppAkm::SAE;
+		aidl_dpp_config_data.securityAkm = DppAkm::SAE;
 	} else if (config->key_mgmt & WPA_KEY_MGMT_PSK) {
-			securityAkm = DppAkm::PSK;
+		aidl_dpp_config_data.securityAkm = DppAkm::PSK;
 	} else if (config->key_mgmt & WPA_KEY_MGMT_DPP) {
-			securityAkm = DppAkm::DPP;
+		aidl_dpp_config_data.securityAkm = DppAkm::DPP;
 	} else {
 		/* Unsupported AKM */
 		wpa_printf(MSG_ERROR, "DPP: Error: Unsupported AKM 0x%X",
@@ -1591,29 +1590,31 @@ void AidlManager::notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 		return;
 	}
 
-	std::string passphrase = misc_utils::charBufToString(config->passphrase);
+	aidl_dpp_config_data.password = misc_utils::charBufToString(config->passphrase);
+	aidl_dpp_config_data.psk = byteArrToVec(config->psk, 32);
 	std::vector<uint8_t> aidl_ssid(
 		config->ssid,
 		config->ssid + config->ssid_len);
+	aidl_dpp_config_data.ssid = aidl_ssid;
 
-	if (securityAkm == DppAkm::DPP) {
+	if (aidl_dpp_config_data.securityAkm == DppAkm::DPP) {
 		std::string connector_str = misc_utils::charBufToString(config->dpp_connector);
-		aidl_keys.connector = std::vector<uint8_t>(connector_str.begin(),
-			connector_str.end());
-		aidl_keys.cSign = byteArrToVec(config->dpp_csign, config->dpp_csign_len);
-		aidl_keys.netAccessKey = byteArrToVec(config->dpp_netaccesskey,
-			config->dpp_netaccesskey_len);
+		aidl_dpp_config_data.dppConnectionKeys.connector
+			= std::vector<uint8_t>(connector_str.begin(), connector_str.end());
+		aidl_dpp_config_data.dppConnectionKeys.cSign
+			= byteArrToVec(config->dpp_csign, config->dpp_csign_len);
+		aidl_dpp_config_data.dppConnectionKeys.netAccessKey
+			= byteArrToVec(config->dpp_netaccesskey, config->dpp_netaccesskey_len);
 	}
+	aidl_dpp_config_data.connStatusRequested = conn_status_requested;
 
 	/* At this point, the network is already registered, notify about new
 	 * received configuration
 	 */
 	callWithEachStaIfaceCallback(aidl_ifname,
 			std::bind(
-					&ISupplicantStaIfaceCallback::onDppSuccessConfigReceived,
-					std::placeholders::_1, aidl_ssid, passphrase,
-					byteArrToVec(config->psk, 32), securityAkm,
-					aidl_keys));
+					&ISupplicantStaIfaceCallback::onDppConfigReceived,
+					std::placeholders::_1, aidl_dpp_config_data));
 }
 
 /**
@@ -1628,6 +1629,55 @@ void AidlManager::notifyDppConfigSent(struct wpa_supplicant *wpa_s)
 	callWithEachStaIfaceCallback(aidl_ifname,
 			std::bind(&ISupplicantStaIfaceCallback::onDppSuccessConfigSent,
 					std::placeholders::_1));
+}
+
+DppStatusErrorCode convertSupplicantDppStatusErrorCodeToAidl(
+	enum dpp_status_error code)
+{
+	switch (code) {
+		case DPP_STATUS_OK:
+			return DppStatusErrorCode::SUCCESS;
+		case DPP_STATUS_NOT_COMPATIBLE:
+			return DppStatusErrorCode::NOT_COMPATIBLE;
+		case DPP_STATUS_AUTH_FAILURE:
+			return DppStatusErrorCode::AUTH_FAILURE;
+		case DPP_STATUS_UNWRAP_FAILURE:
+			return DppStatusErrorCode::UNWRAP_FAILURE;
+		case DPP_STATUS_BAD_GROUP:
+			return DppStatusErrorCode::BAD_GROUP;
+		case DPP_STATUS_CONFIGURE_FAILURE:
+			return DppStatusErrorCode::CONFIGURE_FAILURE;
+		case DPP_STATUS_RESPONSE_PENDING:
+			return DppStatusErrorCode::RESPONSE_PENDING;
+		case DPP_STATUS_INVALID_CONNECTOR:
+			return DppStatusErrorCode::INVALID_CONNECTOR;
+		case DPP_STATUS_CONFIG_REJECTED:
+			return DppStatusErrorCode::CONFIG_REJECTED;
+		case DPP_STATUS_NO_MATCH:
+			return DppStatusErrorCode::NO_MATCH;
+		case DPP_STATUS_NO_AP:
+			return DppStatusErrorCode::NO_AP;
+		case DPP_STATUS_CONFIGURE_PENDING:
+			return DppStatusErrorCode::CONFIGURE_PENDING;
+		case DPP_STATUS_CSR_NEEDED:
+			return DppStatusErrorCode::CSR_NEEDED;
+		case DPP_STATUS_CSR_BAD:
+			return DppStatusErrorCode::CSR_BAD;
+		case DPP_STATUS_NEW_KEY_NEEDED:
+			return DppStatusErrorCode::NEW_KEY_NEEDED;
+		default:
+			return DppStatusErrorCode::UNKNOWN;
+	}
+}
+
+void AidlManager::notifyDppConnectionStatusSent(struct wpa_supplicant *wpa_s,
+		enum dpp_status_error result)
+{
+	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
+	callWithEachStaIfaceCallback(aidl_ifname,
+			std::bind(&ISupplicantStaIfaceCallback::onDppConnectionStatusResultSent,
+					std::placeholders::_1,
+					convertSupplicantDppStatusErrorCodeToAidl(result)));
 }
 
 /**
