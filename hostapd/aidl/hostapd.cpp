@@ -701,6 +701,9 @@ bool forceStaDisconnection(struct hostapd_data* hapd,
 			   const std::vector<uint8_t>& client_address,
 			   const uint16_t reason_code) {
 	struct sta_info *sta;
+	if (client_address.size() != ETH_ALEN) {
+		return false;
+	}
 	for (sta = hapd->sta_list; sta; sta = sta->next) {
 		int res;
 		res = memcmp(sta->addr, client_address.data(), ETH_ALEN);
