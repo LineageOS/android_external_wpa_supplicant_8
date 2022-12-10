@@ -2031,6 +2031,13 @@ static void eapol_sm_notify_cert(void *ctx, struct tls_cert_data *cert,
 		sm->ctx->cert_cb(sm->ctx->ctx, cert, cert_hash);
 }
 
+static void eapol_sm_notify_permanent_id_req_denied(void *ctx)
+{
+	struct eapol_sm *sm = ctx;
+	if (sm->ctx->permanent_id_req_denied_cb)
+		sm->ctx->permanent_id_req_denied_cb(sm->ctx->ctx);
+}
+
 
 static void eapol_sm_notify_status(void *ctx, const char *status,
 				   const char *parameter)
@@ -2118,6 +2125,7 @@ static const struct eapol_callbacks eapol_cb =
 	eapol_sm_notify_pending,
 	eapol_sm_eap_param_needed,
 	eapol_sm_notify_cert,
+	eapol_sm_notify_permanent_id_req_denied,
 	eapol_sm_notify_status,
 	eapol_sm_notify_eap_error,
 #ifdef CONFIG_EAP_PROXY

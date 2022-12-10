@@ -3101,6 +3101,19 @@ int eap_key_available(struct eap_sm *sm)
 	return sm ? sm->eapKeyAvailable : 0;
 }
 
+/**
+ * eap_notify_permanent_id_req_denied - Notify that the AT_PERMANENT_ID_REQ
+ * is denied from eap_peer when the strict conservative mode is enabled.
+ * @sm: Pointer to EAP state machine allocated with eap_peer_sm_init()
+*/
+void eap_notify_permanent_id_req_denied(struct eap_sm *sm)
+{
+	if (!sm || !sm->eapol_cb->notify_permanent_id_req_denied)
+		return;
+
+	sm->eapol_cb->notify_permanent_id_req_denied(sm->eapol_ctx);
+}
+
 
 /**
  * eap_notify_success - Notify EAP state machine about external success trigger

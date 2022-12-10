@@ -762,6 +762,30 @@ int AidlManager::notifyNetworkRequest(
 }
 
 /**
+ * Notify that the AT_PERMANENT_ID_REQ is denied from eap_peer when the strict
+ * conservative peer mode is enabled.
+ *
+ * @param wpa_s |wpa_supplicant| struct corresponding to the interface on which
+ * the network is present.
+*/
+void AidlManager::notifyPermanentIdReqDenied(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s->current_ssid) {
+		wpa_printf(MSG_ERROR, "Current network NULL. Drop permanent_id_req_denied event!");
+		return;
+	}
+	struct wpa_ssid *current_ssid = wpa_s->current_ssid;
+
+	callWithEachStaNetworkCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			current_ssid->id,
+			std::bind(
+			&ISupplicantStaNetworkCallback::
+				onPermanentIdReqDenied,
+			std::placeholders::_1));
+}
+
+/**
  * Notify all listeners about the end of an ANQP query.
  *
  * @param wpa_s |wpa_supplicant| struct corresponding to the interface.
