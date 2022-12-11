@@ -577,8 +577,9 @@ static struct wpabuf * eap_sim_response_start(struct eap_sm *sm,
 		eap_sim_clear_identities(sm, data, CLEAR_REAUTH_ID);
 	} else if (id_req != NO_ID_REQ) {
 		if (id_req == PERMANENT_ID && eap_get_config_strict_conservative_peer_mode(sm)) {
-			wpa_printf(MSG_INFO,
-				   "EAP-SIM: reject permanent identity in conservative peer mode");
+			wpa_printf(MSG_INFO, "EAP-SIM: permanent_id_req is denied in "
+				   "the strict conservative peer mode");
+			eap_notify_permanent_id_req_denied(sm);
 			return  eap_sim_client_error(data, id, EAP_SIM_UNABLE_TO_PROCESS_PACKET);
 		}
 		identity = eap_get_config_identity(sm, &identity_len);

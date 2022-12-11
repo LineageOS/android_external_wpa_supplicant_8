@@ -61,6 +61,8 @@ public:
 	int notifyNetworkRequest(
 		struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid, int type,
 		const char *param);
+	void notifyPermanentIdReqDenied(
+		struct wpa_supplicant *wpa_s);
 	void notifyAnqpQueryDone(
 		struct wpa_supplicant *wpa_s, const u8 *bssid, const char *result,
 		const struct wpa_bss_anqp *anqp);

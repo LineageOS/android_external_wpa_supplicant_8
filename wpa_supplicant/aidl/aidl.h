@@ -37,6 +37,7 @@ extern "C"
 	int wpas_aidl_notify_network_request(
 		struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 		enum wpa_ctrl_req_type rtype, const char *default_txt);
+	void wpas_aidl_notify_permanent_id_req_denied(struct wpa_supplicant *wpa_s);
 	void wpas_aidl_notify_anqp_query_done(
 		struct wpa_supplicant *wpa_s, const u8 *bssid, const char *result,
 		const struct wpa_bss_anqp *anqp);
@@ -173,6 +174,8 @@ static inline int wpas_aidl_notify_network_request(
 {
 	return 0;
 }
+static void wpas_aidl_notify_permanent_id_req_denied(struct wpa_supplicant *wpa_s)
+{}
 static void wpas_aidl_notify_anqp_query_done(
 	struct wpa_supplicant *wpa_s, const u8 *bssid, const char *result,
 	const struct wpa_bss_anqp *anqp)

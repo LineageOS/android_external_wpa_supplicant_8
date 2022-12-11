@@ -280,6 +280,12 @@ void wpas_notify_network_request(struct wpa_supplicant *wpa_s,
 }
 
 
+void wpas_notify_permanent_id_req_denied(struct wpa_supplicant *wpa_s)
+{
+	wpas_aidl_notify_permanent_id_req_denied(wpa_s);
+}
+
+
 void wpas_notify_scanning(struct wpa_supplicant *wpa_s)
 {
 	if (wpa_s->p2p_mgmt)

@@ -186,6 +186,21 @@ int wpas_aidl_notify_network_request(
 		wpa_s, ssid, rtype, default_txt);
 }
 
+void wpas_aidl_notify_permanent_id_req_denied(
+		struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s || !wpa_s->global->aidl)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying permanent_id_req denied to aidl control.");
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	return aidl_manager->notifyPermanentIdReqDenied(wpa_s);
+}
+
 void wpas_aidl_notify_anqp_query_done(
 	struct wpa_supplicant *wpa_s, const u8 *bssid, const char *result,
 	const struct wpa_bss_anqp *anqp)

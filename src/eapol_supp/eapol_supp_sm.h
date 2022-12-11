@@ -255,6 +255,14 @@ struct eapol_ctx {
 			const char *cert_hash);
 
 	/**
+	 * permanent_id_req_denied_cb - Notify that the AT_PERMANENT_ID_REQ
+	 * from the server was denied. This notification happens when the
+	 * peer is in the strict conservative mode.
+	 * @ctx: Callback context (ctx)
+	*/
+	void (*permanent_id_req_denied_cb)(void *ctx);
+
+	/**
 	 * cert_in_cb - Include server certificates in callback
 	 */
 	int cert_in_cb;

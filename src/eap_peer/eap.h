@@ -233,6 +233,15 @@ struct eapol_callbacks {
 			    const char *cert_hash);
 
 	/**
+	 * notify_permanent_id_req_denied - Notify that the
+	 * AT_PERMANENT_ID_REQ from the server was denied. This
+	 * notification happens when the peer is in strict
+	 * conservative mode.
+	 * @ctx: eapol_ctx from eap_peer_sm_init() call
+	*/
+	void (*notify_permanent_id_req_denied)(void* ctx);
+
+	/**
 	 * notify_status - Notification of the current EAP state
 	 * @ctx: eapol_ctx from eap_peer_sm_init() call
 	 * @status: Step in the process of EAP authentication
@@ -366,6 +375,7 @@ void eap_set_workaround(struct eap_sm *sm, unsigned int workaround);
 void eap_set_force_disabled(struct eap_sm *sm, int disabled);
 void eap_set_external_sim(struct eap_sm *sm, int external_sim);
 int eap_key_available(struct eap_sm *sm);
+void eap_notify_permanent_id_req_denied(struct eap_sm *sm);
 void eap_notify_success(struct eap_sm *sm);
 void eap_notify_lower_layer_success(struct eap_sm *sm);
 const u8 * eap_get_eapSessionId(struct eap_sm *sm, size_t *len);
