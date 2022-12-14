@@ -1991,24 +1991,33 @@ void AidlManager::notifyNetworkNotFound(struct wpa_supplicant *wpa_s)
 	callWithEachStaIfaceCallback(misc_utils::charBufToString(wpa_s->ifname), func);
 }
 
-void AidlManager::notifyFrequencyChanged(struct wpa_supplicant *wpa_group_s, int frequency)
+void AidlManager::notifyFrequencyChanged(struct wpa_supplicant *wpa_s, int frequency)
 {
-	if (!wpa_group_s || !wpa_group_s->parent)
+	if (!wpa_s)
 		return;
 
-	// For group notifications, need to use the parent iface for callbacks.
-	struct wpa_supplicant *wpa_s = getTargetP2pIfaceForGroup(wpa_group_s);
-	if (!wpa_s) {
+	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
+	struct wpa_supplicant *wpa_p2pdev_s = getTargetP2pIfaceForGroup(wpa_s);
+	if (wpa_p2pdev_s) {
+		// Notify frequency changed event on P2P interface
+		const std::function<
+			ndk::ScopedAStatus(std::shared_ptr<ISupplicantP2pIfaceCallback>)>
+			func = std::bind(&ISupplicantP2pIfaceCallback::onGroupFrequencyChanged,
+			std::placeholders::_1, aidl_ifname, frequency);
+		// For group notifications, need to use the parent iface for callbacks.
+		callWithEachP2pIfaceCallback(misc_utils::charBufToString(wpa_p2pdev_s->ifname), func);
+	} else if (wpa_s->current_ssid) {
+		// Notify frequency changed event on STA interface
+		const std::function<
+			ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+			func = std::bind(
+			&ISupplicantStaIfaceCallback::onBssFrequencyChanged,
+			std::placeholders::_1, frequency);
+		callWithEachStaIfaceCallback(aidl_ifname, func);
+	} else {
 		wpa_printf(MSG_INFO, "Drop frequency changed event");
 		return;
-	}
-
-	const std::function<
-		ndk::ScopedAStatus(std::shared_ptr<ISupplicantP2pIfaceCallback>)>
-		func = std::bind(&ISupplicantP2pIfaceCallback::onGroupFrequencyChanged,
-		std::placeholders::_1, misc_utils::charBufToString(wpa_group_s->ifname),
-		frequency);
-	callWithEachP2pIfaceCallback(misc_utils::charBufToString(wpa_s->ifname), func);
+        }
 }
 
 void AidlManager::notifyCertification(struct wpa_supplicant *wpa_s,

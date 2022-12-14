@@ -2179,10 +2179,19 @@ ndk::ScopedAStatus StaNetwork::setKeyMgmtInternal(
 	KeyMgmtMask mask)
 {
 	uint32_t key_mgmt_mask = static_cast<uint32_t>(mask);
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (key_mgmt_mask & ~kAllowedKeyMgmtMask) {
 		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
 	}
+#ifdef CONFIG_SAE
+	struct wpa_driver_capa capa;
+	int res = wpa_drv_get_capa(wpa_s, &capa);
+	if ((res == 0) && (key_mgmt_mask & WPA_KEY_MGMT_SAE) &&
+		(capa.key_mgmt_iftype[WPA_IF_STATION] & WPA_DRIVER_CAPA_KEY_MGMT_SAE_EXT_KEY)) {
+		key_mgmt_mask |= WPA_KEY_MGMT_SAE_EXT_KEY;
+	}
+#endif
 	setFastTransitionKeyMgmt(key_mgmt_mask);
 
 	if (key_mgmt_mask & WPA_KEY_MGMT_OWE) {
@@ -2515,6 +2524,11 @@ void StaNetwork::setFastTransitionKeyMgmt(uint32_t &key_mgmt_mask)
 		if ((key_mgmt_mask & WPA_KEY_MGMT_SAE) &&
 			(capa.key_mgmt_iftype[WPA_IF_STATION] & WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE)) {
 			key_mgmt_mask |= WPA_KEY_MGMT_FT_SAE;
+		}
+		if ((key_mgmt_mask & WPA_KEY_MGMT_SAE_EXT_KEY) &&
+			(capa.key_mgmt_iftype[WPA_IF_STATION] &
+			    WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE_EXT_KEY)) {
+			key_mgmt_mask |= WPA_KEY_MGMT_FT_SAE_EXT_KEY;
 		}
 #endif
 #ifdef CONFIG_FILS
