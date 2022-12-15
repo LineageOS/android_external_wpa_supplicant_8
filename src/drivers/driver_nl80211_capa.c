@@ -1197,7 +1197,11 @@ static int wpa_driver_nl80211_get_info(struct wpa_driver_nl80211_data *drv,
 		drv->capa.flags |= WPA_DRIVER_FLAGS_UPDATE_FT_IES;
 
 	if (!drv->capa.max_num_akms)
+#ifdef CONFIG_DRIVER_NL80211_BRCM
 		drv->capa.max_num_akms = 1;
+#else
+		drv->capa.max_num_akms = NL80211_MAX_NR_AKM_SUITES;
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 
 	return 0;
 }

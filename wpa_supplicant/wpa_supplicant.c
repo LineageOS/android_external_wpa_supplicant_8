@@ -8367,6 +8367,8 @@ void wpas_auth_failed(struct wpa_supplicant *wpa_s, char *reason)
 		ssid->id, wpa_ssid_txt(ssid->ssid, ssid->ssid_len),
 		ssid->auth_failures, dur, reason) + 1;
 	char *msg = os_malloc(msg_len);
+	if (!msg)
+		return;
 	snprintf(msg, msg_len, format_str,
 		ssid->id, wpa_ssid_txt(ssid->ssid, ssid->ssid_len),
 		ssid->auth_failures, dur, reason);
