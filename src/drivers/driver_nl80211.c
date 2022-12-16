@@ -1701,6 +1701,20 @@ static int get_link_signal(struct nl_msg *msg, void *arg)
 		}
 	}
 
+        if (sinfo[NL80211_STA_INFO_RX_BITRATE]) {
+		if (nla_parse_nested(rinfo, NL80211_RATE_INFO_MAX,
+				     sinfo[NL80211_STA_INFO_RX_BITRATE],
+				     rate_policy)) {
+			sig_change->current_rxrate = 0;
+		} else {
+			if (rinfo[NL80211_RATE_INFO_BITRATE]) {
+				sig_change->current_rxrate =
+					nla_get_u16(rinfo[
+					     NL80211_RATE_INFO_BITRATE]) * 100;
+			}
+		}
+	}
+
 	return NL_SKIP;
 }
 
@@ -1712,6 +1726,7 @@ int nl80211_get_link_signal(struct wpa_driver_nl80211_data *drv,
 
 	sig->current_signal = -WPA_INVALID_NOISE;
 	sig->current_txrate = 0;
+	sig->current_rxrate = 0;
 
 	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_GET_STATION)) ||
 	    nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, bssid)) {
