@@ -811,6 +811,14 @@ bool StaIface::isValid()
 		&StaIface::getConnectionMloLinksInfoInternal, _aidl_return);
 }
 
+::ndk::ScopedAStatus StaIface::getSignalPollResults(
+    std::vector<SignalPollResult> *results)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
+	    &StaIface::getSignalPollResultsInternal, results);
+}
+
 std::pair<std::string, ndk::ScopedAStatus> StaIface::getNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -1975,6 +1983,40 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 	}
 
 	return {linksInfo, ndk::ScopedAStatus::ok()};
+}
+
+std::pair<std::vector<SignalPollResult>, ndk::ScopedAStatus>
+StaIface::getSignalPollResultsInternal()
+{
+	std::vector<SignalPollResult> results;
+	struct wpa_signal_info si;
+	struct wpa_mlo_signal_info mlo_si;
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+
+	if (wpa_s->valid_links && wpa_drv_mlo_signal_poll(wpa_s, &mlo_si)) {
+		for (int i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+			if (!(mlo_si.valid_links & BIT(i)))
+				continue;
+
+			SignalPollResult result;
+			result.linkId = 0;
+			result.currentRssiDbm = mlo_si.links[i].current_signal;
+			result.txBitrateMbps = mlo_si.links[i].current_txrate / 1000;
+			result.rxBitrateMbps = mlo_si.links[i].current_rxrate / 1000;
+			result.frequencyMhz = mlo_si.links[i].frequency;
+			results.push_back(result);
+		}
+	} else if (wpa_drv_signal_poll(wpa_s, &si) == 0) {
+		SignalPollResult result;
+		result.linkId = 0;
+		result.currentRssiDbm = si.current_signal;
+		result.txBitrateMbps = si.current_txrate / 1000;
+		result.rxBitrateMbps = si.current_rxrate / 1000;
+		result.frequencyMhz = si.frequency;
+		results.push_back(result);
+	}
+
+	return {results, ndk::ScopedAStatus::ok()};
 }
 
 /**

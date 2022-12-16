@@ -2393,6 +2393,7 @@ struct wpa_signal_info {
 	int avg_beacon_signal;
 	int current_noise;
 	int current_txrate;
+	int current_rxrate;
 	enum chan_width chanwidth;
 	int center_frq1;
 	int center_frq2;
