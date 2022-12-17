@@ -444,16 +444,63 @@ static void wpa_supplicant_optimize_freqs(
 
 	if (params->freqs == NULL && wpa_s->p2p_in_invitation) {
 		/*
+		 * Perform a single-channel scan if the GO has already been
+		 * discovered on another non-P2P interface. Note that a scan
+		 * initiated by a P2P interface (e.g. the device interface)
+		 * should already have sufficient IEs and scan results will be
+		 * fetched on interface creation in that case.
+		 */
+		if (wpa_s->p2p_in_invitation == 1 && wpa_s->current_ssid) {
+			struct wpa_supplicant *ifs;
+			struct wpa_bss *bss = NULL;
+			struct wpa_ssid *ssid = wpa_s->current_ssid;
+			u8 *bssid = ssid->bssid_set ? ssid->bssid : NULL;
+			dl_list_for_each(ifs, &wpa_s->radio->ifaces,
+					 struct wpa_supplicant, radio_list) {
+				bss = wpa_bss_get(ifs, bssid, ssid->ssid,
+						  ssid->ssid_len);
+				if (bss)
+					break;
+			}
+			if (bss && !disabled_freq(wpa_s, bss->freq)) {
+				params->freqs = os_calloc(2, sizeof(int));
+				if (params->freqs)
+					params->freqs[0] = bss->freq;
+			}
+		}
+		/*
 		 * Optimize scan based on GO information during persistent
 		 * group reinvocation
 		 */
-		if (wpa_s->p2p_in_invitation < 5 &&
+		if (params->freqs == NULL && wpa_s->p2p_in_invitation < 5 &&
 		    wpa_s->p2p_invite_go_freq > 0) {
-			wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Scan only GO preferred frequency %d MHz during invitation",
-				wpa_s->p2p_invite_go_freq);
-			params->freqs = os_calloc(2, sizeof(int));
-			if (params->freqs)
-				params->freqs[0] = wpa_s->p2p_invite_go_freq;
+			if (wpa_s->p2p_invite_go_freq == 2 ||
+			    wpa_s->p2p_invite_go_freq == 5) {
+				wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Scan only GO preferred band %d GHz during invitation",
+					wpa_s->p2p_invite_go_freq);
+				enum hostapd_hw_mode mode;
+				if (wpa_s->hw.modes == NULL)
+					return;
+				mode = wpa_s->p2p_invite_go_freq == 5 ?
+				       HOSTAPD_MODE_IEEE80211A :
+				       HOSTAPD_MODE_IEEE80211G;
+				if (wpa_s->p2p_in_invitation <= 2)
+					wpa_add_scan_freqs_list(wpa_s, mode,
+								params, false,
+								true);
+				if (params->freqs == NULL ||
+				    (params->freqs && params->freqs[0] == 0))
+					wpa_add_scan_freqs_list(wpa_s, mode,
+								params, false,
+								false);
+			} else {
+				wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Scan only GO preferred frequency %d MHz during invitation",
+					wpa_s->p2p_invite_go_freq);
+				params->freqs = os_calloc(2, sizeof(int));
+				if (params->freqs)
+					params->freqs[0] =
+					    wpa_s->p2p_invite_go_freq;
+			}
 		}
 		wpa_s->p2p_in_invitation++;
 		if (wpa_s->p2p_in_invitation > 20) {
@@ -465,6 +512,7 @@ static void wpa_supplicant_optimize_freqs(
 			 */
 			wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Clear p2p_in_invitation");
 			wpa_s->p2p_in_invitation = 0;
+			wpa_s->p2p_retry_limit = 0;
 		}
 	}
 #endif /* CONFIG_P2P */
@@ -709,7 +757,8 @@ static int non_p2p_network_enabled(struct wpa_supplicant *wpa_s)
 
 int wpa_add_scan_freqs_list(struct wpa_supplicant *wpa_s,
 			    enum hostapd_hw_mode band,
-			    struct wpa_driver_scan_params *params, bool is_6ghz)
+			    struct wpa_driver_scan_params *params, bool is_6ghz,
+			    bool exclude_radar)
 {
 	/* Include only supported channels for the specified band */
 	struct hostapd_hw_modes *mode;
@@ -734,6 +783,8 @@ int wpa_add_scan_freqs_list(struct wpa_supplicant *wpa_s,
 	for (i = 0; i < mode->num_channels; i++) {
 		if (mode->channels[i].flag & HOSTAPD_CHAN_DISABLED)
 			continue;
+		if (exclude_radar && (mode->channels[i].flag & HOSTAPD_CHAN_RADAR))
+			continue;
 		params->freqs[num_chans++] = mode->channels[i].freq;
 	}
 	params->freqs[num_chans] = 0;
@@ -752,13 +803,13 @@ static void wpa_setband_scan_freqs(struct wpa_supplicant *wpa_s,
 
 	if (wpa_s->setband_mask & WPA_SETBAND_5G)
 		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, params,
-					false);
+					false, false);
 	if (wpa_s->setband_mask & WPA_SETBAND_2G)
 		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211G, params,
-					false);
+					false, false);
 	if (wpa_s->setband_mask & WPA_SETBAND_6G)
 		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, params,
-					true);
+					true, false);
 }
 
 
@@ -1375,9 +1426,9 @@ scan:
 		 * since the 6 GHz band is disabled for P2P uses. */
 		wpa_printf(MSG_DEBUG,
 			   "P2P: 6 GHz disabled - update the scan frequency list");
-		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211G, &params, false);
-		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params, false);
-		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211AD, &params, false);
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211G, &params, false, false);
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params, false, false);
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211AD, &params, false, false);
 	}
 #endif /* CONFIG_P2P */
 
