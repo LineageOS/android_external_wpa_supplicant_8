@@ -379,8 +379,8 @@ DBusMessage * wpas_dbus_handler_p2p_group_add(DBusMessage *message,
 				goto inv_args_clear;
 		} else if (os_strcmp(entry.key, "retry_limit") == 0 &&
 			   entry.type == DBUS_TYPE_INT32) {
-			timeout = entry.int32_value;
-			if (timeout <= 0)
+			retry_limit = entry.int32_value;
+			if (retry_limit <= 0)
 				goto inv_args_clear;
 		} else if (os_strcmp(entry.key, "persistent_group_object") ==
 			   0 &&
