@@ -1194,6 +1194,10 @@ std::pair<std::vector<uint8_t>, ndk::ScopedAStatus> P2pIface::getSsidInternal(
 	const std::vector<uint8_t>& peer_address)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	if (peer_address.size() != ETH_ALEN) {
+		return {std::vector<uint8_t>(),
+			createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+	}
 	const struct p2p_peer_info* info =
 		p2p_get_peer_info(wpa_s->global->p2p, peer_address.data(), 0);
 	if (!info) {
@@ -1216,6 +1220,10 @@ std::pair<P2pGroupCapabilityMask, ndk::ScopedAStatus> P2pIface::getGroupCapabili
 	const std::vector<uint8_t>& peer_address)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	if (peer_address.size() != ETH_ALEN) {
+		return {static_cast<P2pGroupCapabilityMask>(0),
+			createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+	}
 	const struct p2p_peer_info* info =
 		p2p_get_peer_info(wpa_s->global->p2p, peer_address.data(), 0);
 	if (!info) {
