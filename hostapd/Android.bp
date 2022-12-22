@@ -55,7 +55,6 @@ cc_defaults {
         "libcrypto",
         "libssl",
         "libnl",
-        "libkeystore-wifi-hidl",
     ],
     relative_install_path: "hw",
     soc_specific: true,
