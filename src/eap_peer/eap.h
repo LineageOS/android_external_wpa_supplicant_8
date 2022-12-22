@@ -304,6 +304,16 @@ struct eapol_callbacks {
 	 * @reason_string: Information to log about the event
 	 */
 	void (*notify_open_ssl_failure)(void *ctx, const char* reason_string);
+
+	/**
+	 * get_certificate - Retrieve a certificate from the certificate store
+	 * @ctx: eapol_ctx from eap_peer_sm_init() call
+	 * @alias: key into the certificate key-value store
+	 * @value: pointer reference - pointer to the retrieved certificate will
+	 *         be stored here on success
+	 * Returns: size of the retrieved certificate or -1 on error
+	 */
+	ssize_t (*get_certificate)(void* ctx, const char* alias, uint8_t** value);
 };
 
 /**

@@ -2196,6 +2196,14 @@ static void eap_peer_sm_tls_event(void *ctx, enum tls_event ev,
 	os_free(hash_hex);
 }
 
+ssize_t tls_certificate_callback(void* ctx, const char* alias, uint8_t** value) {
+	if (alias == NULL || ctx == NULL || value == NULL) return -1;
+	struct eap_sm *sm = (struct eap_sm*) ctx;
+	if (sm->eapol_cb && sm->eapol_cb->get_certificate) {
+		return sm->eapol_cb->get_certificate(sm->eapol_ctx, alias, value);
+	}
+	return -1;
+}
 
 /**
  * eap_peer_sm_init - Allocate and initialize EAP peer state machine
@@ -2239,6 +2247,7 @@ struct eap_sm * eap_peer_sm_init(void *eapol_ctx,
 	tlsconf.event_cb = eap_peer_sm_tls_event;
 	tlsconf.cb_ctx = sm;
 	tlsconf.cert_in_cb = conf->cert_in_cb;
+	tls_register_cert_callback(&tls_certificate_callback);
 	sm->ssl_ctx = tls_init(&tlsconf);
 	if (sm->ssl_ctx == NULL) {
 		wpa_printf(MSG_WARNING, "SSL: Failed to initialize TLS "

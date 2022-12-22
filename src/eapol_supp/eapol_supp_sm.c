@@ -2112,6 +2112,17 @@ eapol_sm_notify_open_ssl_failure(void *ctx,
 		sm->ctx->open_ssl_failure_cb(sm->ctx->ctx, reason_string);
 }
 
+static ssize_t
+eapol_sm_get_certificate(void *ctx, const char* alias, uint8_t** value)
+{
+	struct eapol_sm *sm = ctx;
+
+	if (sm->ctx->get_certificate_cb) {
+		return sm->ctx->get_certificate_cb(alias, value);
+	}
+	return -1;
+}
+
 static const struct eapol_callbacks eapol_cb =
 {
 	eapol_sm_get_config,
@@ -2135,7 +2146,8 @@ static const struct eapol_callbacks eapol_cb =
 #endif /* CONFIG_EAP_PROXY */
 	eapol_sm_set_anon_id,
 	eapol_sm_notify_eap_method_selected,
-	eapol_sm_notify_open_ssl_failure
+	eapol_sm_notify_open_ssl_failure,
+	eapol_sm_get_certificate
 };
 
 

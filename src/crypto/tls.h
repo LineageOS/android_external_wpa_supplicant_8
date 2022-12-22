@@ -682,4 +682,13 @@ const char * tls_connection_get_peer_subject(struct tls_connection *conn);
  */
 bool tls_connection_get_own_cert_used(struct tls_connection *conn);
 
+/**
+ * tls_register_cert_callback - Register a callback to retrieve certificates
+ * @cb: Callback object to register
+ */
+typedef ssize_t (*tls_get_certificate_cb)
+(void* ctx, const char* alias, uint8_t** value);
+
+void tls_register_cert_callback(tls_get_certificate_cb cb);
+
 #endif /* TLS_H */

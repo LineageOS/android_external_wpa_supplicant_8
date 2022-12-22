@@ -2209,6 +2209,21 @@ int AidlManager::addSupplicantCallbackAidlObject(
 }
 
 /**
+ * Store the |INonStandardCertCallback| aidl object reference.
+ *
+ * @param callback Aidl reference of the |INonStandardCertCallback| object.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int AidlManager::registerNonStandardCertCallbackAidlObject(
+	const std::shared_ptr<INonStandardCertCallback> &callback)
+{
+	if (callback == nullptr) return 1;
+	non_standard_cert_callback_ = callback;
+	return 0;
+}
+
+/**
  * Add a new iface callback aidl object reference to our
  * interface callback list.
  *
@@ -2558,6 +2573,20 @@ void AidlManager::notifyQosPolicyRequest(struct wpa_supplicant *wpa_s,
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
 			&ISupplicantStaIfaceCallback::onQosPolicyRequest,
 			std::placeholders::_1, wpa_s->dscp_req_dialog_token, qosPolicyData));
+}
+
+ssize_t AidlManager::getCertificate(const char* alias, uint8_t** value) {
+	if (alias == nullptr || value == nullptr) {
+		wpa_printf(MSG_ERROR, "Null pointer argument was passed to getCertificate");
+		return -1;
+	}
+	if (auto cert = certificate_utils::getCertificate(alias, non_standard_cert_callback_)) {
+		*value = (uint8_t *) os_malloc(cert->size());
+		if (*value == nullptr) return -1;
+		os_memcpy(*value, cert->data(), cert->size());
+		return cert->size();
+	}
+	return -1;
 }
 
 }  // namespace supplicant

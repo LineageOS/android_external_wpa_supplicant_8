@@ -336,6 +336,15 @@ struct eapol_ctx {
 	 * Returns: Whether the current session requires encryption
 	 */
 	bool (*encryption_required)(void *ctx);
+
+	/**
+	 * get_certificate_cb - Retrieve a certificate from the certificate store
+	 * @alias: key into the certificate key-value store
+	 * @value: pointer reference - pointer to the retrieved certificate will
+	 *         be stored here on success
+	 * Returns: size of the retrieved certificate or -1 on error
+	 */
+	ssize_t (*get_certificate_cb)(const char* alias, uint8_t** value);
 };
 
 
