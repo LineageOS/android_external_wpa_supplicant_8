@@ -239,6 +239,14 @@ bool Supplicant::isValid()
 		&Supplicant::registerCallbackInternal, in_callback);
 }
 
+::ndk::ScopedAStatus Supplicant::registerNonStandardCertCallback(
+	const std::shared_ptr<INonStandardCertCallback>& in_callback)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&Supplicant::registerNonStandardCertCallbackInternal, in_callback);
+}
+
 ::ndk::ScopedAStatus Supplicant::setDebugParams(
 	DebugLevel in_level, bool in_showTimestamp,
 	bool in_showKeys)
@@ -542,6 +550,17 @@ ndk::ScopedAStatus Supplicant::registerCallbackInternal(
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager ||
 		aidl_manager->addSupplicantCallbackAidlObject(callback)) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+	return ndk::ScopedAStatus::ok();
+}
+
+ndk::ScopedAStatus Supplicant::registerNonStandardCertCallbackInternal(
+	const std::shared_ptr<INonStandardCertCallback>& callback)
+{
+	AidlManager* aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager ||
+		aidl_manager->registerNonStandardCertCallbackAidlObject(callback)) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();

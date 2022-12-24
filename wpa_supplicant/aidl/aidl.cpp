@@ -1063,3 +1063,11 @@ void wpas_aidl_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
 	aidl_manager->notifyQosPolicyRequest(wpa_s, policies, num_policies);
 }
 
+ssize_t wpas_aidl_get_certificate(const char* alias, uint8_t** value)
+{
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return -1;
+
+	return aidl_manager->getCertificate(alias, value);
+}

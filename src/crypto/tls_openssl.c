@@ -126,9 +126,28 @@ static const unsigned char * ASN1_STRING_get0_data(const ASN1_STRING *x)
 }
 #endif
 
+static int tls_openssl_ref_count = 0;
+static int tls_ex_idx_session = -1;
+
+struct tls_session_data {
+	struct dl_list list;
+	struct wpabuf *buf;
+};
+
+struct tls_context {
+	void (*event_cb)(void *ctx, enum tls_event ev,
+			 union tls_event_data *data);
+	void *cb_ctx;
+	int cert_in_cb;
+	char *ocsp_stapling_response;
+	struct dl_list sessions; /* struct tls_session_data */
+};
+
+static struct tls_context *tls_global = NULL;
+static tls_get_certificate_cb certificate_callback_global = NULL;
+
 #ifdef ANDROID
 #include <openssl/pem.h>
-#include <keystore/keystore_get.h>
 
 #include <log/log.h>
 #include <log/log_event_list.h>
@@ -152,9 +171,11 @@ static BIO* BIO_from_keystore(const char *alias)
 {
 	BIO *bio = NULL;
 	uint8_t *value = NULL;
-	int length = keystore_get(alias, strlen(alias), &value);
-	if (length != -1 && (bio = BIO_new(BIO_s_mem())) != NULL)
-		BIO_write(bio, value, length);
+	if (tls_global != NULL && certificate_callback_global != NULL) {
+		int length = (*certificate_callback_global)(tls_global->cb_ctx, alias, &value);
+		if (length != -1 && (bio = BIO_new(BIO_s_mem())) != NULL)
+			BIO_write(bio, value, length);
+	}
 	free(value);
 	return bio;
 }
@@ -228,26 +249,6 @@ static int tls_add_ca_from_keystore_encoded(X509_STORE *ctx,
 }
 
 #endif /* ANDROID */
-
-static int tls_openssl_ref_count = 0;
-static int tls_ex_idx_session = -1;
-
-struct tls_session_data {
-	struct dl_list list;
-	struct wpabuf *buf;
-};
-
-struct tls_context {
-	void (*event_cb)(void *ctx, enum tls_event ev,
-			 union tls_event_data *data);
-	void *cb_ctx;
-	int cert_in_cb;
-	char *ocsp_stapling_response;
-	struct dl_list sessions; /* struct tls_session_data */
-};
-
-static struct tls_context *tls_global = NULL;
-
 
 struct tls_data {
 	SSL_CTX *ssl;
@@ -6024,4 +6025,9 @@ bool tls_connection_get_own_cert_used(struct tls_connection *conn)
 	if (conn)
 		return SSL_get_certificate(conn->ssl) != NULL;
 	return false;
+}
+
+void tls_register_cert_callback(tls_get_certificate_cb cb)
+{
+	certificate_callback_global = cb;
 }

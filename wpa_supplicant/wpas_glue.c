@@ -1203,6 +1203,12 @@ static bool wpas_encryption_required(void *ctx)
 		wpa_sm_pmf_enabled(wpa_s->wpa);
 }
 
+static ssize_t wpa_supplicant_get_certificate_cb(
+						const char* alias, uint8_t** value)
+{
+	return wpas_get_certificate(alias, value);
+}
+
 #endif /* IEEE8021X_EAPOL */
 
 
@@ -1252,6 +1258,7 @@ int wpa_supplicant_init_eapol(struct wpa_supplicant *wpa_s)
 	ctx->set_anon_id = wpa_supplicant_set_anon_id;
 	ctx->eap_method_selected_cb = wpa_supplicant_eap_method_selected_cb;
 	ctx->open_ssl_failure_cb = wpa_supplicant_open_ssl_failure_cb;
+	ctx->get_certificate_cb = wpa_supplicant_get_certificate_cb;
 	ctx->encryption_required = wpas_encryption_required;
 	ctx->cb_ctx = wpa_s;
 	wpa_s->eapol = eapol_sm_init(ctx);

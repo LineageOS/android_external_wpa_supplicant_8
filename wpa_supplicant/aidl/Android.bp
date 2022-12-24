@@ -34,8 +34,10 @@ cc_library_static {
     soc_specific: true,
     shared_libs: [
         "android.hardware.wifi.supplicant-V2-ndk",
+        "android.system.keystore2-V1-ndk",
         "libbinder_ndk",
         "libbase",
+        "libcrypto",
         "libutils",
         "liblog",
         "libssl",

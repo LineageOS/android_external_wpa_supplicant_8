@@ -1791,7 +1791,7 @@ LOCAL_STATIC_LIBRARIES += $(LIB_STATIC_EAP_PROXY)
 LOCAL_SHARED_LIBRARIES += $(LIB_SHARED_EAP_PROXY)
 endif
 ifeq ($(CONFIG_TLS), openssl)
-LOCAL_SHARED_LIBRARIES += libcrypto libssl libkeystore-wifi-hidl
+LOCAL_SHARED_LIBRARIES += libcrypto libssl
 endif
 
 # With BoringSSL we need libkeystore-engine in order to provide access to
@@ -1813,6 +1813,7 @@ LOCAL_SHARED_LIBRARIES += libdbus
 endif
 ifeq ($(WPA_SUPPLICANT_USE_AIDL), y)
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant-V2-ndk
+LOCAL_SHARED_LIBRARIES += android.system.keystore2-V1-ndk
 LOCAL_SHARED_LIBRARIES += libutils libbase
 LOCAL_SHARED_LIBRARIES += libbinder_ndk
 LOCAL_STATIC_LIBRARIES += libwpa_aidl
@@ -1877,6 +1878,7 @@ LOCAL_C_INCLUDES := $(INCLUDES)
 LOCAL_SRC_FILES := \
     aidl/aidl.cpp \
     aidl/aidl_manager.cpp \
+    aidl/certificate_utils.cpp \
     aidl/iface_config_utils.cpp \
     aidl/p2p_iface.cpp \
     aidl/p2p_network.cpp \
@@ -1885,6 +1887,7 @@ LOCAL_SRC_FILES := \
     aidl/supplicant.cpp
 LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.supplicant-V2-ndk \
+    android.system.keystore2-V1-ndk \
     libbinder_ndk \
     libbase \
     libutils \

@@ -1352,3 +1352,8 @@ void wpas_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency)
 
 	wpas_aidl_notify_frequency_changed(wpa_s, frequency);
 }
+
+ssize_t wpas_get_certificate(const char *alias, uint8_t** value)
+{
+	return wpas_aidl_get_certificate(alias, value);
+}
