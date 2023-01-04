@@ -1229,12 +1229,12 @@ struct wpa_driver_associate_params {
 	 * 2 = both hunting-and-pecking loop and hash-to-element enabled
 	 */
 	int sae_pwe;
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	/**
 	 * td_policy - Transition Disable Policy
 	 */
 	u32 td_policy;
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 };
 
 enum hide_ssid {
@@ -2557,9 +2557,9 @@ enum wpa_drv_update_connect_params_mask {
 	WPA_DRV_UPDATE_ASSOC_IES	= BIT(0),
 	WPA_DRV_UPDATE_FILS_ERP_INFO	= BIT(1),
 	WPA_DRV_UPDATE_AUTH_TYPE	= BIT(2),
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	WPA_DRV_UPDATE_TD_POLICY	= BIT(3),
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 };
 
 /**
