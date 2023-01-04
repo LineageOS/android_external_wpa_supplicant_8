@@ -201,9 +201,9 @@ static int nl80211_put_mesh_config(struct nl_msg *msg,
 #endif /* CONFIG_MESH */
 static int i802_sta_disassoc(void *priv, const u8 *own_addr, const u8 *addr,
 			     u16 reason);
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 static int nl80211_set_td_policy(void *priv, u32 td_policy);
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 /* Converts nl80211_chan_width to a common format */
 enum chan_width convert2width(int width)
@@ -3328,7 +3328,7 @@ fail:
 }
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 static int wpa_cross_akm_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
                         int max_suites)
 {
@@ -3344,7 +3344,7 @@ static int wpa_cross_akm_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 su
 
     return num_suites;
 }
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
 static int issue_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
@@ -6575,7 +6575,7 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 		os_free(mgmt);
 	}
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (IS_CROSS_AKM_ROAM_KEY_MGMT(params->key_mgmt_suite)) {
 		int num_suites;
 		u32 suites[NL80211_MAX_NR_AKM_SUITES];
@@ -6590,7 +6590,7 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 			return -1;
 		}
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 	if (params->req_handshake_offload &&
 	    (drv->capa.flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X)) {
 		    wpa_printf(MSG_DEBUG, "  * WANT_1X_4WAY_HS");
@@ -6653,13 +6653,13 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 	    nl80211_put_fils_connect_params(drv, params, msg) != 0)
 		return -1;
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (((params->key_mgmt_suite & WPA_KEY_MGMT_SAE) ||
 	     (params->key_mgmt_suite == WPA_KEY_MGMT_FT_SAE)) &&
 #else
 	if ((wpa_key_mgmt_sae(params->key_mgmt_suite) ||
 	     wpa_key_mgmt_sae(params->allowed_key_mgmts)) &&
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 	    (!(drv->capa.flags & WPA_DRIVER_FLAGS_SME)) &&
 	    nla_put_flag(msg, NL80211_ATTR_EXTERNAL_AUTH_SUPPORT))
 		return -1;
@@ -6708,13 +6708,13 @@ static int wpa_driver_nl80211_try_connect(
 		goto fail;
 
 #ifdef CONFIG_SAE
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (((params->key_mgmt_suite & WPA_KEY_MGMT_SAE) ||
 	     (params->key_mgmt_suite == WPA_KEY_MGMT_FT_SAE)) &&
 #else
 	if ((wpa_key_mgmt_sae(params->key_mgmt_suite) ||
 	     wpa_key_mgmt_sae(params->allowed_key_mgmts)) &&
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 	    nl80211_put_sae_pwe(msg, params->sae_pwe) < 0)
 		goto fail;
 #endif /* CONFIG_SAE */
@@ -6822,13 +6822,13 @@ static int wpa_driver_nl80211_associate(
 
 		if (wpa_driver_nl80211_set_mode(priv, nlmode) < 0)
 			return -1;
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 		if ((params->key_mgmt_suite & WPA_KEY_MGMT_SAE) ||
 		    (params->key_mgmt_suite == WPA_KEY_MGMT_FT_SAE))
 #else
 		if (wpa_key_mgmt_sae(params->key_mgmt_suite) ||
 		    wpa_key_mgmt_sae(params->allowed_key_mgmts))
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 			bss->use_nl_connect = 1;
 		else
 			bss->use_nl_connect = 0;
@@ -12755,7 +12755,7 @@ static int nl80211_update_connection_params(
 		return 0;
 
 	/* Handle any connection param update here which might receive kernel handling in future */
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (mask & WPA_DRV_UPDATE_TD_POLICY) {
 		ret = nl80211_set_td_policy(priv, params->td_policy);
 		if (ret) {
@@ -12765,7 +12765,7 @@ static int nl80211_update_connection_params(
 		}
 		return ret;
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	msg = nl80211_drv_msg(drv, 0, NL80211_CMD_UPDATE_CONNECT_PARAMS);
 	if (!msg)
@@ -12920,7 +12920,7 @@ static int nl80211_dpp_listen(void *priv, bool enable)
 }
 #endif /* CONFIG_DPP */
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 static int nl80211_set_td_policy(void *priv, u32 td_policy)
 {
 	struct i802_bss *bss = priv;
@@ -12949,7 +12949,7 @@ static int nl80211_set_td_policy(void *priv, u32 td_policy)
 
 	return ret;
 }
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 #ifdef CONFIG_TESTING_OPTIONS
 
