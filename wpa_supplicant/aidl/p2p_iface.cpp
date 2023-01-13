@@ -1051,6 +1051,9 @@ ndk::ScopedAStatus P2pIface::provisionDiscoveryInternal(
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	p2ps_provision* prov_param;
 	const char* config_method_str = nullptr;
+	if (peer_address.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	switch (provision_method) {
 	case WpsProvisionMethod::PBC:
 		config_method_str = kConfigMethodStrPbc;
@@ -1661,6 +1664,10 @@ ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
 	// The rest is for group join.
 	wpa_printf(MSG_DEBUG, "P2P: Stop any on-going P2P FIND before group join.");
 	wpas_p2p_stop_find(wpa_s);
+	if (peer_address.size() != ETH_ALEN) {
+		return createStatusWithMsg(SupplicantStatusCode::FAILURE_ARGS_INVALID,
+			"Peer address is invalid.");
+	}
 	if (joinGroup(wpa_s, peer_address.data(), ssid, passphrase, freq)) {
 		return createStatusWithMsg(SupplicantStatusCode::FAILURE_UNKNOWN,
 			"Failed to start scan.");
