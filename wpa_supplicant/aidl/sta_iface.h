@@ -159,6 +159,14 @@ public:
 	::ndk::ScopedAStatus getConnectionMloLinksInfo(MloLinksInfo* _aidl_return) override;
 	::ndk::ScopedAStatus getSignalPollResults(
 		std::vector<SignalPollResult>* results) override;
+	::ndk::ScopedAStatus addQosPolicyRequestForScs(
+		const std::vector<QosPolicyScsData>& in_qosPolicyData,
+		std::vector<QosPolicyScsRequestStatus>* _aidl_return) override;
+	::ndk::ScopedAStatus removeQosPolicyForScs(
+		const std::vector<uint8_t>& in_scsPolicyIds,
+		std::vector<QosPolicyScsRequestStatus>* _aidl_return) override;
+	::ndk::ScopedAStatus removeAllQosPoliciesForScs(
+		std::vector<QosPolicyScsRequestStatus>* _aidl_return) override;
 
 private:
 	// Corresponding worker functions for the AIDL methods.
@@ -265,6 +273,15 @@ private:
 	std::pair<MloLinksInfo, ndk::ScopedAStatus> getConnectionMloLinksInfoInternal();
 	std::pair<std::vector<SignalPollResult>, ndk::ScopedAStatus>
 		getSignalPollResultsInternal();
+	std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
+		addQosPolicyRequestForScsInternal(
+		const std::vector<QosPolicyScsData>& qosPolicyData);
+	std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
+		removeQosPolicyForScsInternal(
+		const std::vector<uint8_t>& scsPolicyIds);
+	std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
+		removeAllQosPoliciesForScsInternal();
+
 	struct wpa_supplicant* retrieveIfacePtr();
 
 	// Reference to the global wpa_struct. This is assumed to be valid for
