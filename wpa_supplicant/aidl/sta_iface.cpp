@@ -819,6 +819,32 @@ bool StaIface::isValid()
 	    &StaIface::getSignalPollResultsInternal, results);
 }
 
+::ndk::ScopedAStatus StaIface::addQosPolicyRequestForScs(
+		const std::vector<QosPolicyScsData>& in_qosPolicyData,
+		std::vector<QosPolicyScsRequestStatus>* _aidl_return)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
+	    &StaIface::addQosPolicyRequestForScsInternal, _aidl_return, in_qosPolicyData);
+}
+
+::ndk::ScopedAStatus StaIface::removeQosPolicyForScs(
+		const std::vector<uint8_t>& in_scsPolicyIds,
+		std::vector<QosPolicyScsRequestStatus>* _aidl_return)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
+	    &StaIface::removeQosPolicyForScsInternal, _aidl_return, in_scsPolicyIds);
+}
+
+::ndk::ScopedAStatus StaIface::removeAllQosPoliciesForScs(
+		std::vector<QosPolicyScsRequestStatus>* _aidl_return)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
+	    &StaIface::removeAllQosPoliciesForScsInternal, _aidl_return);
+}
+
 std::pair<std::string, ndk::ScopedAStatus> StaIface::getNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -2051,6 +2077,28 @@ StaIface::getSignalPollResultsInternal()
 	}
 
 	return {results, ndk::ScopedAStatus::ok()};
+}
+
+
+std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
+StaIface::addQosPolicyRequestForScsInternal(const std::vector<QosPolicyScsData>& qosPolicyData)
+{
+	return {std::vector<QosPolicyScsRequestStatus>(),
+		createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
+}
+
+std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
+StaIface::removeQosPolicyForScsInternal(const std::vector<uint8_t>& scsPolicyIds)
+{
+	return {std::vector<QosPolicyScsRequestStatus>(),
+		createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
+}
+
+std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
+StaIface::removeAllQosPoliciesForScsInternal()
+{
+	return {std::vector<QosPolicyScsRequestStatus>(),
+		createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
 }
 
 /**
