@@ -191,7 +191,7 @@ static void wpas_aidl_notify_hs20_rx_subscription_remediation(
 static void wpas_aidl_notify_hs20_rx_deauth_imminent_notice(
 	struct wpa_supplicant *wpa_s, u8 code, u16 reauth_delay, const char *url)
 {}
-void wpas_aidl_notify_hs20_rx_terms_and_conditions_acceptance(
+static void wpas_aidl_notify_hs20_rx_terms_and_conditions_acceptance(
 		struct wpa_supplicant *wpa_s, const char *url)
 {}
 static void wpas_aidl_notify_disconnect_reason(struct wpa_supplicant *wpa_s) {}
@@ -209,7 +209,8 @@ static void wpas_aidl_notify_wps_event_pbc_overlap(struct wpa_supplicant *wpa_s)
 static void wpas_aidl_notify_p2p_device_found(
 	struct wpa_supplicant *wpa_s, const u8 *addr,
 	const struct p2p_peer_info *info, const u8 *peer_wfd_device_info,
-	u8 peer_wfd_device_info_len)
+	u8 peer_wfd_device_info_lenconst, u8 *peer_wfd_r2_device_info,
+	u8 peer_wfd_r2_device_info_len)
 {}
 static void wpas_aidl_notify_p2p_device_lost(
 	struct wpa_supplicant *wpa_s, const u8 *p2p_device_addr)
@@ -262,7 +263,7 @@ static void wpas_aidl_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
 {}
 static void wpas_aidl_notify_dpp_config_sent(struct wpa_supplicant *wpa_s)
 {}
-void wpas_aidl_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
+static void wpas_aidl_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
 	enum dpp_status_error result)
 {}
 static void wpas_aidl_notify_dpp_auth_success(struct wpa_supplicant *wpa_s)
@@ -279,20 +280,24 @@ static void wpas_aidl_notify_dpp_invalid_uri(struct wpa_supplicant *wpa_s)
 {}
 static void wpas_aidl_notify_dpp_timeout(struct wpa_supplicant *wpa_s)
 {}
-static void wpas_aidl_notify_dpp_failure(struct wpa_supplicant *wpa_s)
+static void wpas_aidl_notify_dpp_auth_failure(struct wpa_supplicant *wpa_s)
 {}
-void wpas_aidl_notify_dpp_config_sent_wait_response(struct wpa_supplicant *wpa_s)
+static void wpas_aidl_notify_dpp_fail(struct wpa_supplicant *wpa_s)
 {}
-void wpas_aidl_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s)
+static void wpas_aidl_notify_dpp_config_sent_wait_response(struct wpa_supplicant *wpa_s)
 {}
-void wpas_aidl_notify_dpp_config_applied(struct wpa_supplicant *wpa_s)
+static void wpas_aidl_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s)
 {}
-void wpas_aidl_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s)
+static void wpas_aidl_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s)
+{}
+static void wpas_aidl_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
+			enum dpp_status_error status, const char *ssid,
+			const char *channel_list, unsigned short band_list[], int size)
 {}
 static void wpas_aidl_notify_pmk_cache_added(struct wpa_supplicant *wpas,
 						 struct rsn_pmksa_cache_entry *pmksa_entry)
 {}
-void wpas_aidl_notify_bss_tm_status(struct wpa_supplicant *wpa_s)
+static void wpas_aidl_notify_bss_tm_status(struct wpa_supplicant *wpa_s)
 {}
 static void wpas_aidl_notify_transition_disable(struct wpa_supplicant *wpa_s,
 						struct wpa_ssid *ssid,
@@ -300,22 +305,22 @@ static void wpas_aidl_notify_transition_disable(struct wpa_supplicant *wpa_s,
 {}
 static void wpas_aidl_notify_network_not_found(struct wpa_supplicant *wpa_s)
 {}
-void wpas_aidl_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency)
+static void wpas_aidl_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency)
 {}
-void wpas_aidl_notify_ceritification(struct wpa_supplicant *wpa_s,
+static void wpas_aidl_notify_ceritification(struct wpa_supplicant *wpa_s,
 	int depth, const char *subject,
 	const char *altsubject[],
 	int num_altsubject,
 	const char *cert_hash,
 	const struct wpabuf *cert)
 {}
-void wpas_aidl_notify_eap_method_selected(struct wpa_supplicant *wpa_s,
+static void wpas_aidl_notify_eap_method_selected(struct wpa_supplicant *wpa_s,
 	const char *reason_string)
 {}
-void wpas_aidl_notify_ssid_temp_disabled(struct wpa_supplicant *wpa_s,
+static void wpas_aidl_notify_ssid_temp_disabled(struct wpa_supplicant *wpa_s,
 	const char *reason_string)
 {}
-void wpas_aidl_notify_open_ssl_failure(struct wpa_supplicant *wpa_s,
+static void wpas_aidl_notify_open_ssl_failure(struct wpa_supplicant *wpa_s,
 	const char *reason_string)
 {}
 static void wpas_aidl_notify_qos_policy_reset(struct wpa_supplicant *wpa_s) {}
@@ -323,8 +328,10 @@ static void wpas_aidl_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
 						struct dscp_policy_data *policies,
 						int num_policies)
 {}
-ssize_t wpas_aidl_get_certificate(const char* alias, uint8_t** value)
-{}
+static ssize_t wpas_aidl_get_certificate(const char* alias, uint8_t** value)
+{
+	return -1;
+}
 #endif  // CONFIG_CTRL_IFACE_AIDL
 
 #ifdef _cplusplus
