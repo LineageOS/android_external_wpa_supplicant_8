@@ -6879,7 +6879,7 @@ static int p2p_ctrl_group_add_persistent(struct wpa_supplicant *wpa_s,
 	return wpas_p2p_group_add_persistent(wpa_s, ssid, 0, freq,
 					     vht_center_freq2, 0, ht40, vht,
 					     vht_chwidth, he, edmg,
-					     NULL, 0, 0, allow_6ghz, 0);
+					     NULL, 0, 0, allow_6ghz, 0, false);
 }
 
 
