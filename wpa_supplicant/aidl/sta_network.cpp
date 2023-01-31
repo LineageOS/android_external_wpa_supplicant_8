@@ -2158,7 +2158,11 @@ ndk::ScopedAStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& s
 	std::stringstream ss(
 		std::stringstream::in | std::stringstream::out | std::stringstream::binary);
 	ss.write((char *) serializedEntry.data(), std::streamsize(serializedEntry.size()));
-	misc_utils::deserializePmkCacheEntry(ss, new_entry);
+	if (misc_utils::deserializePmkCacheEntry(ss, new_entry) < 0) {
+		os_free(new_entry);
+		return createStatusWithMsg(SupplicantStatusCode::FAILURE_ARGS_INVALID,
+		 "Invalid pmk length");
+	}
 	new_entry->network_ctx = wpa_ssid;
 
 	// If there is an entry has a later expiration, ignore this one.
