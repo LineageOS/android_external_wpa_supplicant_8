@@ -392,12 +392,17 @@ std::string CreateHostapdConfig(
 		encryption_config_as_string = StringPrintf(
 			"wpa=2\n"
 			"rsn_pairwise=%s\n"
-			"wpa_key_mgmt=SAE\n"
+			"wpa_key_mgmt=%s\n"
 			"ieee80211w=2\n"
 			"sae_require_mfp=2\n"
 			"sae_pwe=%d\n"
 			"sae_password=%s",
 			is_60Ghz_band_only ? "GCMP" : "CCMP",
+#ifdef CONFIG_IEEE80211BE
+			iface_params.hwModeParams.enable80211BE ? "SAE SAE-EXT-KEY" : "SAE",
+#else
+			"SAE",
+#endif
 			is_6Ghz_band_only ? 1 : 2,
 			nw_params.passphrase.c_str());
 		break;
@@ -504,6 +509,15 @@ std::string CreateHostapdConfig(
 		he_params_as_string = "ieee80211ax=0";
 	}
 #endif /* CONFIG_IEEE80211AX */
+	std::string eht_params_as_string;
+#ifdef CONFIG_IEEE80211BE
+	if (iface_params.hwModeParams.enable80211BE && !is_60Ghz_used) {
+		eht_params_as_string = "ieee80211be=1";
+		/* TODO set eht_su_beamformer, eht_su_beamformee, eht_mu_beamformer */
+	} else {
+		eht_params_as_string = "ieee80211be=0";
+	}
+#endif /* CONFIG_IEEE80211BE */
 
 	std::string ht_cap_vht_oper_he_oper_chwidth_as_string;
 	switch (iface_params.hwModeParams.maximumChannelBandwidth) {
@@ -611,6 +625,7 @@ std::string CreateHostapdConfig(
 		"%s\n"
 		"%s\n"
 		"%s\n"
+		"%s\n"
 		"ignore_broadcast_ssid=%d\n"
 		"wowlan_triggers=any\n"
 #ifdef CONFIG_INTERWORKING
@@ -627,6 +642,7 @@ std::string CreateHostapdConfig(
 		iface_params.hwModeParams.enable80211N ? 1 : 0,
 		iface_params.hwModeParams.enable80211AC ? 1 : 0,
 		he_params_as_string.c_str(),
+		eht_params_as_string.c_str(),
 		hw_mode_as_string.c_str(), ht_cap_vht_oper_he_oper_chwidth_as_string.c_str(),
 		nw_params.isHidden ? 1 : 0,
 #ifdef CONFIG_INTERWORKING
