@@ -376,12 +376,18 @@ std::string CreateHostapdConfig(
 		encryption_config_as_string = StringPrintf(
 			"wpa=2\n"
 			"rsn_pairwise=%s\n"
-			"wpa_key_mgmt=WPA-PSK SAE\n"
+			"wpa_key_mgmt=%s\n"
 			"ieee80211w=1\n"
 			"sae_require_mfp=1\n"
 			"wpa_passphrase=%s\n"
 			"sae_password=%s",
 			is_60Ghz_band_only ? "GCMP" : "CCMP",
+#ifdef CONFIG_IEEE80211BE
+			iface_params.hwModeParams.enable80211BE ?
+			    "WPA-PSK SAE SAE-EXT-KEY" : "WPA-PSK SAE",
+#else
+			"WPA-PSK SAE",
+#endif
 			nw_params.passphrase.c_str(),
 			nw_params.passphrase.c_str());
 		break;
