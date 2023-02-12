@@ -809,6 +809,16 @@ ndk::ScopedAStatus P2pIface::addGroup(
 		&P2pIface::setVendorElementsInternal, in_frameTypeMask, in_vendorElemBytes);
 }
 
+::ndk::ScopedAStatus P2pIface::configureEapolIpAddressAllocationParams(
+	int32_t in_ipAddressGo, int32_t in_ipAddressMask,
+	int32_t in_ipAddressStart, int32_t in_ipAddressEnd)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&P2pIface::configureEapolIpAddressAllocationParamsInternal,
+		in_ipAddressGo, in_ipAddressMask, in_ipAddressStart, in_ipAddressEnd);
+}
+
 std::pair<std::string, ndk::ScopedAStatus> P2pIface::getNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -1821,6 +1831,23 @@ ndk::ScopedAStatus P2pIface::setVendorElementsInternal(
 			updateP2pVendorElem(wpa_s, (enum wpa_vendor_elem_frame) i, vendorElemBytes);
 		}
 	}
+	return ndk::ScopedAStatus::ok();
+}
+
+ndk::ScopedAStatus P2pIface::configureEapolIpAddressAllocationParamsInternal(
+	uint32_t ipAddressGo, uint32_t ipAddressMask,
+	uint32_t ipAddressStart, uint32_t ipAddressEnd)
+{
+	wpa_printf(MSG_DEBUG, "P2P: Configure IP addresses for IP allocation in EAPOL"
+		   " ipAddressGo: 0x%x mask: 0x%x Range - Start: 0x%x End: 0x%x",
+			ipAddressGo, ipAddressMask, ipAddressStart, ipAddressEnd);
+	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+
+	os_memcpy(wpa_s->conf->ip_addr_go, &ipAddressGo, 4);
+	os_memcpy(wpa_s->conf->ip_addr_mask, &ipAddressMask, 4);
+	os_memcpy(wpa_s->conf->ip_addr_start, &ipAddressStart, 4);
+	os_memcpy(wpa_s->conf->ip_addr_end, &ipAddressEnd, 4);
+
 	return ndk::ScopedAStatus::ok();
 }
 

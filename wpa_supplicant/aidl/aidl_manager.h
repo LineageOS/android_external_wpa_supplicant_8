@@ -104,7 +104,7 @@ public:
 		struct wpa_supplicant *wpa_s, const char *reason);
 	void notifyP2pGroupStarted(
 		struct wpa_supplicant *wpa_group_s, const struct wpa_ssid *ssid,
-		int persistent, int client);
+		int persistent, int client, const u8 *ip);
 	void notifyP2pGroupRemoved(
 		struct wpa_supplicant *wpa_group_s, const struct wpa_ssid *ssid,
 		const char *role);
