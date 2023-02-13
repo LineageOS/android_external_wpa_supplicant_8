@@ -1353,7 +1353,7 @@ void AidlManager::notifyP2pGroupFormationFailure(
 
 void AidlManager::notifyP2pGroupStarted(
 	struct wpa_supplicant *wpa_group_s, const struct wpa_ssid *ssid,
-	int persistent, int client)
+	int persistent, int client, const u8 *ip)
 {
 	if (!wpa_group_s || !wpa_group_s->parent || !ssid)
 		return;
@@ -1394,7 +1394,17 @@ void AidlManager::notifyP2pGroupStarted(
 	params.goDeviceAddress = macAddrToVec(wpa_group_s->go_dev_addr);
 	params.goInterfaceAddress = aidl_is_go ? macAddrToVec(wpa_group_s->own_addr) :
 			macAddrToVec(wpa_group_s->current_bss->bssid);
+	if (NULL != ip && !aidl_is_go) {
+		params.isP2pClientEapolIpAddressInfoPresent = true;
+		os_memcpy(&params.p2pClientIpInfo.ipAddressClient, &ip[0], 4);
+		os_memcpy(&params.p2pClientIpInfo.ipAddressMask, &ip[4], 4);
+		os_memcpy(&params.p2pClientIpInfo.ipAddressGo, &ip[8], 4);
 
+		wpa_printf(MSG_DEBUG, "P2P: IP Address allocated - CLI: 0x%x MASK: 0x%x GO: 0x%x",
+			   params.p2pClientIpInfo.ipAddressClient,
+			   params.p2pClientIpInfo.ipAddressMask,
+			   params.p2pClientIpInfo.ipAddressGo);
+        }
 	callWithEachP2pIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(&ISupplicantP2pIfaceCallback::onGroupStartedWithParams,

@@ -79,7 +79,7 @@ extern "C"
 		struct wpa_supplicant *wpa_s, const char *reason);
 	void wpas_aidl_notify_p2p_group_started(
 		struct wpa_supplicant *wpa_s, const struct wpa_ssid *ssid,
-		int persistent, int client);
+		int persistent, int client, const u8 *ip);
 	void wpas_aidl_notify_p2p_group_removed(
 		struct wpa_supplicant *wpa_s, const struct wpa_ssid *ssid,
 		const char *role);
@@ -228,7 +228,7 @@ static void wpas_aidl_notify_p2p_group_formation_failure(
 {}
 static void wpas_aidl_notify_p2p_group_started(
 	struct wpa_supplicant *wpa_s, const struct wpa_ssid *ssid, int persistent,
-	int client)
+	int client, const u8 *ip)
 {}
 static void wpas_aidl_notify_p2p_group_removed(
 	struct wpa_supplicant *wpa_s, const struct wpa_ssid *ssid, const char *role)
