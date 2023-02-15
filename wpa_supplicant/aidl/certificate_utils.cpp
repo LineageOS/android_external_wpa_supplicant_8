@@ -188,6 +188,21 @@ std::optional<std::vector<uint8_t>> getCertificate(const std::string& alias,
 	}
 }
 
+std::optional<std::vector<std::string>> listAliases(const std::string& prefix,
+		const std::shared_ptr<INonStandardCertCallback> &non_standard_callback) {
+	if (non_standard_callback == nullptr) {
+		wpa_printf(MSG_ERROR, "Non-standard cert callback is not available");
+		return std::nullopt;
+	}
+	std::vector<std::string> aliases;
+	const auto& status = non_standard_callback->listAliases(prefix, &aliases);
+	if (!status.isOk()) {
+		wpa_printf(MSG_ERROR, "Unable to retrieve aliases");
+		return std::nullopt;
+	}
+	return aliases;
+}
+
 }  // namespace certificate_utils
 }  // namespace supplicant
 }  // namespace wifi
