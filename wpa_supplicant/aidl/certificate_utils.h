@@ -32,6 +32,8 @@ namespace supplicant {
 namespace certificate_utils {
 	std::optional<std::vector<uint8_t>> getCertificate(const std::string& alias,
 		const std::shared_ptr<INonStandardCertCallback> &non_standard_callback);
+	std::optional<std::vector<std::string>> listAliases(const std::string& prefix,
+		const std::shared_ptr<INonStandardCertCallback> &non_standard_callback);
 }  // namespace certificate_utils
 }  // namespace supplicant
 }  // namespace wifi
