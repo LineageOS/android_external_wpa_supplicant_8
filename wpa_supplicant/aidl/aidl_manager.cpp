@@ -1790,18 +1790,22 @@ void AidlManager::notifyPmkCacheAdded(
 {
 	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
 
+	PmkSaCacheData aidl_pmksa_data = {};
+	aidl_pmksa_data.bssid = macAddrToVec(pmksa_entry->aa);
 	// Serialize PmkCacheEntry into blob.
 	std::stringstream ss(
 		std::stringstream::in | std::stringstream::out | std::stringstream::binary);
 	misc_utils::serializePmkCacheEntry(ss, pmksa_entry);
 	std::vector<uint8_t> serializedEntry(
 		std::istreambuf_iterator<char>(ss), {});
+	aidl_pmksa_data.serializedEntry = serializedEntry;
+	aidl_pmksa_data.expirationTimeInSec = pmksa_entry->expiration;
 
 	const std::function<
 		ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
 		func = std::bind(
-		&ISupplicantStaIfaceCallback::onPmkCacheAdded,
-		std::placeholders::_1, pmksa_entry->expiration, serializedEntry);
+		&ISupplicantStaIfaceCallback::onPmkSaCacheAdded,
+		std::placeholders::_1, aidl_pmksa_data);
 	callWithEachStaIfaceCallback(aidl_ifname, func);
 }
 
