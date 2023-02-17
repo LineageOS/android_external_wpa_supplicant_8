@@ -2014,6 +2014,8 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 	MloLinksInfo linksInfo;
 	MloLink link;
 
+	linksInfo.apMldMacAddress->assign(
+	    wpa_s->ap_mld_addr, wpa_s->ap_mld_addr + ETH_ALEN);
 	if (!wpa_s->valid_links)
 		 return {linksInfo, ndk::ScopedAStatus::ok()};
 
@@ -2022,9 +2024,17 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 			continue;
 
 		wpa_printf(MSG_DEBUG, "Add MLO Link ID %d info", i);
+		// Associated link id.
+		if (os_memcmp(wpa_s->links[i].bssid, wpa_s->bssid, ETH_ALEN) == 0) {
+			linksInfo.apMloLinkId = i;
+		}
 		link.linkId = i;
-		link.staLinkMacAddress.assign(wpa_s->links[i].addr, wpa_s->links[i].addr + ETH_ALEN);
-		// TODO (b/259710591): Once suppllicant implements TID-to-link
+		link.staLinkMacAddress.assign(
+		    wpa_s->links[i].addr, wpa_s->links[i].addr + ETH_ALEN);
+		link.apLinkMacAddress->assign(
+		    wpa_s->links[i].bssid, wpa_s->links[i].bssid + ETH_ALEN);
+		link.frequencyMHz = wpa_s->links[i].freq;
+		// TODO (b/259710591): Once supplicant implements TID-to-link
 		// mapping, copy it here. Mapping can be changed in two
 		// scenarios
 		//    1. Mandatory mapping from AP
