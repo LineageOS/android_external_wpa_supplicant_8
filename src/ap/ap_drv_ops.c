@@ -92,7 +92,7 @@ int hostapd_build_ap_extra_ies(struct hostapd_data *hapd,
 		goto fail;
 
 	pos = buf;
-	pos = hostapd_eid_ext_capab(hapd, pos);
+	pos = hostapd_eid_ext_capab(hapd, pos, false);
 	if (add_buf_data(&assocresp, buf, pos - buf) < 0)
 		goto fail;
 	pos = hostapd_eid_interworking(hapd, pos);
@@ -724,6 +724,7 @@ int hostapd_drv_set_key(const char *ifname, struct hostapd_data *hapd,
 	params.key_len = key_len;
 	params.vlan_id = vlan_id;
 	params.key_flag = key_flag;
+	params.link_id = -1;
 
 	return hapd->driver->set_key(hapd->drv_priv, &params);
 }
@@ -905,8 +906,10 @@ static void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 			     chan->chan)))
 			continue;
 		if (is_6ghz_freq(chan->freq) &&
-		    hapd->iface->conf->acs_exclude_6ghz_non_psc &&
-		    !is_6ghz_psc_frequency(chan->freq))
+		    ((hapd->iface->conf->acs_exclude_6ghz_non_psc &&
+		      !is_6ghz_psc_frequency(chan->freq)) ||
+		     (!hapd->iface->conf->ieee80211ax &&
+		      !hapd->iface->conf->ieee80211be)))
 			continue;
 		if (!(chan->flag & HOSTAPD_CHAN_DISABLED) &&
 		    !(hapd->iface->conf->acs_exclude_dfs &&

@@ -443,6 +443,7 @@ struct hostapd_bss_config {
 	int eap_teap_pac_no_inner;
 	int eap_teap_separate_result;
 	int eap_teap_id;
+	int eap_teap_method_sequence;
 	int eap_sim_aka_result_ind;
 	int eap_sim_id;
 	char *imsi_privacy_key;
@@ -670,7 +671,7 @@ struct hostapd_bss_config {
 	unsigned int sae_sync;
 	int sae_require_mfp;
 	int sae_confirm_immediate;
-	int sae_pwe;
+	enum sae_pwe sae_pwe;
 	int *sae_groups;
 	struct sae_password_entry *sae_passwords;
 
@@ -916,6 +917,8 @@ struct hostapd_bss_config {
 	u8 ext_capa[EXT_CAPA_MAX_LEN];
 
 	u8 rnr;
+	char *config_id;
+	bool xrates_supported;
 };
 
 /**
@@ -1076,6 +1079,7 @@ struct hostapd_config {
 	int ecsa_ie_only;
 	unsigned int skip_send_eapol;
 	unsigned int enable_eapol_large_timeout;
+	bool delay_eapol_tx;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_ACS
@@ -1105,6 +1109,7 @@ struct hostapd_config {
 	u8 he_6ghz_rx_ant_pat;
 	u8 he_6ghz_tx_ant_pat;
 	u8 he_6ghz_reg_pwr_type;
+	bool require_he;
 #endif /* CONFIG_IEEE80211AX */
 
 	/* VHT enable/disable config from CHAN_SWITCH */
@@ -1144,6 +1149,12 @@ struct hostapd_config {
 #define CH_SWITCH_EHT_ENABLED BIT(0)
 #define CH_SWITCH_EHT_DISABLED BIT(1)
 	unsigned int ch_switch_eht_config;
+
+	enum mbssid {
+		MBSSID_DISABLED = 0,
+		MBSSID_ENABLED = 1,
+		ENHANCED_MBSSID_ENABLED = 2,
+	} mbssid;
 };
 
 

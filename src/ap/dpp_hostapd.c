@@ -1378,8 +1378,7 @@ static void hostapd_dpp_start_gas_client(struct hostapd_data *hapd)
 static void hostapd_dpp_auth_success(struct hostapd_data *hapd, int initiator)
 {
 	wpa_printf(MSG_DEBUG, "DPP: Authentication succeeded");
-	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_AUTH_SUCCESS "init=%d",
-		initiator);
+	dpp_notify_auth_success(hapd->dpp_auth, initiator);
 #ifdef CONFIG_TESTING_OPTIONS
 	if (dpp_test == DPP_TEST_STOP_AT_AUTH_CONF) {
 		wpa_printf(MSG_INFO,
@@ -2052,6 +2051,7 @@ static void hostapd_dpp_rx_peer_disc_req(struct hostapd_data *hapd,
 	os_time_t expire;
 	int expiration;
 	enum dpp_status_error res;
+	u8 pkhash[SHA256_MAC_LEN];
 
 	os_memset(&intro, 0, sizeof(intro));
 
@@ -2088,7 +2088,7 @@ static void hostapd_dpp_rx_peer_disc_req(struct hostapd_data *hapd,
 			     wpabuf_len(hapd->conf->dpp_netaccesskey),
 			     wpabuf_head(hapd->conf->dpp_csign),
 			     wpabuf_len(hapd->conf->dpp_csign),
-			     connector, connector_len, &expire);
+			     connector, connector_len, &expire, pkhash);
 	if (res == 255) {
 		wpa_printf(MSG_INFO,
 			   "DPP: Network Introduction protocol resulted in internal failure (peer "
@@ -2133,9 +2133,9 @@ static void hostapd_dpp_rx_peer_disc_req(struct hostapd_data *hapd,
 	else
 		expiration = 0;
 
-	if (wpa_auth_pmksa_add2(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
+	if (wpa_auth_pmksa_add3(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
 				intro.pmkid, expiration,
-				WPA_KEY_MGMT_DPP) < 0) {
+				WPA_KEY_MGMT_DPP, pkhash) < 0) {
 		wpa_printf(MSG_ERROR, "DPP: Failed to add PMKSA cache entry");
 		goto done;
 	}
@@ -2793,6 +2793,7 @@ hostapd_dpp_rx_priv_peer_intro_update(struct hostapd_data *hapd, const u8 *src,
 	os_time_t expire;
 	int expiration;
 	enum dpp_status_error res;
+	u8 pkhash[SHA256_MAC_LEN];
 
 	os_memset(&intro, 0, sizeof(intro));
 
@@ -2870,7 +2871,7 @@ hostapd_dpp_rx_priv_peer_intro_update(struct hostapd_data *hapd, const u8 *src,
 			     wpabuf_len(hapd->conf->dpp_netaccesskey),
 			     wpabuf_head(hapd->conf->dpp_csign),
 			     wpabuf_len(hapd->conf->dpp_csign),
-			     connector, connector_len, &expire);
+			     connector, connector_len, &expire, pkhash);
 	if (res == 255) {
 		wpa_printf(MSG_INFO,
 			   "DPP: Network Introduction protocol resulted in internal failure (peer "
@@ -2904,9 +2905,9 @@ hostapd_dpp_rx_priv_peer_intro_update(struct hostapd_data *hapd, const u8 *src,
 	else
 		expiration = 0;
 
-	if (wpa_auth_pmksa_add2(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
+	if (wpa_auth_pmksa_add3(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
 				intro.pmkid, expiration,
-				WPA_KEY_MGMT_DPP) < 0) {
+				WPA_KEY_MGMT_DPP, pkhash) < 0) {
 		wpa_printf(MSG_ERROR, "DPP: Failed to add PMKSA cache entry");
 		goto done;
 	}
@@ -3089,8 +3090,7 @@ hostapd_dpp_gas_req_handler(struct hostapd_data *hapd, const u8 *sa,
 		 * from TX status handler, but since there was no such handler
 		 * call yet, simply send out the event message and proceed with
 		 * exchange. */
-		wpa_msg(hapd->msg_ctx, MSG_INFO,
-			DPP_EVENT_AUTH_SUCCESS "init=1");
+		dpp_notify_auth_success(hapd->dpp_auth, 1);
 		hapd->dpp_auth_ok_on_ack = 0;
 	}
 
@@ -3376,7 +3376,7 @@ static void hostapd_dpp_relay_gas_resp_tx(void *ctx, const u8 *addr,
 {
 	struct hostapd_data *hapd = ctx;
 
-	gas_serv_req_dpp_processing(hapd, addr, dialog_token, prot, buf);
+	gas_serv_req_dpp_processing(hapd, addr, dialog_token, prot, buf, 0);
 }
 
 #endif /* CONFIG_DPP2 */

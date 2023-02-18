@@ -19,6 +19,7 @@ struct wps_event_m2d;
 struct wps_event_fail;
 struct tls_cert_data;
 struct wpa_cred;
+struct rsn_pmksa_cache_entry;
 
 int wpas_notify_supplicant_initialized(struct wpa_global *global);
 void wpas_notify_supplicant_deinitialized(struct wpa_global *global);
@@ -39,6 +40,7 @@ void wpas_notify_bss_tm_status(struct wpa_supplicant *wpa_s);
 void wpas_notify_network_changed(struct wpa_supplicant *wpa_s);
 void wpas_notify_ap_scan_changed(struct wpa_supplicant *wpa_s);
 void wpas_notify_bssid_changed(struct wpa_supplicant *wpa_s);
+void wpas_notify_mac_address_changed(struct wpa_supplicant *wpa_s);
 void wpas_notify_auth_changed(struct wpa_supplicant *wpa_s);
 void wpas_notify_network_enabled_changed(struct wpa_supplicant *wpa_s,
 					 struct wpa_ssid *ssid);
@@ -199,8 +201,6 @@ void wpas_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
 		const char *channel_list, unsigned short band_list[], int size);
 void wpas_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s);
-void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
-				 struct rsn_pmksa_cache_entry *entry);
 void wpas_notify_transition_disable(struct wpa_supplicant *wpa_s,
 				    struct wpa_ssid *ssid,
 				    u8 bitmap);
@@ -222,5 +222,8 @@ void wpas_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
 		struct dscp_policy_data *policies, int num_policies);
 void wpas_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency);
 ssize_t wpas_get_certificate(const char *alias, uint8_t** value);
+void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
+				 struct rsn_pmksa_cache_entry *entry);
+void wpas_notify_signal_change(struct wpa_supplicant *wpa_s);
 
 #endif /* NOTIFY_H */

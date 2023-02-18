@@ -371,8 +371,7 @@ static void dpp_controller_auth_success(struct dpp_connection *conn,
 		return;
 
 	wpa_printf(MSG_DEBUG, "DPP: Authentication succeeded");
-	wpa_msg(conn->msg_ctx, MSG_INFO,
-		DPP_EVENT_AUTH_SUCCESS "init=%d", initiator);
+	dpp_notify_auth_success(auth, initiator);
 #ifdef CONFIG_TESTING_OPTIONS
 	if (dpp_test == DPP_TEST_STOP_AT_AUTH_CONF) {
 		wpa_printf(MSG_INFO,
@@ -627,6 +626,17 @@ int dpp_relay_rx_action(struct dpp_global *dpp, const u8 *src, const u8 *hdr,
 	}
 	if (!ctrl)
 		return -1;
+
+	if (type == DPP_PA_PRESENCE_ANNOUNCEMENT ||
+	    type == DPP_PA_RECONFIG_ANNOUNCEMENT) {
+		conn = dpp_relay_match_ctrl(ctrl, src, freq, type);
+		if (conn &&
+		    (!conn->auth || conn->auth->waiting_auth_resp)) {
+			wpa_printf(MSG_DEBUG,
+				   "DPP: Use existing TCP connection to Controller since no Auth Resp seen on it yet");
+			return dpp_relay_tx(conn, hdr, buf, len);
+		}
+	}
 
 	wpa_printf(MSG_DEBUG,
 		   "DPP: Authentication Request for a configured Controller");
@@ -945,12 +955,6 @@ static int dpp_controller_rx_presence_announcement(struct dpp_connection *conn,
 	struct dpp_authentication *auth;
 	struct dpp_global *dpp = conn->ctrl->global;
 
-	if (conn->auth) {
-		wpa_printf(MSG_DEBUG,
-			   "DPP: Ignore Presence Announcement during ongoing Authentication");
-		return -1;
-	}
-
 	wpa_printf(MSG_DEBUG, "DPP: Presence Announcement");
 
 	r_bootstrap = dpp_get_attr(buf, len, DPP_ATTR_R_BOOTSTRAP_KEY_HASH,
@@ -967,6 +971,12 @@ static int dpp_controller_rx_presence_announcement(struct dpp_connection *conn,
 		wpa_printf(MSG_DEBUG,
 			   "DPP: No matching bootstrapping information found");
 		return -1;
+	}
+
+	if (conn->auth) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Ignore Presence Announcement during ongoing Authentication");
+		return 0;
 	}
 
 	auth = dpp_auth_init(dpp, conn->msg_ctx, peer_bi, NULL,

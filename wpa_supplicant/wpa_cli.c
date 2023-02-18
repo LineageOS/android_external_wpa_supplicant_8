@@ -503,7 +503,7 @@ static char ** wpa_cli_complete_set(const char *str, int pos)
 		"autoscan", "wps_nfc_dev_pw_id", "wps_nfc_dh_pubkey",
 		"wps_nfc_dh_privkey", "wps_nfc_dev_pw", "ext_password_backend",
 		"p2p_go_max_inactivity", "auto_interworking", "okc", "pmf",
-		"sae_groups", "dtim_period", "beacon_int",
+		"sae_check_mfp", "sae_groups", "dtim_period", "beacon_int",
 		"ap_vendor_elements", "ignore_old_scan_res", "freq_list",
 		"scan_cur_freq", "scan_res_valid_for_connect",
 		"sched_scan_interval",
@@ -602,6 +602,7 @@ static char ** wpa_cli_complete_get(const char *str, int pos)
 		"go_venue_group", "go_venue_type",
 		"wps_nfc_dev_pw_id", "ext_password_backend",
 		"p2p_go_max_inactivity", "auto_interworking", "okc", "pmf",
+		"sae_check_mfp",
 		"dtim_period", "beacon_int", "ignore_old_scan_res",
 		"scan_cur_freq", "scan_res_valid_for_connect",
 		"sched_scan_interval",
@@ -1479,6 +1480,7 @@ static const char *network_fields[] = {
 #ifdef CONFIG_HE_OVERRIDES
 	"disable_he",
 #endif /* CONFIG_HE_OVERRIDES */
+	"disable_eht",
 	"ap_max_inactivity", "dtim_period", "beacon_int",
 #ifdef CONFIG_MACSEC
 	"macsec_policy",
@@ -3260,18 +3262,17 @@ static int wpa_cli_cmd_all_bss(struct wpa_ctrl *ctrl, int argc, char *argv[])
 
 #ifdef CONFIG_PASN
 
-static int wpa_cli_cmd_pasn_auth_start(struct wpa_ctrl *ctrl, int argc,
-				       char *argv[])
+static int wpa_cli_cmd_pasn_start(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
-	return wpa_cli_cmd(ctrl, "PASN_AUTH_START", 4, argc, argv);
+	return wpa_cli_cmd(ctrl, "PASN_START", 4, argc, argv);
 }
 
 
-static int wpa_cli_cmd_pasn_auth_stop(struct wpa_ctrl *ctrl, int argc,
-				      char *argv[])
+static int wpa_cli_cmd_pasn_stop(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
-	return wpa_cli_cmd(ctrl, "PASN_AUTH_STOP", 0, argc, argv);
+	return wpa_cli_cmd(ctrl, "PASN_STOP", 0, argc, argv);
 }
+
 
 static int wpa_cli_cmd_ptksa_cache_list(struct wpa_ctrl *ctrl, int argc,
 					char *argv[])
@@ -4024,10 +4025,10 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "all_bss", wpa_cli_cmd_all_bss, NULL, cli_cmd_flag_none,
 	  "= list all BSS entries (scan results)" },
 #ifdef CONFIG_PASN
-	{ "pasn_auth_start", wpa_cli_cmd_pasn_auth_start, NULL,
+	{ "pasn_start", wpa_cli_cmd_pasn_start, NULL,
 	  cli_cmd_flag_none,
 	  "bssid=<BSSID> akmp=<WPA key mgmt> cipher=<WPA cipher> group=<group> nid=<network id> = Start PASN authentication" },
-	{ "pasn_auth_stop", wpa_cli_cmd_pasn_auth_stop, NULL,
+	{ "pasn_stop", wpa_cli_cmd_pasn_stop, NULL,
 	  cli_cmd_flag_none,
 	  "= Stop PASN authentication" },
 	{ "ptksa_cache_list", wpa_cli_cmd_ptksa_cache_list, NULL,

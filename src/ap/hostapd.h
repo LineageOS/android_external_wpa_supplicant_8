@@ -352,11 +352,15 @@ struct hostapd_data {
 #endif /* CONFIG_SQLITE */
 
 #ifdef CONFIG_SAE
+
+#define COMEBACK_KEY_SIZE 8
+#define COMEBACK_PENDING_IDX_SIZE 256
+
 	/** Key used for generating SAE anti-clogging tokens */
-	u8 comeback_key[8];
+	u8 comeback_key[COMEBACK_KEY_SIZE];
 	struct os_reltime last_comeback_key_update;
 	u16 comeback_idx;
-	u16 comeback_pending_idx[256];
+	u16 comeback_pending_idx[COMEBACK_PENDING_IDX_SIZE];
 	int dot11RSNASAERetransPeriod; /* msec */
 	struct dl_list sae_commit_queue; /* struct hostapd_sae_commit_queue */
 #endif /* CONFIG_SAE */
@@ -640,6 +644,11 @@ struct hostapd_iface {
 	/* Previous WMM element information */
 	struct hostapd_wmm_ac_params prev_wmm[WMM_AC_NUM];
 
+	/* Maximum number of interfaces supported for MBSSID advertisement */
+	unsigned int mbssid_max_interfaces;
+	/* Maximum profile periodicity for enhanced MBSSID advertisement */
+	unsigned int ema_max_periodicity;
+
 	int (*enable_iface_cb)(struct hostapd_iface *iface);
 	int (*disable_iface_cb)(struct hostapd_iface *iface);
 };
@@ -669,6 +678,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 void hostapd_interface_deinit_free(struct hostapd_iface *iface);
 int hostapd_enable_iface(struct hostapd_iface *hapd_iface);
 int hostapd_reload_iface(struct hostapd_iface *hapd_iface);
+int hostapd_reload_bss_only(struct hostapd_data *bss);
 int hostapd_disable_iface(struct hostapd_iface *hapd_iface);
 void hostapd_bss_deinit_no_free(struct hostapd_data *hapd);
 void hostapd_free_hapd_data(struct hostapd_data *hapd);
@@ -740,5 +750,7 @@ void fst_hostapd_fill_iface_obj(struct hostapd_data *hapd,
 #endif /* CONFIG_FST */
 
 int hostapd_set_acl(struct hostapd_data *hapd);
+struct hostapd_data * hostapd_mbssid_get_tx_bss(struct hostapd_data *hapd);
+int hostapd_mbssid_get_bss_index(struct hostapd_data *hapd);
 
 #endif /* HOSTAPD_H */

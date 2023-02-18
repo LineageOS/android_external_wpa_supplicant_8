@@ -365,7 +365,7 @@ static struct wpabuf * p2p_build_prov_disc_resp(struct p2p_data *p2p,
 		    (conncap & (P2PS_SETUP_CLIENT | P2PS_SETUP_GROUP_OWNER))) {
 			bool is_6ghz_capab;
 
-			is_6ghz_capab = is_p2p_6ghz_capable(p2p) &&
+			is_6ghz_capab = is_p2p_6ghz_capable(p2p) && dev &&
 				p2p_is_peer_6ghz_capab(
 					p2p, dev->info.p2p_device_addr);
 			p2p_buf_add_channel_list(buf, p2p->cfg->country,
@@ -618,6 +618,8 @@ void p2p_process_prov_disc_req(struct p2p_data *p2p, const u8 *sa,
 		wpabuf_free(dev->info.wfd_subelems);
 		dev->info.wfd_subelems = wpabuf_dup(msg.wfd_subelems);
 	}
+
+	p2p_update_peer_6ghz_capab(dev, &msg);
 
 	if (!msg.adv_id) {
 		allowed_config_methods |= WPS_CONFIG_PUSHBUTTON;
@@ -1366,6 +1368,8 @@ void p2p_process_prov_disc_resp(struct p2p_data *p2p, const u8 *sa,
 		wpabuf_free(dev->info.wfd_subelems);
 		dev->info.wfd_subelems = wpabuf_dup(msg.wfd_subelems);
 	}
+
+	p2p_update_peer_6ghz_capab(dev, &msg);
 
 	if (dev->dialog_token != msg.dialog_token) {
 		p2p_dbg(p2p, "Ignore Provision Discovery Response with unexpected Dialog Token %u (expected %u)",

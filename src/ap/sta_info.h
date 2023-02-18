@@ -16,6 +16,7 @@
 #include "common/ieee802_11_defs.h"
 #include "common/sae.h"
 #include "crypto/sha384.h"
+#include "pasn/pasn_common.h"
 
 /* STA flags */
 #define WLAN_STA_AUTH BIT(0)
@@ -68,44 +69,6 @@ struct pending_eapol_rx {
 	enum frame_encryption encrypted;
 };
 
-enum pasn_fils_state {
-	PASN_FILS_STATE_NONE = 0,
-	PASN_FILS_STATE_PENDING_AS,
-	PASN_FILS_STATE_COMPLETE
-};
-
-struct pasn_fils_data {
-	u8 state;
-	u8 nonce[FILS_NONCE_LEN];
-	u8 anonce[FILS_NONCE_LEN];
-	u8 session[FILS_SESSION_LEN];
-	u8 erp_pmkid[PMKID_LEN];
-
-	struct wpabuf *erp_resp;
-};
-
-struct pasn_data {
-	int akmp;
-	int cipher;
-	u16 group;
-	bool secure_ltf;
-	u8 trans_seq;
-	u8 wrapped_data_format;
-	size_t kdk_len;
-
-	u8 hash[SHA384_MAC_LEN];
-	struct wpa_ptk ptk;
-	struct crypto_ecdh *ecdh;
-
-	struct wpabuf *secret;
-#ifdef CONFIG_SAE
-	struct sae_data sae;
-#endif /* CONFIG_SAE */
-#ifdef CONFIG_FILS
-	struct pasn_fils_data fils;
-#endif /* CONFIG_FILS */
-};
-
 struct sta_info {
 	struct sta_info *next; /* next entry in sta list */
 	struct sta_info *hnext; /* next entry in hash table list */
@@ -155,6 +118,7 @@ struct sta_info {
 	unsigned int qos_map_enabled:1;
 	unsigned int remediation:1;
 	unsigned int hs20_deauth_requested:1;
+	unsigned int hs20_deauth_on_ack:1;
 	unsigned int session_timeout_set:1;
 	unsigned int radius_das_match:1;
 	unsigned int ecsa_supported:1;
@@ -390,6 +354,8 @@ void ap_sta_stop_sa_query(struct hostapd_data *hapd, struct sta_info *sta);
 int ap_check_sa_query_timeout(struct hostapd_data *hapd, struct sta_info *sta);
 const char * ap_sta_wpa_get_keyid(struct hostapd_data *hapd,
 				  struct sta_info *sta);
+const u8 * ap_sta_wpa_get_dpp_pkhash(struct hostapd_data *hapd,
+				     struct sta_info *sta);
 void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
 		       const u8 *addr, u16 reason);
 

@@ -330,6 +330,8 @@ filegroup {
         "src/utils/json.c",
         "src/ap/wmm.c",
         "src/ap/ap_list.c",
+        "src/ap/comeback_token.c",
+        "src/pasn/pasn_responder.c",
         "src/ap/ieee802_11.c",
         "src/ap/hw_features.c",
         "src/ap/dfs.c",
