@@ -983,6 +983,14 @@ static int hostapd_ctrl_iface_get_config(struct hostapd_data *hapd,
 		return pos - buf;
 	pos += ret;
 
+	if ((hapd->conf->config_id)) {
+		ret = os_snprintf(pos, end - pos, "config_id=%s\n",
+				  hapd->conf->config_id);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+
 #ifdef CONFIG_WPS
 	ret = os_snprintf(pos, end - pos, "wps_state=%s\n",
 			  hapd->conf->wps_state == 0 ? "disabled" :
@@ -1374,6 +1382,16 @@ static int hostapd_ctrl_iface_reload(struct hostapd_iface *iface)
 {
 	if (hostapd_reload_iface(iface) < 0) {
 		wpa_printf(MSG_ERROR, "Reloading of interface failed");
+		return -1;
+	}
+	return 0;
+}
+
+
+static int hostapd_ctrl_iface_reload_bss(struct hostapd_data *bss)
+{
+	if (hostapd_reload_bss_only(bss) < 0) {
+		wpa_printf(MSG_ERROR, "Reloading of BSS failed");
 		return -1;
 	}
 	return 0;
@@ -3199,6 +3217,8 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strncmp(buf, "RELOG", 5) == 0) {
 		if (wpa_debug_reopen_file() < 0)
 			reply_len = -1;
+	} else if (os_strcmp(buf, "CLOSE_LOG") == 0) {
+		wpa_debug_stop_log();
 	} else if (os_strncmp(buf, "NOTE ", 5) == 0) {
 		wpa_printf(MSG_INFO, "NOTE: %s", buf + 5);
 	} else if (os_strcmp(buf, "STATUS") == 0) {
@@ -3369,6 +3389,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 			reply_len = -1;
 	} else if (os_strcmp(buf, "RELOAD_WPA_PSK") == 0) {
 		if (hostapd_ctrl_iface_reload_wpa_psk(hapd))
+			reply_len = -1;
+	} else if (os_strcmp(buf, "RELOAD_BSS") == 0) {
+		if (hostapd_ctrl_iface_reload_bss(hapd))
 			reply_len = -1;
 	} else if (os_strncmp(buf, "RELOAD", 6) == 0) {
 		if (hostapd_ctrl_iface_reload(hapd->iface))

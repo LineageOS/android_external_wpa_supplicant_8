@@ -143,7 +143,7 @@ static inline int wpa_drv_get_ssid(struct wpa_supplicant *wpa_s, u8 *ssid)
 	return -1;
 }
 
-static inline int wpa_drv_set_key(struct wpa_supplicant *wpa_s,
+static inline int wpa_drv_set_key(struct wpa_supplicant *wpa_s, int link_id,
 				  enum wpa_alg alg, const u8 *addr,
 				  int key_idx, int set_tx,
 				  const u8 *seq, size_t seq_len,
@@ -163,6 +163,7 @@ static inline int wpa_drv_set_key(struct wpa_supplicant *wpa_s,
 	params.key = key;
 	params.key_len = key_len;
 	params.key_flag = key_flag;
+	params.link_id = link_id;
 
 	if (alg != WPA_ALG_NONE) {
 		/* keyidx = 1 can be either a broadcast or--with
@@ -406,20 +407,10 @@ static inline int wpa_drv_set_supp_port(struct wpa_supplicant *wpa_s,
 	return 0;
 }
 
-static inline int wpa_drv_send_action(struct wpa_supplicant *wpa_s,
-				      unsigned int freq,
-				      unsigned int wait,
-				      const u8 *dst, const u8 *src,
-				      const u8 *bssid,
-				      const u8 *data, size_t data_len,
-				      int no_cck)
-{
-	if (wpa_s->driver->send_action)
-		return wpa_s->driver->send_action(wpa_s->drv_priv, freq,
-						  wait, dst, src, bssid,
-						  data, data_len, no_cck);
-	return -1;
-}
+int wpa_drv_send_action(struct wpa_supplicant *wpa_s, unsigned int freq,
+			unsigned int wait, const u8 *dst, const u8 *src,
+			const u8 *bssid, const u8 *data, size_t data_len,
+			int no_cck);
 
 static inline void wpa_drv_send_action_cancel_wait(struct wpa_supplicant *wpa_s)
 {

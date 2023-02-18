@@ -1353,7 +1353,10 @@ static struct wpa_ssid * wpas_dpp_add_network(struct wpa_supplicant *wpa_s,
 		if (dpp_akm_sae(conf->akm))
 			ssid->key_mgmt |= WPA_KEY_MGMT_SAE |
 				WPA_KEY_MGMT_FT_SAE;
-		ssid->ieee80211w = MGMT_FRAME_PROTECTION_OPTIONAL;
+		if (dpp_akm_psk(conf->akm))
+			ssid->ieee80211w = MGMT_FRAME_PROTECTION_OPTIONAL;
+		else
+			ssid->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
 		if (conf->passphrase[0]) {
 			if (wpa_config_set_quoted(ssid, "psk",
 						  conf->passphrase) < 0)
@@ -1923,7 +1926,7 @@ static void wpas_dpp_start_gas_client(struct wpa_supplicant *wpa_s)
 static void wpas_dpp_auth_success(struct wpa_supplicant *wpa_s, int initiator)
 {
 	wpa_printf(MSG_DEBUG, "DPP: Authentication succeeded");
-	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_AUTH_SUCCESS "init=%d", initiator);
+	dpp_notify_auth_success(wpa_s->dpp_auth, initiator);
 	wpas_notify_dpp_auth_success(wpa_s);
 #ifdef CONFIG_TESTING_OPTIONS
 	if (dpp_test == DPP_TEST_STOP_AT_AUTH_CONF) {
@@ -2301,6 +2304,7 @@ wpas_dpp_rx_presence_announcement(struct wpa_supplicant *wpa_s, const u8 *src,
 	u16 r_bootstrap_len;
 	struct dpp_bootstrap_info *peer_bi;
 	struct dpp_authentication *auth;
+	unsigned int wait_time, max_wait_time;
 
 	if (!wpa_s->dpp)
 		return;
@@ -2332,6 +2336,9 @@ wpas_dpp_rx_presence_announcement(struct wpa_supplicant *wpa_s, const u8 *src,
 		return;
 	}
 
+	wpa_printf(MSG_DEBUG, "DPP: Start Authentication exchange with " MACSTR
+		   " based on the received Presence Announcement",
+		   MAC2STR(src));
 	auth = dpp_auth_init(wpa_s->dpp, wpa_s, peer_bi, NULL,
 			     DPP_CAPAB_CONFIGURATOR, freq, NULL, 0);
 	if (!auth)
@@ -2347,6 +2354,13 @@ wpas_dpp_rx_presence_announcement(struct wpa_supplicant *wpa_s, const u8 *src,
 	/* The source address of the Presence Announcement frame overrides any
 	 * MAC address information from the bootstrapping information. */
 	os_memcpy(auth->peer_mac_addr, src, ETH_ALEN);
+
+	wait_time = wpa_s->max_remain_on_chan;
+	max_wait_time = wpa_s->dpp_resp_wait_time ?
+		wpa_s->dpp_resp_wait_time : 2000;
+	if (wait_time > max_wait_time)
+		wait_time = max_wait_time;
+	wpas_dpp_stop_listen_for_tx(wpa_s, freq, wait_time);
 
 	wpa_s->dpp_auth = auth;
 	if (wpas_dpp_auth_init_next(wpa_s) < 0) {
@@ -2642,6 +2656,8 @@ static void wpas_dpp_rx_peer_disc_resp(struct wpa_supplicant *wpa_s,
 		return;
 	}
 
+	os_memset(&intro, 0, sizeof(intro));
+
 	trans_id = dpp_get_attr(buf, len, DPP_ATTR_TRANSACTION_ID,
 			       &trans_id_len);
 	if (!trans_id || trans_id_len != 1) {
@@ -2693,7 +2709,7 @@ static void wpas_dpp_rx_peer_disc_resp(struct wpa_supplicant *wpa_s,
 			     ssid->dpp_netaccesskey_len,
 			     ssid->dpp_csign,
 			     ssid->dpp_csign_len,
-			     connector, connector_len, &expiry);
+			     connector, connector_len, &expiry, NULL);
 	if (res != DPP_STATUS_OK) {
 		wpa_printf(MSG_INFO,
 			   "DPP: Network Introduction protocol resulted in failure");
@@ -2709,6 +2725,7 @@ static void wpas_dpp_rx_peer_disc_resp(struct wpa_supplicant *wpa_s,
 	if (!entry)
 		goto fail;
 	os_memcpy(entry->aa, src, ETH_ALEN);
+	os_memcpy(entry->spa, wpa_s->own_addr, ETH_ALEN);
 	os_memcpy(entry->pmkid, intro.pmkid, PMKID_LEN);
 	os_memcpy(entry->pmk, intro.pmk, intro.pmk_len);
 	entry->pmk_len = intro.pmk_len;
@@ -2752,7 +2769,7 @@ static void wpas_dpp_rx_peer_disc_resp(struct wpa_supplicant *wpa_s,
 		wpa_supplicant_req_scan(wpa_s, 0, 0);
 	}
 fail:
-	os_memset(&intro, 0, sizeof(intro));
+	dpp_peer_intro_deinit(&intro);
 }
 
 
@@ -3845,7 +3862,7 @@ wpas_dpp_rx_priv_peer_intro_notify(struct wpa_supplicant *wpa_s,
 			     ssid->dpp_netaccesskey_len,
 			     ssid->dpp_csign,
 			     ssid->dpp_csign_len,
-			     connector, connector_len, &expiry);
+			     connector, connector_len, &expiry, NULL);
 	if (res != DPP_STATUS_OK) {
 		wpa_printf(MSG_INFO,
 			   "DPP: Network Introduction protocol resulted in failure");
@@ -3871,6 +3888,7 @@ wpas_dpp_rx_priv_peer_intro_notify(struct wpa_supplicant *wpa_s,
 		goto fail;
 	entry->dpp_pfs = peer_version >= 2;
 	os_memcpy(entry->aa, src, ETH_ALEN);
+	os_memcpy(entry->spa, wpa_s->own_addr, ETH_ALEN);
 	os_memcpy(entry->pmkid, intro.pmkid, PMKID_LEN);
 	os_memcpy(entry->pmk, intro.pmk, intro.pmk_len);
 	entry->pmk_len = intro.pmk_len;
@@ -4087,7 +4105,7 @@ wpas_dpp_gas_req_handler(void *ctx, void *resp_ctx, const u8 *sa,
 		 * TX status handler, but since there was no such handler call
 		 * yet, simply send out the event message and proceed with
 		 * exchange. */
-		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_AUTH_SUCCESS "init=1");
+		dpp_notify_auth_success(auth, 1);
 		wpa_s->dpp_auth_ok_on_ack = 0;
 	}
 
@@ -4380,7 +4398,7 @@ int wpas_dpp_check_connect(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 	if (rsn && wpa_parse_wpa_ie(rsn, 2 + rsn[1], &ied) == 0 &&
 	    !(ied.key_mgmt & WPA_KEY_MGMT_DPP))
 		return 0; /* AP does not support DPP AKM - continue */
-	if (wpa_sm_pmksa_exists(wpa_s->wpa, bss->bssid, ssid))
+	if (wpa_sm_pmksa_exists(wpa_s->wpa, bss->bssid, wpa_s->own_addr, ssid))
 		return 0; /* PMKSA exists for DPP AKM - continue */
 
 	if (!ssid->dpp_connector || !ssid->dpp_netaccesskey ||

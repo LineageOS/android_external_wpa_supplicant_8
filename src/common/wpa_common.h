@@ -186,6 +186,18 @@ WPA_CIPHER_BIP_CMAC_256)
 #define FT_R1KH_ID_LEN 6
 #define WPA_PMK_NAME_LEN 16
 
+/* FTE - MIC Control - RSNXE Used */
+#define FTE_MIC_CTRL_RSNXE_USED BIT(0)
+#define FTE_MIC_CTRL_MIC_LEN_MASK (BIT(1) | BIT(2) | BIT(3))
+#define FTE_MIC_CTRL_MIC_LEN_SHIFT 1
+
+/* FTE - MIC Length subfield values */
+enum ft_mic_len_subfield {
+	FTE_MIC_LEN_16 = 0,
+	FTE_MIC_LEN_24 = 1,
+	FTE_MIC_LEN_32 = 2,
+};
+
 
 /* IEEE 802.11, 8.5.2 EAPOL-Key frames */
 #define WPA_KEY_INFO_TYPE_MASK ((u16) (BIT(0) | BIT(1) | BIT(2)))
@@ -401,6 +413,14 @@ struct rsn_ftie_sha384 {
 	/* followed by optional parameters */
 } STRUCT_PACKED;
 
+struct rsn_ftie_sha512 {
+	u8 mic_control[2];
+	u8 mic[32];
+	u8 anonce[WPA_NONCE_LEN];
+	u8 snonce[WPA_NONCE_LEN];
+	/* followed by optional parameters */
+} STRUCT_PACKED;
+
 #define FTIE_SUBELEM_R1KH_ID 1
 #define FTIE_SUBELEM_GTK 2
 #define FTIE_SUBELEM_R0KH_ID 3
@@ -455,7 +475,7 @@ int fils_key_auth_sk(const u8 *ick, size_t ick_len, const u8 *snonce,
 		     size_t *key_auth_len);
 
 #ifdef CONFIG_IEEE80211R
-int wpa_ft_mic(const u8 *kck, size_t kck_len, const u8 *sta_addr,
+int wpa_ft_mic(int key_mgmt, const u8 *kck, size_t kck_len, const u8 *sta_addr,
 	       const u8 *ap_addr, u8 transaction_seqnum,
 	       const u8 *mdie, size_t mdie_len,
 	       const u8 *ftie, size_t ftie_len,
@@ -467,9 +487,10 @@ int wpa_derive_pmk_r0(const u8 *xxkey, size_t xxkey_len,
 		      const u8 *ssid, size_t ssid_len,
 		      const u8 *mdid, const u8 *r0kh_id, size_t r0kh_id_len,
 		      const u8 *s0kh_id, u8 *pmk_r0, u8 *pmk_r0_name,
-		      int use_sha384);
+		      int key_mgmt);
 int wpa_derive_pmk_r1_name(const u8 *pmk_r0_name, const u8 *r1kh_id,
-			   const u8 *s1kh_id, u8 *pmk_r1_name, int use_sha384);
+			   const u8 *s1kh_id, u8 *pmk_r1_name,
+			   size_t pmk_r1_len);
 int wpa_derive_pmk_r1(const u8 *pmk_r0, size_t pmk_r0_len,
 		      const u8 *pmk_r0_name,
 		      const u8 *r1kh_id, const u8 *s1kh_id,
@@ -544,6 +565,10 @@ struct wpa_ft_ies {
 	size_t r0kh_id_len;
 	const u8 *fte_anonce;
 	const u8 *fte_snonce;
+	bool fte_rsnxe_used;
+	unsigned int fte_elem_count;
+	const u8 *fte_mic;
+	size_t fte_mic_len;
 	const u8 *rsn;
 	size_t rsn_len;
 	u16 rsn_capab;
@@ -599,7 +624,7 @@ struct wpa_pasn_params_data {
 #define WPA_PASN_PUBKEY_UNCOMPRESSED 0x04
 
 int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
-		     int use_sha384);
+		     int key_mgmt);
 
 struct wpa_eapol_ie_parse {
 	const u8 *wpa_ie;
@@ -697,6 +722,7 @@ int wpa_use_cmac(int akmp);
 int wpa_use_aes_key_wrap(int akmp);
 int fils_domain_name_hash(const char *domain, u8 *hash);
 
+bool pasn_use_sha384(int akmp, int cipher);
 int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
 		    const u8 *spa, const u8 *bssid,
 		    const u8 *dhss, size_t dhss_len,
@@ -735,5 +761,6 @@ int wpa_pasn_parse_parameter_ie(const u8 *data, u8 len, bool from_ap,
 				struct wpa_pasn_params_data *pasn_params);
 
 void wpa_pasn_add_rsnxe(struct wpabuf *buf, u16 capab);
+int wpa_pasn_add_extra_ies(struct wpabuf *buf, const u8 *extra_ies, size_t len);
 
 #endif /* WPA_COMMON_H */

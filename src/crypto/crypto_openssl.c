@@ -182,7 +182,6 @@ static int EC_GROUP_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
 
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-static OSSL_PROVIDER *openssl_default_provider = NULL;
 static OSSL_PROVIDER *openssl_legacy_provider = NULL;
 #endif /* OpenSSL version >= 3.0 */
 
@@ -192,9 +191,7 @@ void openssl_load_legacy_provider(void)
 	if (openssl_legacy_provider)
 		return;
 
-	openssl_legacy_provider = OSSL_PROVIDER_load(NULL, "legacy");
-	if (openssl_legacy_provider && !openssl_default_provider)
-		openssl_default_provider = OSSL_PROVIDER_load(NULL, "default");
+	openssl_legacy_provider = OSSL_PROVIDER_try_load(NULL, "legacy", 1);
 #endif /* OpenSSL version >= 3.0 */
 }
 
@@ -205,10 +202,6 @@ static void openssl_unload_legacy_provider(void)
 	if (openssl_legacy_provider) {
 		OSSL_PROVIDER_unload(openssl_legacy_provider);
 		openssl_legacy_provider = NULL;
-	}
-	if (openssl_default_provider) {
-		OSSL_PROVIDER_unload(openssl_default_provider);
-		openssl_default_provider = NULL;
 	}
 #endif /* OpenSSL version >= 3.0 */
 }
@@ -320,12 +313,12 @@ static int openssl_digest_vector(const EVP_MD *type, size_t num_elem,
 
 
 #ifndef CONFIG_FIPS
+
 int md4_vector(size_t num_elem, const u8 *addr[], const size_t *len, u8 *mac)
 {
 	openssl_load_legacy_provider();
 	return openssl_digest_vector(EVP_md4(), num_elem, addr, len, mac);
 }
-#endif /* CONFIG_FIPS */
 
 
 int des_encrypt(const u8 *clear, const u8 *key, u8 *cypher)
@@ -404,11 +397,11 @@ out:
 #endif /* CONFIG_NO_RC4 */
 
 
-#ifndef CONFIG_FIPS
 int md5_vector(size_t num_elem, const u8 *addr[], const size_t *len, u8 *mac)
 {
 	return openssl_digest_vector(EVP_md5(), num_elem, addr, len, mac);
 }
+
 #endif /* CONFIG_FIPS */
 
 
@@ -454,9 +447,9 @@ static const EVP_CIPHER * aes_get_evp_cipher(size_t keylen)
 		return EVP_aes_192_ecb();
 	case 32:
 		return EVP_aes_256_ecb();
+	default:
+		return NULL;
 	}
-
-	return NULL;
 }
 
 
@@ -2156,9 +2149,7 @@ int crypto_bignum_sqrmod(const struct crypto_bignum *a,
 int crypto_bignum_rshift(const struct crypto_bignum *a, int n,
 			 struct crypto_bignum *r)
 {
-	/* Note: BN_rshift() does not modify the first argument even though it
-	 * has not been marked const. */
-	return BN_rshift((BIGNUM *) a, (BIGNUM *) r, n) == 1 ? 0 : -1;
+	return BN_rshift((BIGNUM *) r, (const BIGNUM *) a, n) == 1 ? 0 : -1;
 }
 
 
@@ -2458,14 +2449,16 @@ int crypto_ec_point_to_bin(struct crypto_ec *e,
 	    EC_POINT_get_affine_coordinates(e->group, (EC_POINT *) point,
 					    x_bn, y_bn, e->bnctx)) {
 		if (x) {
-			crypto_bignum_to_bin((struct crypto_bignum *) x_bn,
-					     x, len, len);
+			ret = crypto_bignum_to_bin(
+				(struct crypto_bignum *) x_bn, x, len, len);
 		}
-		if (y) {
-			crypto_bignum_to_bin((struct crypto_bignum *) y_bn,
-					     y, len, len);
+		if (ret >= 0 && y) {
+			ret = crypto_bignum_to_bin(
+				(struct crypto_bignum *) y_bn, y, len, len);
 		}
-		ret = 0;
+
+		if (ret > 0)
+			ret = 0;
 	}
 
 	BN_clear_free(x_bn);
@@ -4090,10 +4083,12 @@ int crypto_ec_key_group(struct crypto_ec_key *key)
 	case NID_brainpoolP512r1:
 		return 30;
 #endif /* NID_brainpoolP512r1 */
+	default:
+		wpa_printf(MSG_ERROR,
+			   "OpenSSL: Unsupported curve (nid=%d) in EC key",
+			   nid);
+		return -1;
 	}
-	wpa_printf(MSG_ERROR, "OpenSSL: Unsupported curve (nid=%d) in EC key",
-		   nid);
-	return -1;
 }
 
 
@@ -4854,10 +4849,8 @@ hpke_labeled_expand(struct hpke_context *ctx, bool kem, const u8 *prk,
 	pos += suite_id_len;
 	os_memcpy(pos, label, label_len);
 	pos += label_len;
-	if (info && info_len) {
+	if (info && info_len)
 		os_memcpy(pos, info, info_len);
-		pos += info_len;
-	}
 
 	pos = out;
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
@@ -5020,8 +5013,8 @@ static int hpke_encap(struct hpke_context *ctx, struct crypto_ec_key *pk_r,
 	EVP_PKEY_CTX *pctx = NULL;
 	struct crypto_ec_key *sk_e;
 	int res = -1;
-	u8 dhss[HPKE_MAX_SHARED_SECRET_LEN + 16];
-	size_t dhss_len;
+	u8 *dhss = NULL;
+	size_t dhss_len = 0;
 	struct wpabuf *enc_buf = NULL, *pk_rm = NULL;
 
 	/* skE, pkE = GenerateKeyPair() */
@@ -5038,10 +5031,13 @@ static int hpke_encap(struct hpke_context *ctx, struct crypto_ec_key *pk_r,
 	if (!pctx ||
 	    EVP_PKEY_derive_init(pctx) != 1 ||
 	    EVP_PKEY_derive_set_peer(pctx, (EVP_PKEY *) pk_r) != 1 ||
+	    EVP_PKEY_derive(pctx, NULL, &dhss_len) != 1 ||
+	    !(dhss = os_malloc(dhss_len)) ||
 	    EVP_PKEY_derive(pctx, dhss, &dhss_len) != 1 ||
 	    dhss_len > HPKE_MAX_SHARED_SECRET_LEN) {
-		wpa_printf(MSG_INFO, "OpenSSL: EVP_PKEY_derive failed: %s",
-			   ERR_error_string(ERR_get_error(), NULL));
+		wpa_printf(MSG_INFO,
+			   "OpenSSL: hpke_encap: EVP_PKEY_derive failed (dhss_len=%zu): %s",
+			   dhss_len, ERR_error_string(ERR_get_error(), NULL));
 		goto fail;
 	}
 
@@ -5063,7 +5059,7 @@ static int hpke_encap(struct hpke_context *ctx, struct crypto_ec_key *pk_r,
 				      wpabuf_head(pk_rm),
 				      wpabuf_len(pk_rm), shared_secret);
 fail:
-	forced_memzero(dhss, sizeof(dhss));
+	bin_clear_free(dhss, dhss_len);
 	crypto_ec_key_deinit(sk_e);
 	EVP_PKEY_CTX_free(pctx);
 	wpabuf_free(enc_buf);
@@ -5184,8 +5180,8 @@ static int hpke_decap(struct hpke_context *ctx, const u8 *enc,
 	size_t len;
 	int res = -1;
 	struct crypto_ec_key *pk_e = NULL;
-	u8 dhss[HPKE_MAX_SHARED_SECRET_LEN + 16];
-	size_t dhss_len;
+	u8 *dhss = NULL;
+	size_t dhss_len = 0;
 
 	/* pkE = DeserializePublicKey(enc) */
 	if (enc_ct_len < ctx->n_pk)
@@ -5198,15 +5194,17 @@ static int hpke_decap(struct hpke_context *ctx, const u8 *enc,
 	if (!pk_e)
 		return -1; /* invalid public key point */
 	/* dh = DH(skR, pkE) */
-	dhss_len = sizeof(dhss);
 	pctx = EVP_PKEY_CTX_new((EVP_PKEY *) sk_r, NULL);
 	if (!pctx ||
 	    EVP_PKEY_derive_init(pctx) != 1 ||
 	    EVP_PKEY_derive_set_peer(pctx, (EVP_PKEY *) pk_e) != 1 ||
+	    EVP_PKEY_derive(pctx, NULL, &dhss_len) != 1 ||
+	    !(dhss = os_malloc(dhss_len)) ||
 	    EVP_PKEY_derive(pctx, dhss, &dhss_len) != 1 ||
 	    dhss_len > HPKE_MAX_SHARED_SECRET_LEN) {
-		wpa_printf(MSG_INFO, "OpenSSL: EVP_PKEY_derive failed: %s",
-			   ERR_error_string(ERR_get_error(), NULL));
+		wpa_printf(MSG_INFO,
+			   "OpenSSL: hpke_decap: EVP_PKEY_derive failed (dhss_len=%zu): %s",
+			   dhss_len, ERR_error_string(ERR_get_error(), NULL));
 		goto fail;
 	}
 
@@ -5221,7 +5219,7 @@ static int hpke_decap(struct hpke_context *ctx, const u8 *enc,
 				      wpabuf_head(pk_rm),
 				      wpabuf_len(pk_rm), shared_secret);
 fail:
-	forced_memzero(dhss, sizeof(dhss));
+	bin_clear_free(dhss, dhss_len);
 	crypto_ec_key_deinit(pk_e);
 	EVP_PKEY_CTX_free(pctx);
 	wpabuf_free(pk_rm);

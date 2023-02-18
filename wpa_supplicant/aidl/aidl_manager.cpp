@@ -472,7 +472,7 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		// Enable randomized source MAC address for GAS/ANQP
 		// Set the lifetime to 0, guarantees a unique address for each GAS
 		// session
-		wpa_s->conf->gas_rand_mac_addr = 1;
+		wpa_s->conf->gas_rand_mac_addr = WPAS_MAC_ADDR_STYLE_RANDOM;
 		wpa_s->conf->gas_rand_addr_lifetime = 0;
 	}
 

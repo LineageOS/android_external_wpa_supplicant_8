@@ -993,6 +993,14 @@ void wpa_bss_flush_by_age(struct wpa_supplicant *wpa_s, int age)
 		if (wpa_bss_in_use(wpa_s, bss))
 			continue;
 
+		if (wpa_s->reassoc_same_ess &&
+		    wpa_s->wpa_state != WPA_COMPLETED &&
+		    wpa_s->last_ssid &&
+		    bss->ssid_len == wpa_s->last_ssid->ssid_len &&
+		    os_memcmp(bss->ssid, wpa_s->last_ssid->ssid,
+			      bss->ssid_len) == 0)
+			continue;
+
 		if (os_reltime_before(&bss->last_update, &t)) {
 			wpa_bss_remove(wpa_s, bss, __func__);
 		} else
@@ -1437,4 +1445,22 @@ int wpa_bss_ext_capab(const struct wpa_bss *bss, unsigned int capab)
 		return 0;
 	return ieee802_11_ext_capab(wpa_bss_get_ie(bss, WLAN_EID_EXT_CAPAB),
 				    capab);
+}
+
+
+/**
+ * wpa_bss_defrag_mle - Get a buffer holding a de-fragmented ML element
+ * @bss: BSS table entry
+ * @type: ML control type
+ */
+struct wpabuf * wpa_bss_defrag_mle(const struct wpa_bss *bss, u8 type)
+{
+	struct ieee802_11_elems elems;
+	const u8 *pos = wpa_bss_ie_ptr(bss);
+	size_t len = bss->ie_len;
+
+	if (ieee802_11_parse_elems(pos, len, &elems, 1) == ParseFailed)
+		return NULL;
+
+	return ieee802_11_defrag_mle(&elems, type);
 }

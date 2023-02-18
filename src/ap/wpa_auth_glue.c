@@ -117,6 +117,7 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 #ifdef CONFIG_TESTING_OPTIONS
 	wconf->corrupt_gtk_rekey_mic_probability =
 		iconf->corrupt_gtk_rekey_mic_probability;
+	wconf->delay_eapol_tx = iconf->delay_eapol_tx;
 	if (conf->own_ie_override &&
 	    wpabuf_len(conf->own_ie_override) <= MAX_OWN_IE_OVERRIDE) {
 		wconf->own_ie_override_len = wpabuf_len(conf->own_ie_override);
@@ -198,10 +199,10 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 #endif /* CONFIG_FILS */
 	wconf->sae_pwe = conf->sae_pwe;
 	sae_pw_id = hostapd_sae_pw_id_in_use(conf);
-	if (sae_pw_id == 2 && wconf->sae_pwe != 3)
-		wconf->sae_pwe = 1;
-	else if (sae_pw_id == 1 && wconf->sae_pwe == 0)
-		wconf->sae_pwe = 2;
+	if (sae_pw_id == 2 && wconf->sae_pwe != SAE_PWE_FORCE_HUNT_AND_PECK)
+		wconf->sae_pwe = SAE_PWE_HASH_TO_ELEMENT;
+	else if (sae_pw_id == 1 && wconf->sae_pwe == SAE_PWE_HUNT_AND_PECK)
+		wconf->sae_pwe = SAE_PWE_BOTH;
 #ifdef CONFIG_SAE_PK
 	wconf->sae_pk = hostapd_sae_pk_in_use(conf);
 #endif /* CONFIG_SAE_PK */
@@ -937,7 +938,7 @@ static void hostapd_store_ptksa(void *ctx, const u8 *addr,int cipher,
 	struct hostapd_data *hapd = ctx;
 
 	ptksa_cache_add(hapd->ptksa, hapd->own_addr, addr, cipher, life_time,
-			ptk, NULL, NULL);
+			ptk, NULL, NULL, 0);
 }
 
 

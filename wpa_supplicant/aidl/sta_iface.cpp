@@ -2070,18 +2070,18 @@ StaIface::getSignalPollResultsInternal()
 
 			SignalPollResult result;
 			result.linkId = 0;
-			result.currentRssiDbm = mlo_si.links[i].current_signal;
-			result.txBitrateMbps = mlo_si.links[i].current_txrate / 1000;
-			result.rxBitrateMbps = mlo_si.links[i].current_rxrate / 1000;
+			result.currentRssiDbm = mlo_si.links[i].data.signal;
+			result.txBitrateMbps = mlo_si.links[i].data.current_tx_rate / 1000;
+			result.rxBitrateMbps = mlo_si.links[i].data.current_rx_rate / 1000;
 			result.frequencyMhz = mlo_si.links[i].frequency;
 			results.push_back(result);
 		}
 	} else if (wpa_drv_signal_poll(wpa_s, &si) == 0) {
 		SignalPollResult result;
 		result.linkId = 0;
-		result.currentRssiDbm = si.current_signal;
-		result.txBitrateMbps = si.current_txrate / 1000;
-		result.rxBitrateMbps = si.current_rxrate / 1000;
+		result.currentRssiDbm = si.data.signal;
+		result.txBitrateMbps = si.data.current_tx_rate / 1000;
+		result.rxBitrateMbps = si.data.current_rx_rate / 1000;
 		result.frequencyMhz = si.frequency;
 		results.push_back(result);
 	}

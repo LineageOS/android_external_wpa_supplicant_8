@@ -279,6 +279,8 @@ filegroup {
         "src/ap/ap_config.c",
         "src/ap/ap_drv_ops.c",
         "src/ap/ap_list.c",
+        "src/ap/comeback_token.c",
+        "src/pasn/pasn_responder.c",
         "src/ap/ap_mlme.c",
         "src/ap/authsrv.c",
         "src/ap/beacon.c",

@@ -53,6 +53,13 @@ static int wpa_config_validate_network(struct wpa_ssid *ssid, int line)
 		ssid->group_cipher &= ~WPA_CIPHER_CCMP;
 	}
 
+	if (is_6ghz_freq(ssid->frequency) && ssid->mode == WPAS_MODE_MESH &&
+	    ssid->key_mgmt == WPA_KEY_MGMT_NONE) {
+		wpa_printf(MSG_ERROR,
+			   "Line %d: key_mgmt for mesh network in 6 GHz should be SAE",
+			   line);
+		errors++;
+	}
 	if (ssid->mode == WPAS_MODE_MESH &&
 	    (ssid->key_mgmt != WPA_KEY_MGMT_NONE &&
 	    ssid->key_mgmt != WPA_KEY_MGMT_SAE)) {
@@ -289,7 +296,8 @@ static int wpa_config_process_blob(struct wpa_config *config, FILE *f,
 #endif /* CONFIG_NO_CONFIG_BLOBS */
 
 
-struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp)
+struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp,
+				    bool ro)
 {
 	FILE *f;
 	char buf[512], *pos;
@@ -331,6 +339,7 @@ struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp)
 	while (wpa_config_get_line(buf, sizeof(buf), f, &line, &pos)) {
 		if (os_strcmp(pos, "network={") == 0) {
 			ssid = wpa_config_read_network(f, &line, id++);
+			ssid->ro = ro;
 			if (ssid == NULL) {
 				wpa_printf(MSG_ERROR, "Line %d: failed to "
 					   "parse network block.", line);
@@ -880,6 +889,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 #ifdef CONFIG_HE_OVERRIDES
 	INT(disable_he);
 #endif /* CONFIG_HE_OVERRIDES */
+	INT(disable_eht);
 
 #undef STR
 #undef INT
@@ -921,12 +931,6 @@ static void wpa_config_write_cred(FILE *f, struct wpa_cred *cred)
 	if (cred->domain_suffix_match)
 		fprintf(f, "\tdomain_suffix_match=\"%s\"\n",
 			cred->domain_suffix_match);
-	if (cred->roaming_consortium_len) {
-		fprintf(f, "\troaming_consortium=");
-		for (i = 0; i < cred->roaming_consortium_len; i++)
-			fprintf(f, "%02x", cred->roaming_consortium[i]);
-		fprintf(f, "\n");
-	}
 	if (cred->eap_method) {
 		const char *name;
 		name = eap_get_name(cred->eap_method[0].vendor,
@@ -1002,12 +1006,32 @@ static void wpa_config_write_cred(FILE *f, struct wpa_cred *cred)
 		}
 	}
 
-	if (cred->required_roaming_consortium_len) {
-		fprintf(f, "\trequired_roaming_consortium=");
-		for (i = 0; i < cred->required_roaming_consortium_len; i++)
-			fprintf(f, "%02x",
-				cred->required_roaming_consortium[i]);
-		fprintf(f, "\n");
+	if (cred->num_home_ois) {
+		size_t j;
+
+		fprintf(f, "\thome_ois=\"");
+		for (i = 0; i < cred->num_home_ois; i++) {
+			if (i > 0)
+				fprintf(f, ",");
+			for (j = 0; j < cred->home_ois_len[i]; j++)
+				fprintf(f, "%02x",
+					cred->home_ois[i][j]);
+		}
+		fprintf(f, "\"\n");
+	}
+
+	if (cred->num_required_home_ois) {
+		size_t j;
+
+		fprintf(f, "\trequired_home_ois=\"");
+		for (i = 0; i < cred->num_required_home_ois; i++) {
+			if (i > 0)
+				fprintf(f, ",");
+			for (j = 0; j < cred->required_home_ois_len[i]; j++)
+				fprintf(f, "%02x",
+					cred->required_home_ois[i][j]);
+		}
+		fprintf(f, "\"\n");
 	}
 
 	if (cred->num_roaming_consortiums) {
@@ -1358,6 +1382,9 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->beacon_int)
 		fprintf(f, "beacon_int=%d\n", config->beacon_int);
 
+	if (config->sae_check_mfp)
+		fprintf(f, "sae_check_mfp=%d\n", config->sae_check_mfp);
+
 	if (config->sae_groups) {
 		int i;
 		fprintf(f, "sae_groups=");
@@ -1634,7 +1661,8 @@ int wpa_config_write(const char *name, struct wpa_config *config)
 	}
 
 	for (ssid = config->ssid; ssid; ssid = ssid->next) {
-		if (ssid->key_mgmt == WPA_KEY_MGMT_WPS || ssid->temporary)
+		if (ssid->key_mgmt == WPA_KEY_MGMT_WPS || ssid->temporary ||
+		    ssid->ro)
 			continue; /* do not save temporary networks */
 		if (wpa_key_mgmt_wpa_psk_no_sae(ssid->key_mgmt) &&
 		    !ssid->psk_set && !ssid->passphrase)

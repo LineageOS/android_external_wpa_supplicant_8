@@ -212,6 +212,7 @@ struct eht_capabilities {
 
 #define HOSTAPD_MODE_FLAG_HT_INFO_KNOWN BIT(0)
 #define HOSTAPD_MODE_FLAG_VHT_INFO_KNOWN BIT(1)
+#define HOSTAPD_MODE_FLAG_HE_INFO_KNOWN BIT(2)
 
 
 enum ieee80211_op_mode {
@@ -720,6 +721,21 @@ struct wpa_driver_auth_params {
 	 * auth_data_len - Length of auth_data buffer in octets
 	 */
 	size_t auth_data_len;
+
+	/**
+	 * mld - Establish an MLD connection
+	 */
+	bool mld;
+
+	/**
+	 * mld_link_id - The link ID of the MLD AP to which we are associating
+	 */
+	u8 mld_link_id;
+
+	/**
+	 * The MLD AP address
+	 */
+	const u8 *ap_mld_addr;
 };
 
 /**
@@ -881,6 +897,38 @@ struct wpa_driver_sta_auth_params {
 	 * fils_kek_len - Length of the fils_kek in octets (required for FILS)
 	 */
 	size_t fils_kek_len;
+};
+
+struct wpa_driver_mld_params {
+	/**
+	 * mld_addr - AP's MLD address
+	 */
+	const u8 *mld_addr;
+
+	/**
+	 * valid_links - The valid links including the association link
+	 */
+	u16 valid_links;
+
+	/**
+	 * assoc_link_id - The link on which the association is performed
+	 */
+	u8 assoc_link_id;
+
+	/**
+	 * mld_links - Link information
+	 *
+	 * Should include information on all the requested links for association
+	 * including the link on which the association should take place.
+	 * For the association link, the ies and ies_len should be NULL and
+	 * 0 respectively.
+	 */
+	struct {
+		int freq;
+		const u8 *bssid;
+		const u8 *ies;
+		size_t ies_len;
+	} mld_links[MAX_NUM_MLD_LINKS];
 };
 
 /**
@@ -1250,13 +1298,24 @@ struct wpa_driver_associate_params {
 	 * 1 = hash-to-element only
 	 * 2 = both hunting-and-pecking loop and hash-to-element enabled
 	 */
-	int sae_pwe;
+	enum sae_pwe sae_pwe;
+
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	/**
 	 * td_policy - Transition Disable Policy
 	 */
 	u32 td_policy;
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+
+	/**
+	 * disable_eht - Disable EHT for this connection
+	 */
+	int disable_eht;
+
+	/*
+	 * mld_params - MLD association parameters
+	 */
+	struct wpa_driver_mld_params mld_params;
 };
 
 enum hide_ssid {
@@ -1600,7 +1659,7 @@ struct wpa_driver_ap_params {
 	 * 1 = hash-to-element only
 	 * 2 = both hunting-and-pecking loop and hash-to-element enabled
 	 */
-	int sae_pwe;
+	enum sae_pwe sae_pwe;
 
 	/**
 	 * FILS Discovery frame minimum interval in TUs
@@ -1636,6 +1695,42 @@ struct wpa_driver_ap_params {
 	 * Unsolicited broadcast Probe Response template length
 	 */
 	size_t unsol_bcast_probe_resp_tmpl_len;
+
+	/**
+	 * mbssid_tx_iface - Transmitting interface of the MBSSID set
+	 */
+	const char *mbssid_tx_iface;
+
+	/**
+	 * mbssid_index - The index of this BSS in the MBSSID set
+	 */
+	unsigned int mbssid_index;
+
+	/**
+	 * mbssid_elem - Buffer containing all MBSSID elements
+	 */
+	u8 *mbssid_elem;
+
+	/**
+	 * mbssid_elem_len - Total length of all MBSSID elements
+	 */
+	size_t mbssid_elem_len;
+
+	/**
+	 * mbssid_elem_count - The number of MBSSID elements
+	 */
+	u8 mbssid_elem_count;
+
+	/**
+	 * mbssid_elem_offset - Offsets to elements in mbssid_elem.
+	 * Kernel will use these offsets to generate multiple BSSID beacons.
+	 */
+	u8 **mbssid_elem_offset;
+
+	/**
+	 * ema - Enhanced MBSSID advertisements support.
+	 */
+	bool ema;
 };
 
 struct wpa_driver_mesh_bss_params {
@@ -1789,6 +1884,12 @@ struct wpa_driver_set_key_params {
 	 * %KEY_FLAG_RX_TX
 	 *  RX/TX key. */
 	enum key_flag key_flag;
+
+	/**
+	 * link_id - MLO Link ID
+	 *
+	 * Set to a valid Link ID (0-14) when applicable, otherwise -1. */
+	int link_id;
 };
 
 enum wpa_driver_if_type {
@@ -2096,6 +2197,8 @@ struct wpa_driver_capa {
  * frames in STA mode
  */
 #define WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_STA	0x0000000000002000ULL
+/** Driver supports MLO in station/AP mode */
+#define WPA_DRIVER_FLAGS2_MLO			0x0000000000004000ULL
 	u64 flags2;
 
 #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
@@ -2211,6 +2314,11 @@ struct wpa_driver_capa {
 
 	/* Maximum number of supported AKM suites in commands */
 	unsigned int max_num_akms;
+
+	/* Maximum number of interfaces supported for MBSSID advertisement */
+	unsigned int mbssid_max_interfaces;
+	/* Maximum profile periodicity for enhanced MBSSID advertisement */
+	unsigned int ema_max_periodicity;
 };
 
 
@@ -2226,14 +2334,19 @@ struct hostapd_data;
 #define STA_DRV_DATA_RX_SHORT_GI BIT(7)
 #define STA_DRV_DATA_LAST_ACK_RSSI BIT(8)
 #define STA_DRV_DATA_CONN_TIME BIT(9)
+#define STA_DRV_DATA_TX_HE_MCS BIT(10)
+#define STA_DRV_DATA_RX_HE_MCS BIT(11)
+#define STA_DRV_DATA_TX_HE_NSS BIT(12)
+#define STA_DRV_DATA_RX_HE_NSS BIT(13)
 
 struct hostap_sta_driver_data {
 	unsigned long rx_packets, tx_packets;
 	unsigned long long rx_bytes, tx_bytes;
 	unsigned long long rx_airtime, tx_airtime;
+	unsigned long long beacons_count;
 	int bytes_64bit; /* whether 64-bit byte counters are supported */
-	unsigned long current_tx_rate;
-	unsigned long current_rx_rate;
+	unsigned long current_tx_rate; /* in kbps */
+	unsigned long current_rx_rate; /* in kbps */
 	unsigned long inactive_msec;
 	unsigned long connected_sec;
 	unsigned long flags; /* bitfield of STA_DRV_DATA_* */
@@ -2243,13 +2356,25 @@ struct hostap_sta_driver_data {
 	s8 last_ack_rssi;
 	unsigned long backlog_packets;
 	unsigned long backlog_bytes;
-	s8 signal;
+	unsigned long fcs_error_count;
+	unsigned long beacon_loss_count;
+	unsigned long expected_throughput;
+	unsigned long rx_drop_misc;
+	unsigned long rx_mpdus;
+	int signal; /* dBm; or -WPA_INVALID_NOISE */
+	u8 rx_hemcs;
+	u8 tx_hemcs;
 	u8 rx_vhtmcs;
 	u8 tx_vhtmcs;
 	u8 rx_mcs;
 	u8 tx_mcs;
+	u8 rx_he_nss;
+	u8 tx_he_nss;
 	u8 rx_vht_nss;
 	u8 tx_vht_nss;
+	s8 avg_signal; /* dBm */
+	s8 avg_beacon_signal; /* dBm */
+	s8 avg_ack_signal; /* dBm */
 };
 
 struct hostapd_sta_add_params {
@@ -2376,11 +2501,8 @@ enum smps_mode {
  * @frequency: control frequency
  * @above_threshold: true if the above threshold was crossed
  *	(relevant for a CQM event)
- * @current_signal: in dBm
- * @avg_signal: in dBm
- * @avg_beacon_signal: in dBm
+ * @data: STA information
  * @current_noise: %WPA_INVALID_NOISE if not supported
- * @current_txrate: current TX rate
  * @chanwidth: channel width
  * @center_frq1: center frequency for the first segment
  * @center_frq2: center frequency for the second segment (if relevant)
@@ -2388,12 +2510,8 @@ enum smps_mode {
 struct wpa_signal_info {
 	u32 frequency;
 	int above_threshold;
-	int current_signal;
-	int avg_signal;
-	int avg_beacon_signal;
+	struct hostap_sta_driver_data data;
 	int current_noise;
-	int current_txrate;
-	int current_rxrate;
 	enum chan_width chanwidth;
 	int center_frq1;
 	int center_frq2;
@@ -2746,7 +2864,9 @@ struct weighted_pcl {
 };
 
 struct driver_sta_mlo_info {
-	u16 valid_links; /* bitmap of valid link IDs */
+	u16 req_links; /* bitmap of requested link IDs */
+	u16 valid_links; /* bitmap of accepted link IDs */
+	u8 assoc_link_id;
 	u8 ap_mld_addr[ETH_ALEN];
 	struct {
 		u8 addr[ETH_ALEN];
@@ -2975,9 +3095,9 @@ struct wpa_driver_ops {
 	 * poll - Poll driver for association information
 	 * @priv: private driver interface data
 	 *
-	 * This is an option callback that can be used when the driver does not
-	 * provide event mechanism for association events. This is called when
-	 * receiving WPA EAPOL-Key messages that require association
+	 * This is an optional callback that can be used when the driver does
+	 * not provide event mechanism for association events. This is called
+	 * when receiving WPA/RSN EAPOL-Key messages that require association
 	 * information. The driver interface is supposed to generate associnfo
 	 * event before returning from this callback function. In addition, the
 	 * driver interface should generate an association event after having
@@ -6362,6 +6482,13 @@ union wpa_event_data {
 	 */
 	struct pasn_auth pasn_auth;
 
+	/**
+	 * struct port_authorized - Data for EVENT_PORT_AUTHORIZED
+	 */
+	struct port_authorized {
+		const u8 *td_bitmap;
+		size_t td_bitmap_len;
+	} port_authorized;
 };
 
 /**
@@ -6453,6 +6580,8 @@ int channel_width_to_int(enum chan_width width);
 
 int ht_supported(const struct hostapd_hw_modes *mode);
 int vht_supported(const struct hostapd_hw_modes *mode);
+bool he_supported(const struct hostapd_hw_modes *hw_mode,
+		  enum ieee80211_op_mode op_mode);
 
 struct wowlan_triggers *
 wpa_get_wowlan_triggers(const char *wowlan_triggers,

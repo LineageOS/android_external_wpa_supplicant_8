@@ -1652,6 +1652,10 @@ ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
 			"Passphrase is invalid.");
 	}
 
+	wpa_printf(MSG_DEBUG,
+		    "P2P: Add group with config Role: %s network name: %s freq: %d",
+		    joinExistingGroup ? "CLIENT" : "GO",
+		    wpa_ssid_txt(ssid.data(), ssid.size()), freq);
 	if (!joinExistingGroup) {
 		struct p2p_data *p2p = wpa_s->global->p2p;
 		os_memcpy(p2p->ssid, ssid.data(), ssid.size());

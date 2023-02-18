@@ -88,6 +88,7 @@ inline std::stringstream& serializePmkCacheEntry(
 	ss.write((char *) pmksa_entry->pmk, pmksa_entry->pmk_len);
 	ss.write((char *) pmksa_entry->pmkid, PMKID_LEN);
 	ss.write((char *) pmksa_entry->aa, ETH_ALEN);
+	ss.write((char *) pmksa_entry->spa, ETH_ALEN);
 	// Omit wpa_ssid field because the network is created on connecting to a access point.
 	ss.write((char *) &pmksa_entry->akmp, sizeof(pmksa_entry->akmp));
 	ss.write((char *) &pmksa_entry->reauth_time, sizeof(pmksa_entry->reauth_time));
@@ -110,7 +111,7 @@ inline std::int8_t deserializePmkCacheEntry(
 	ss.read((char *) &pmksa_entry->pmk_len, sizeof(pmksa_entry->pmk_len));
 	if ((pmksa_entry->pmk_len > PMK_LEN_MAX) ||
 	    (ss.str().size() < (sizeof(pmksa_entry->pmk_len) + pmksa_entry->pmk_len +
-	    PMKID_LEN + ETH_ALEN + sizeof(pmksa_entry->akmp) +
+	    PMKID_LEN + ETH_ALEN + ETH_ALEN + sizeof(pmksa_entry->akmp) +
 	    sizeof(pmksa_entry->reauth_time) + sizeof(pmksa_entry->expiration) +
 	    sizeof(pmksa_entry->opportunistic) + 1 /* fils_cache_id_set */)))
 		return -1;
@@ -118,6 +119,7 @@ inline std::int8_t deserializePmkCacheEntry(
 	ss.read((char *) pmksa_entry->pmk, pmksa_entry->pmk_len);
 	ss.read((char *) pmksa_entry->pmkid, PMKID_LEN);
 	ss.read((char *) pmksa_entry->aa, ETH_ALEN);
+	ss.read((char *) pmksa_entry->spa, ETH_ALEN);
 	// Omit wpa_ssid field because the network is created on connecting to a access point.
 	ss.read((char *) &pmksa_entry->akmp, sizeof(pmksa_entry->akmp));
 	ss.read((char *) &pmksa_entry->reauth_time, sizeof(pmksa_entry->reauth_time));

@@ -23,6 +23,7 @@
 #include "crypto/sha1.h"
 #include "crypto/sha256.h"
 #include "crypto/sha384.h"
+#include "crypto/sha512.h"
 #include "crypto/random.h"
 #include "eapol_auth/eapol_auth_sm.h"
 #include "drivers/driver.h"
@@ -1652,22 +1653,25 @@ void __wpa_send_eapol(struct wpa_authenticator *wpa_auth,
 		if (pad_len)
 			*pos++ = 0xdd;
 
-		wpa_hexdump_key(MSG_DEBUG, "Plaintext EAPOL-Key Key Data",
+		wpa_hexdump_key(MSG_DEBUG,
+				"Plaintext EAPOL-Key Key Data (+ padding)",
 				buf, key_data_len);
 		if (version == WPA_KEY_INFO_TYPE_HMAC_SHA1_AES ||
 		    wpa_use_aes_key_wrap(sm->wpa_key_mgmt) ||
 		    version == WPA_KEY_INFO_TYPE_AES_128_CMAC) {
-			wpa_printf(MSG_DEBUG,
-				   "WPA: Encrypt Key Data using AES-WRAP (KEK length %zu)",
-				   sm->PTK.kek_len);
+			wpa_hexdump_key(MSG_DEBUG, "RSN: AES-WRAP using KEK",
+					sm->PTK.kek, sm->PTK.kek_len);
 			if (aes_wrap(sm->PTK.kek, sm->PTK.kek_len,
 				     (key_data_len - 8) / 8, buf, key_data)) {
 				os_free(hdr);
 				bin_clear_free(buf, key_data_len);
 				return;
 			}
+			wpa_hexdump(MSG_DEBUG,
+				    "RSN: Encrypted Key Data from AES-WRAP",
+				    key_data, key_data_len);
 			WPA_PUT_BE16(key_mic + mic_len, key_data_len);
-#ifndef CONFIG_NO_RC4
+#if !defined(CONFIG_NO_RC4) && !defined(CONFIG_FIPS)
 		} else if (sm->PTK.kek_len == 16) {
 			u8 ek[32];
 
@@ -1681,7 +1685,7 @@ void __wpa_send_eapol(struct wpa_authenticator *wpa_auth,
 			os_memcpy(key_data, buf, key_data_len);
 			rc4_skip(ek, 32, 256, key_data, key_data_len);
 			WPA_PUT_BE16(key_mic + mic_len, key_data_len);
-#endif /* CONFIG_NO_RC4 */
+#endif /* !(CONFIG_NO_RC4 || CONFIG_FIPS) */
 		} else {
 			os_free(hdr);
 			bin_clear_free(buf, key_data_len);
@@ -1716,6 +1720,7 @@ void __wpa_send_eapol(struct wpa_authenticator *wpa_auth,
 	}
 
 	wpa_auth_set_eapol(wpa_auth, sm->addr, WPA_EAPOL_inc_EapolFramesTx, 1);
+	wpa_hexdump(MSG_DEBUG, "Send EAPOL-Key msg", hdr, len);
 	wpa_auth_send_eapol(wpa_auth, sm->addr, (u8 *) hdr, len,
 			sm->pairwise_set);
 	os_free(hdr);
@@ -1735,10 +1740,25 @@ static void wpa_send_eapol(struct wpa_authenticator *wpa_auth,
 	if (!sm)
 		return;
 
+	ctr = pairwise ? sm->TimeoutCtr : sm->GTimeoutCtr;
+
+#ifdef CONFIG_TESTING_OPTIONS
+	/* When delay_eapol_tx is true, delay the EAPOL-Key transmission by
+	 * sending it only on the last attempt after all timeouts for the prior
+	 * skipped attemps. */
+	if (wpa_auth->conf.delay_eapol_tx &&
+	    ctr != wpa_auth->conf.wpa_pairwise_update_count) {
+		wpa_msg(sm->wpa_auth->conf.msg_ctx, MSG_INFO,
+			"DELAY-EAPOL-TX-%d", ctr);
+		goto skip_tx;
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
 	__wpa_send_eapol(wpa_auth, sm, key_info, key_rsc, nonce, kde, kde_len,
 			 keyidx, encr, 0);
+#ifdef CONFIG_TESTING_OPTIONS
+skip_tx:
+#endif /* CONFIG_TESTING_OPTIONS */
 
-	ctr = pairwise ? sm->TimeoutCtr : sm->GTimeoutCtr;
 	if (ctr == 1 && wpa_auth->conf.tx_status)
 		timeout_ms = pairwise ? eapol_key_timeout_first :
 			eapol_key_timeout_first_group;
@@ -2192,13 +2212,20 @@ SM_STATE(WPA_PTK, INITPSK)
 		os_memcpy(sm->PMK, psk, psk_len);
 		sm->pmk_len = psk_len;
 #ifdef CONFIG_IEEE80211R_AP
-		os_memcpy(sm->xxkey, psk, PMK_LEN);
 		sm->xxkey_len = PMK_LEN;
+#ifdef CONFIG_SAE
+		if (sm->wpa_key_mgmt == WPA_KEY_MGMT_FT_SAE_EXT_KEY &&
+		    (psk_len == SHA512_MAC_LEN || psk_len == SHA384_MAC_LEN ||
+		     psk_len == SHA256_MAC_LEN))
+			sm->xxkey_len = psk_len;
+#endif /* CONFIG_SAE */
+		os_memcpy(sm->xxkey, psk, sm->xxkey_len);
 #endif /* CONFIG_IEEE80211R_AP */
 	}
 #ifdef CONFIG_SAE
 	if (wpa_auth_uses_sae(sm) && sm->pmksa) {
-		wpa_printf(MSG_DEBUG, "SAE: PMK from PMKSA cache");
+		wpa_printf(MSG_DEBUG, "SAE: PMK from PMKSA cache (len=%zu)",
+			   sm->pmksa->pmk_len);
 		os_memcpy(sm->PMK, sm->pmksa->pmk, sm->pmksa->pmk_len);
 		sm->pmk_len = sm->pmksa->pmk_len;
 #ifdef CONFIG_IEEE80211R_AP
@@ -2460,7 +2487,6 @@ int fils_auth_pmk_to_ptk(struct wpa_state_machine *sm, const u8 *pmk,
 		struct wpa_authenticator *wpa_auth = sm->wpa_auth;
 		struct wpa_auth_config *conf = &wpa_auth->conf;
 		u8 pmk_r0[PMK_LEN_MAX], pmk_r0_name[WPA_PMK_NAME_LEN];
-		int use_sha384 = wpa_key_mgmt_sha384(sm->wpa_key_mgmt);
 
 		if (wpa_derive_pmk_r0(fils_ft, fils_ft_len,
 				      conf->ssid, conf->ssid_len,
@@ -2468,7 +2494,7 @@ int fils_auth_pmk_to_ptk(struct wpa_state_machine *sm, const u8 *pmk,
 				      conf->r0_key_holder,
 				      conf->r0_key_holder_len,
 				      sm->addr, pmk_r0, pmk_r0_name,
-				      use_sha384) < 0)
+				      sm->wpa_key_mgmt) < 0)
 			return -1;
 
 		wpa_ft_store_pmk_fils(sm, pmk_r0, pmk_r0_name);
@@ -2476,7 +2502,7 @@ int fils_auth_pmk_to_ptk(struct wpa_state_machine *sm, const u8 *pmk,
 
 		res = wpa_derive_pmk_r1_name(pmk_r0_name, conf->r1_key_holder,
 					     sm->addr, sm->pmk_r1_name,
-					     use_sha384);
+					     fils_ft_len);
 		forced_memzero(pmk_r0, PMK_LEN_MAX);
 		if (res < 0)
 			return -1;
@@ -3694,9 +3720,8 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 				  2 + sm->assoc_resp_ftie[1]);
 			res = 2 + sm->assoc_resp_ftie[1];
 		} else {
-			int use_sha384 = wpa_key_mgmt_sha384(sm->wpa_key_mgmt);
-
-			res = wpa_write_ftie(conf, use_sha384,
+			res = wpa_write_ftie(conf, sm->wpa_key_mgmt,
+					     sm->xxkey_len,
 					     conf->r0_key_holder,
 					     conf->r0_key_holder_len,
 					     NULL, NULL, pos,
@@ -4814,11 +4839,13 @@ int wpa_get_mib_sta(struct wpa_state_machine *sm, char *buf, size_t buflen)
 			  "wpa=%d\n"
 			  "AKMSuiteSelector=" RSN_SUITE "\n"
 			  "hostapdWPAPTKState=%d\n"
-			  "hostapdWPAPTKGroupState=%d\n",
+			  "hostapdWPAPTKGroupState=%d\n"
+			  "hostapdMFPR=%d\n",
 			  sm->wpa,
 			  RSN_SUITE_ARG(wpa_akm_to_suite(sm->wpa_key_mgmt)),
 			  sm->wpa_ptk_state,
-			  sm->wpa_ptk_group_state);
+			  sm->wpa_ptk_group_state,
+			  sm->mfpr);
 	if (os_snprintf_error(buflen - len, ret))
 		return len;
 	len += ret;
@@ -4852,6 +4879,14 @@ const u8 * wpa_auth_get_pmk(struct wpa_state_machine *sm, int *len)
 		return NULL;
 	*len = sm->pmk_len;
 	return sm->PMK;
+}
+
+
+const u8 * wpa_auth_get_dpp_pkhash(struct wpa_state_machine *sm)
+{
+	if (!sm || !sm->pmksa)
+		return NULL;
+	return sm->pmksa->dpp_pkhash;
 }
 
 
@@ -5017,6 +5052,29 @@ int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
 }
 
 
+int wpa_auth_pmksa_add3(struct wpa_authenticator *wpa_auth, const u8 *addr,
+			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+			int session_timeout, int akmp, const u8 *dpp_pkhash)
+{
+	struct rsn_pmksa_cache_entry *entry;
+
+	if (wpa_auth->conf.disable_pmksa_caching)
+		return -1;
+
+	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK (3)", pmk, PMK_LEN);
+	entry = pmksa_cache_auth_add(wpa_auth->pmksa, pmk, pmk_len, pmkid,
+				 NULL, 0, wpa_auth->addr, addr, session_timeout,
+				 NULL, akmp);
+	if (!entry)
+		return -1;
+
+	if (dpp_pkhash)
+		entry->dpp_pkhash = os_memdup(dpp_pkhash, SHA256_MAC_LEN);
+
+	return 0;
+}
+
+
 void wpa_auth_pmksa_remove(struct wpa_authenticator *wpa_auth,
 			   const u8 *sta_addr)
 {
@@ -5100,6 +5158,15 @@ int wpa_auth_pmksa_add_entry(struct wpa_authenticator *wpa_auth,
 
 #endif /* CONFIG_MESH */
 #endif /* CONFIG_PMKSA_CACHE_EXTERNAL */
+
+
+struct rsn_pmksa_cache *
+wpa_auth_get_pmksa_cache(struct wpa_authenticator *wpa_auth)
+{
+	if (!wpa_auth || !wpa_auth->pmksa)
+		return NULL;
+	return wpa_auth->pmksa;
+}
 
 
 struct rsn_pmksa_cache_entry *
@@ -5462,13 +5529,14 @@ wpa_auth_pmksa_get_fils_cache_id(struct wpa_authenticator *wpa_auth,
 
 
 #ifdef CONFIG_IEEE80211R_AP
-int wpa_auth_write_fte(struct wpa_authenticator *wpa_auth, int use_sha384,
+int wpa_auth_write_fte(struct wpa_authenticator *wpa_auth,
+		       struct wpa_state_machine *sm,
 		       u8 *buf, size_t len)
 {
 	struct wpa_auth_config *conf = &wpa_auth->conf;
 
-	return wpa_write_ftie(conf, use_sha384, conf->r0_key_holder,
-			      conf->r0_key_holder_len,
+	return wpa_write_ftie(conf, sm->wpa_key_mgmt, sm->xxkey_len,
+			      conf->r0_key_holder, conf->r0_key_holder_len,
 			      NULL, NULL, buf, len, NULL, 0, 0);
 }
 #endif /* CONFIG_IEEE80211R_AP */
@@ -5682,9 +5750,8 @@ int wpa_auth_resend_m3(struct wpa_state_machine *sm,
 				  2 + sm->assoc_resp_ftie[1]);
 			res = 2 + sm->assoc_resp_ftie[1];
 		} else {
-			int use_sha384 = wpa_key_mgmt_sha384(sm->wpa_key_mgmt);
-
-			res = wpa_write_ftie(conf, use_sha384,
+			res = wpa_write_ftie(conf, sm->wpa_key_mgmt,
+					     sm->xxkey_len,
 					     conf->r0_key_holder,
 					     conf->r0_key_holder_len,
 					     NULL, NULL, pos,
