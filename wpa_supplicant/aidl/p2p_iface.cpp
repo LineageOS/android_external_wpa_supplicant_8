@@ -1289,6 +1289,9 @@ std::pair<std::string, ndk::ScopedAStatus> P2pIface::connectInternal(
 	if (go_intent > 15) {
 		return {"", createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID)};
 	}
+	if (peer_address.size() != ETH_ALEN) {
+		return {"", createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID)};
+	}
 	int go_intent_signed = join_existing_group ? -1 : go_intent;
 	p2p_wps_method wps_method = {};
 	switch (provision_method) {
@@ -1384,6 +1387,9 @@ ndk::ScopedAStatus P2pIface::rejectInternal(
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL) {
 		return createStatus(SupplicantStatusCode::FAILURE_IFACE_DISABLED);
 	}
+	if (peer_address.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	if (wpas_p2p_reject(wpa_s, peer_address.data())) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
@@ -1396,6 +1402,9 @@ ndk::ScopedAStatus P2pIface::inviteInternal(
 	const std::vector<uint8_t>& peer_address)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	if (peer_address.size() != ETH_ALEN) {
+		return {createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+	}
 	if (wpas_p2p_invite_group(
 		wpa_s, group_ifname.c_str(), peer_address.data(),
 		go_device_address.data(), is6GhzAllowed(wpa_s))) {
@@ -1416,6 +1425,9 @@ ndk::ScopedAStatus P2pIface::reinvokeInternal(
 		wpa_config_get_network(wpa_s->conf, persistent_network_id);
 	if (ssid == NULL || ssid->disabled != 2) {
 		return createStatus(SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN);
+	}
+	if (peer_address.size() != ETH_ALEN) {
+		return {createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
 	if (wpas_p2p_invite(
 		wpa_s, peer_address.data(), ssid, NULL, 0, 0, ht40, vht,
@@ -1580,6 +1592,9 @@ std::pair<uint64_t, ndk::ScopedAStatus> P2pIface::requestServiceDiscoveryInterna
 	if (!query_buf) {
 		return {0, createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
+	if (peer_address.size() != ETH_ALEN) {
+		return {0, createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+	}
 	const uint8_t* dst_addr = is_zero_ether_addr(peer_address.data())
 					  ? nullptr
 					  : peer_address.data();
@@ -1625,6 +1640,9 @@ ndk::ScopedAStatus P2pIface::startWpsPbcInternal(
 		retrieveGroupIfacePtr(group_ifname);
 	if (!wpa_group_s) {
 		return createStatus(SupplicantStatusCode::FAILURE_IFACE_UNKNOWN);
+	}
+	if (bssid.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	const uint8_t* bssid_addr =
 		is_zero_ether_addr(bssid.data()) ? nullptr : bssid.data();
@@ -1674,6 +1692,9 @@ std::pair<std::string, ndk::ScopedAStatus> P2pIface::startWpsPinDisplayInternal(
 	if (!wpa_group_s) {
 		return {"", createStatus(SupplicantStatusCode::FAILURE_IFACE_UNKNOWN)};
 	}
+	if (bssid.size() != ETH_ALEN) {
+		return {"", createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+	}
 	const uint8_t* bssid_addr =
 		is_zero_ether_addr(bssid.data()) ? nullptr : bssid.data();
 	int pin = wpas_wps_start_pin(
@@ -1706,6 +1727,9 @@ ndk::ScopedAStatus P2pIface::setWpsDeviceTypeInternal(
 	const std::vector<uint8_t>& type)
 {
 	std::array<uint8_t, 8> type_arr;
+	if (type.size() != 8) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	std::copy_n(type.begin(), 8, type_arr.begin());
 	return iface_config_utils::setWpsDeviceType(retrieveIfacePtr(), type_arr);
 }
@@ -2093,6 +2117,9 @@ ndk::ScopedAStatus P2pIface::removeClientInternal(
     const std::vector<uint8_t>& peer_address, bool isLegacyClient)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	if (peer_address.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	wpas_p2p_remove_client(wpa_s, peer_address.data(), isLegacyClient? 1 : 0);
 	return ndk::ScopedAStatus::ok();
 }
