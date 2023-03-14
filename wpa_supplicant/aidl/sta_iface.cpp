@@ -837,14 +837,6 @@ bool StaIface::isValid()
 	    &StaIface::removeQosPolicyForScsInternal, _aidl_return, in_scsPolicyIds);
 }
 
-::ndk::ScopedAStatus StaIface::removeAllQosPoliciesForScs(
-		std::vector<QosPolicyScsRequestStatus>* _aidl_return)
-{
-	return validateAndCall(
-	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
-	    &StaIface::removeAllQosPoliciesForScsInternal, _aidl_return);
-}
-
 std::pair<std::string, ndk::ScopedAStatus> StaIface::getNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -2099,13 +2091,6 @@ StaIface::addQosPolicyRequestForScsInternal(const std::vector<QosPolicyScsData>&
 
 std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
 StaIface::removeQosPolicyForScsInternal(const std::vector<uint8_t>& scsPolicyIds)
-{
-	return {std::vector<QosPolicyScsRequestStatus>(),
-		createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
-}
-
-std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
-StaIface::removeAllQosPoliciesForScsInternal()
 {
 	return {std::vector<QosPolicyScsRequestStatus>(),
 		createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};

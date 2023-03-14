@@ -165,8 +165,6 @@ public:
 	::ndk::ScopedAStatus removeQosPolicyForScs(
 		const std::vector<uint8_t>& in_scsPolicyIds,
 		std::vector<QosPolicyScsRequestStatus>* _aidl_return) override;
-	::ndk::ScopedAStatus removeAllQosPoliciesForScs(
-		std::vector<QosPolicyScsRequestStatus>* _aidl_return) override;
 
 private:
 	// Corresponding worker functions for the AIDL methods.
@@ -279,8 +277,6 @@ private:
 	std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
 		removeQosPolicyForScsInternal(
 		const std::vector<uint8_t>& scsPolicyIds);
-	std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
-		removeAllQosPoliciesForScsInternal();
 
 	struct wpa_supplicant* retrieveIfacePtr();
 
