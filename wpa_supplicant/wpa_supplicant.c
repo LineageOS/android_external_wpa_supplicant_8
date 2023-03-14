@@ -1905,16 +1905,17 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_DENY_PTK0_REKEY, 0);
 	}
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if ((wpa_s->key_mgmt & WPA_KEY_MGMT_CROSS_AKM_ROAM) &&
 		IS_CROSS_AKM_ROAM_KEY_MGMT(ssid->key_mgmt) &&
 		(wpa_s->group_cipher == WPA_CIPHER_CCMP) &&
-		(wpa_s->pairwise_cipher == WPA_CIPHER_CCMP)) {
+		(wpa_s->pairwise_cipher == WPA_CIPHER_CCMP) &&
+		(wpa_s->wpa_proto == WPA_PROTO_RSN)) {
 		wpa_s->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PSK;
 		wpa_dbg(wpa_s, MSG_INFO,
 			"WPA: Updating to KEY_MGMT SAE+PSK for seamless roaming");
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	return 0;
 }
@@ -3933,11 +3934,11 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 
 	if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK) &&
 	    (
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	     (params.key_mgmt_suite & WPA_KEY_MGMT_PSK) ||
 #else
 	     params.key_mgmt_suite == WPA_KEY_MGMT_PSK ||
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 	     params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK)) {
 		params.passphrase = ssid->passphrase;
 		if (ssid->psk_set)
@@ -3963,11 +3964,11 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 			params.req_key_mgmt_offload = 1;
 
 		if ((
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 		     (params.key_mgmt_suite & WPA_KEY_MGMT_PSK) ||
 #else
 		     params.key_mgmt_suite == WPA_KEY_MGMT_PSK ||
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 		     params.key_mgmt_suite == WPA_KEY_MGMT_PSK_SHA256 ||
 		     params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK) &&
 		    ssid->psk_set)
