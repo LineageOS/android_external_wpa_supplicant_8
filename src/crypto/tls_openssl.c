@@ -3271,7 +3271,11 @@ static int tls_set_conn_flags(struct tls_connection *conn, unsigned int flags,
 		EC_KEY_free(ecdh);
 #endif
 	}
-	if (flags & (TLS_CONN_SUITEB | TLS_CONN_SUITEB_NO_ECDH)) {
+	if ((flags & (TLS_CONN_SUITEB | TLS_CONN_SUITEB_NO_ECDH))
+#ifdef EAP_TLSV1_3
+			&& (flags & TLS_CONN_DISABLE_TLSv1_3)
+#endif
+												 ) {
 #ifdef OPENSSL_IS_BORINGSSL
 		uint16_t sigalgs[1] = { SSL_SIGN_RSA_PKCS1_SHA384 };
 

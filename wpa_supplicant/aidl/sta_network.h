@@ -339,6 +339,8 @@ private:
 		const uint8_t* value, const size_t value_len,
 		uint8_t** to_update_field, size_t* to_update_field_len,
 		const char* hexdump_prefix, bool resetState);
+	void setTlsFlagsFor192BitMode(bool);
+	void generateTlsParams();
 
 	// Reference to the global wpa_struct. This is assumed to be valid
 	// for the lifetime of the process.
@@ -348,6 +350,7 @@ private:
 	// Id of the network this aidl object controls.
 	const int network_id_;
 	bool is_valid_;
+	int tlsFlags;
 
 	DISALLOW_COPY_AND_ASSIGN(StaNetwork);
 };
