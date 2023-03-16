@@ -14,6 +14,7 @@
 extern "C"
 {
 #include "wps_supplicant.h"
+#include "crypto/tls.h"
 }
 
 namespace {
@@ -121,7 +122,9 @@ StaNetwork::StaNetwork(
 	  ifname_(ifname),
 	  network_id_(network_id),
 	  is_valid_(true)
-{}
+{
+	tlsFlags = 0;
+}
 
 void StaNetwork::invalidate() { is_valid_ = false; }
 bool StaNetwork::isValid()
@@ -2029,6 +2032,11 @@ ndk::ScopedAStatus StaNetwork::enableTlsSuiteBEapPhase1ParamInternal(bool enable
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	int val = enable == true ? 1 : 0;
+	if (enable) {
+		setTlsFlagsFor192BitMode(true /*rsaMode */);
+	} else {
+		tlsFlags &= ~TLS_CONN_SUITEB;
+	}
 	std::string phase1_params("tls_suiteb=" + std::to_string(val));
 	if (wpa_ssid->eap.phase1 != NULL) {
 		phase1_params.append(wpa_ssid->eap.phase1);
@@ -2051,6 +2059,7 @@ ndk::ScopedAStatus StaNetwork::enableSuiteBEapOpenSslCiphersInternal()
 		"openssl_ciphers")) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
+	setTlsFlagsFor192BitMode(false /*rsaMode */);
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -2651,33 +2660,100 @@ ndk::ScopedAStatus StaNetwork::setMinimumTlsVersionEapPhase1ParamInternal(TlsVer
 		// no restriction
 		return ndk::ScopedAStatus::ok();
 	}
-	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	std::string phase1_params;
-	if (wpa_ssid->eap.phase1 != NULL) {
-		phase1_params.append(wpa_ssid->eap.phase1);
+
+	if (tlsVersion < TlsVersion::TLS_V1_3 && (tlsFlags & TLS_CONN_SUITEB)) {
+		// TLS configuration already set up for WPA3-Enterprise 192-bit mode
+		return ndk::ScopedAStatus::ok();
 	}
+
+	tlsFlags &= ~(TLS_CONN_DISABLE_TLSv1_3 | TLS_CONN_DISABLE_TLSv1_2 \
+			| TLS_CONN_DISABLE_TLSv1_1 | TLS_CONN_DISABLE_TLSv1_0);
+
 	// Fallback to disable lower version TLS cascadingly.
 	switch (tlsVersion) {
+#ifdef EAP_TLSV1_3
 		case TlsVersion::TLS_V1_3:
-			phase1_params.append("tls_disable_tlsv1_2=1");
+			tlsFlags |= TLS_CONN_DISABLE_TLSv1_2;
 			FALLTHROUGH_INTENDED;
+#endif
 		case TlsVersion::TLS_V1_2:
-			phase1_params.append("tls_disable_tlsv1_1=1");
+			tlsFlags |= TLS_CONN_DISABLE_TLSv1_1;
 			FALLTHROUGH_INTENDED;
 		case TlsVersion::TLS_V1_1:
-			phase1_params.append("tls_disable_tlsv1_0=1");
+			tlsFlags |= TLS_CONN_DISABLE_TLSv1_0;
 			FALLTHROUGH_INTENDED;
 		default:
 			break;
 	}
 
-	if (setStringKeyFieldAndResetState(
-		phase1_params.c_str(), &(wpa_ssid->eap.phase1), "phase1")) {
-		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
-	}
+	generateTlsParams();
 	return ndk::ScopedAStatus::ok();
 }
 
+/**
+ * WPA3-Enterprise 192-bit mode workaround to force the connection to EAP-TLSv1.2 due to
+ * interoperability issues in TLSv1.3 which disables the SSL_SIGN_RSA_PKCS1_SHA384
+ * signature algorithm, and has its own set of incompatible cipher suites which the
+ * current WPA3 specification doesn't specify. The only specified cipher suites in the
+ * WPA3 specifications are:
+ * TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384, TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384, and
+ * TLS_DHE_RSA_WITH_AES_256_GCM_SHA384.
+ * See boringssl/include/openssl/tls1.h for TLSv1.3 cipher suites.
+ */
+void StaNetwork::setTlsFlagsFor192BitMode(bool rsaMode) {
+	// Disable TLSv1.0 and TLSv1.1 by default for 192-bit mode
+	int flags = TLS_CONN_DISABLE_TLSv1_1 \
+			| TLS_CONN_DISABLE_TLSv1_0;
+	if (rsaMode) {
+		// Check if flags not set or already set to use EAP-TLSv1.3
+		if (tlsFlags == 0 || !(tlsFlags & TLS_CONN_DISABLE_TLSv1_2)) {
+			// Set up EAP-TLSv1.2 by default for maximum compatibility
+			tlsFlags |= TLS_CONN_DISABLE_TLSv1_3;
+			tlsFlags &= ~TLS_CONN_DISABLE_TLSv1_2;
+		}
+		tlsFlags |= TLS_CONN_SUITEB;
+	}
+
+	tlsFlags |= flags;
+	generateTlsParams();
+}
+
+void StaNetwork::generateTlsParams() {
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	if (wpa_ssid->eap.phase1 != NULL) {
+		os_free(wpa_ssid->eap.phase1);
+		wpa_ssid->eap.phase1 = NULL;
+	}
+	std::string tlsConfig;
+
+	if (tlsFlags & TLS_CONN_DISABLE_TLSv1_3) {
+		tlsConfig.append("tls_disable_tlsv1_3=1");
+	} else {
+		tlsConfig.append("tls_disable_tlsv1_3=0");
+	}
+	if (tlsFlags & TLS_CONN_DISABLE_TLSv1_2) {
+		tlsConfig.append("tls_disable_tlsv1_2=1");
+	} else {
+		tlsConfig.append("tls_disable_tlsv1_2=0");
+	}
+	if (tlsFlags & TLS_CONN_DISABLE_TLSv1_1) {
+		tlsConfig.append("tls_disable_tlsv1_1=1");
+	} else {
+		tlsConfig.append("tls_disable_tlsv1_1=0");
+	}
+	if (tlsFlags & TLS_CONN_DISABLE_TLSv1_0) {
+		tlsConfig.append("tls_disable_tlsv1_0=1");
+	} else {
+		tlsConfig.append("tls_disable_tlsv1_0=0");
+	}
+	if (tlsFlags & TLS_CONN_SUITEB) {
+		tlsConfig.append("tls_suiteb=1");
+	}
+
+	wpa_printf(MSG_DEBUG, "TLS configuration: %s", tlsConfig.c_str());
+	setStringKeyFieldAndResetState(
+			tlsConfig.c_str(), &(wpa_ssid->eap.phase1), "phase1");
+}
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware
