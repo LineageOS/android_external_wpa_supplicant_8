@@ -364,6 +364,12 @@ inline std::vector<uint8_t> macAddrToVec(const uint8_t* mac_addr) {
 	return byteArrToVec(mac_addr, ETH_ALEN);
 }
 
+inline std::array<uint8_t, ETH_ALEN> macAddrToArray(const uint8_t* mac_addr) {
+	std::array<uint8_t, ETH_ALEN> arr;
+	std::copy(mac_addr, mac_addr + ETH_ALEN, std::begin(arr));
+	return arr;
+}
+
 // Raw pointer to the global structure maintained by the core.
 // Declared here to be accessible to onDeath()
 struct wpa_global *wpa_global_;
@@ -669,14 +675,14 @@ int AidlManager::notifyStateChange(struct wpa_supplicant *wpa_s)
 		wpa_printf(MSG_INFO, "assoc key_mgmt 0x%x network key_mgmt 0x%x",
 			wpa_s->key_mgmt, wpa_s->current_ssid->key_mgmt);
 	}
-	std::vector<uint8_t> aidl_bssid;
+	std::array<uint8_t, ETH_ALEN> aidl_bssid;
 	// wpa_supplicant sets the |pending_bssid| field when it starts a
 	// connection. Only after association state does it update the |bssid|
 	// field. So, in the AIDL callback send the appropriate bssid.
 	if (wpa_s->wpa_state <= WPA_ASSOCIATED) {
-		aidl_bssid = macAddrToVec(wpa_s->pending_bssid);
+		aidl_bssid = macAddrToArray(wpa_s->pending_bssid);
 	} else {
-		aidl_bssid = macAddrToVec(wpa_s->bssid);
+		aidl_bssid = macAddrToArray(wpa_s->bssid);
 	}
 	aidl_state_change_data.bssid = aidl_bssid;
 
@@ -1391,9 +1397,9 @@ void AidlManager::notifyP2pGroupStarted(
 	params.psk = aidl_psk;
 	params.passphrase = misc_utils::charBufToString(ssid->passphrase);
 	params.isPersistent = aidl_is_persistent;
-	params.goDeviceAddress = macAddrToVec(wpa_group_s->go_dev_addr);
-	params.goInterfaceAddress = aidl_is_go ? macAddrToVec(wpa_group_s->own_addr) :
-			macAddrToVec(wpa_group_s->current_bss->bssid);
+	params.goDeviceAddress = macAddrToArray(wpa_group_s->go_dev_addr);
+	params.goInterfaceAddress = aidl_is_go ? macAddrToArray(wpa_group_s->own_addr) :
+			macAddrToArray(wpa_group_s->current_bss->bssid);
 	if (NULL != ip && !aidl_is_go) {
 		params.isP2pClientEapolIpAddressInfoPresent = true;
 		os_memcpy(&params.p2pClientIpInfo.ipAddressClient, &ip[0], 4);
@@ -1791,7 +1797,7 @@ void AidlManager::notifyPmkCacheAdded(
 	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
 
 	PmkSaCacheData aidl_pmksa_data = {};
-	aidl_pmksa_data.bssid = macAddrToVec(pmksa_entry->aa);
+	aidl_pmksa_data.bssid = macAddrToArray(pmksa_entry->aa);
 	// Serialize PmkCacheEntry into blob.
 	std::stringstream ss(
 		std::stringstream::in | std::stringstream::out | std::stringstream::binary);
