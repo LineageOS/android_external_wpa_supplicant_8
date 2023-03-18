@@ -290,6 +290,12 @@ const std::string convertCurveTypeToName(DppCurve curve)
 	WPA_ASSERT(false);
 }
 
+inline std::array<uint8_t, ETH_ALEN> macAddrToArray(const uint8_t* mac_addr) {
+	std::array<uint8_t, ETH_ALEN> arr;
+	std::copy(mac_addr, mac_addr + ETH_ALEN, std::begin(arr));
+	return arr;
+}
+
 }  // namespace
 
 namespace aidl {
@@ -2006,8 +2012,7 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 	MloLinksInfo linksInfo;
 	MloLink link;
 
-	linksInfo.apMldMacAddress->assign(
-	    wpa_s->ap_mld_addr, wpa_s->ap_mld_addr + ETH_ALEN);
+	linksInfo.apMldMacAddress = macAddrToArray(wpa_s->ap_mld_addr);
 	if (!wpa_s->valid_links)
 		 return {linksInfo, ndk::ScopedAStatus::ok()};
 
@@ -2023,8 +2028,7 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 		link.linkId = i;
 		link.staLinkMacAddress.assign(
 		    wpa_s->links[i].addr, wpa_s->links[i].addr + ETH_ALEN);
-		link.apLinkMacAddress->assign(
-		    wpa_s->links[i].bssid, wpa_s->links[i].bssid + ETH_ALEN);
+		link.apLinkMacAddress = macAddrToArray(wpa_s->links[i].bssid);
 		link.frequencyMHz = wpa_s->links[i].freq;
 		// TODO (b/259710591): Once supplicant implements TID-to-link
 		// mapping, copy it here. Mapping can be changed in two
