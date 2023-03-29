@@ -2116,6 +2116,7 @@ static ssize_t
 eapol_sm_get_certificate(void *ctx, const char* alias, uint8_t** value)
 {
 	struct eapol_sm *sm = ctx;
+	wpa_printf(MSG_INFO, "eapol_sm_get_certificate");
 
 	if (sm->ctx->get_certificate_cb) {
 		return sm->ctx->get_certificate_cb(alias, value);

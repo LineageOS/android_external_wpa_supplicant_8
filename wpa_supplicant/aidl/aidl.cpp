@@ -1069,5 +1069,7 @@ ssize_t wpas_aidl_get_certificate(const char* alias, uint8_t** value)
 	if (!aidl_manager)
 		return -1;
 
+	wpa_printf(MSG_INFO, "Requesting certificate from framework");
+
 	return aidl_manager->getCertificate(alias, value);
 }
