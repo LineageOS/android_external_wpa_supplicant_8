@@ -172,6 +172,7 @@ static BIO* BIO_from_keystore(const char *alias)
 	BIO *bio = NULL;
 	uint8_t *value = NULL;
 	if (tls_global != NULL && certificate_callback_global != NULL) {
+		wpa_printf(MSG_INFO, "Retrieving certificate using callback");
 		int length = (*certificate_callback_global)(tls_global->cb_ctx, alias, &value);
 		if (length != -1 && (bio = BIO_new(BIO_s_mem())) != NULL)
 			BIO_write(bio, value, length);

@@ -1187,6 +1187,7 @@ static bool wpas_encryption_required(void *ctx)
 static ssize_t wpa_supplicant_get_certificate_cb(
 						const char* alias, uint8_t** value)
 {
+	wpa_printf(MSG_INFO, "wpa_supplicant_get_certificate_cb");
 	return wpas_get_certificate(alias, value);
 }
 

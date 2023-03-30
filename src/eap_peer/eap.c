@@ -2200,6 +2200,7 @@ static void eap_peer_sm_tls_event(void *ctx, enum tls_event ev,
 ssize_t tls_certificate_callback(void* ctx, const char* alias, uint8_t** value) {
 	if (alias == NULL || ctx == NULL || value == NULL) return -1;
 	struct eap_sm *sm = (struct eap_sm*) ctx;
+	wpa_printf(MSG_INFO, "tls_certificate_callback: received sm=%p", (void*)sm);
 	if (sm->eapol_cb && sm->eapol_cb->get_certificate) {
 		return sm->eapol_cb->get_certificate(sm->eapol_ctx, alias, value);
 	}
@@ -2228,6 +2229,7 @@ struct eap_sm * eap_peer_sm_init(void *eapol_ctx,
 	struct tls_config tlsconf;
 
 	sm = os_zalloc(sizeof(*sm));
+	wpa_printf(MSG_INFO, "Init sm=%p", (void*)sm);
 	if (sm == NULL)
 		return NULL;
 	sm->eapol_ctx = eapol_ctx;
@@ -2277,6 +2279,7 @@ struct eap_sm * eap_peer_sm_init(void *eapol_ctx,
  */
 void eap_peer_sm_deinit(struct eap_sm *sm)
 {
+	wpa_printf(MSG_INFO, "Deinit sm=%p", (void*)sm);
 	if (sm == NULL)
 		return;
 	eap_deinit_prev_method(sm, "EAP deinit");
