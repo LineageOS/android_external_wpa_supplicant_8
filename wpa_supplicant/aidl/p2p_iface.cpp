@@ -1117,7 +1117,7 @@ ndk::ScopedAStatus P2pIface::inviteInternal(
 	const std::vector<uint8_t>& peer_address)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
-	if (peer_address.size() != ETH_ALEN) {
+	if (go_device_address.size() != ETH_ALEN || peer_address.size() != ETH_ALEN) {
 		return {createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
 	if (wpas_p2p_invite_group(
