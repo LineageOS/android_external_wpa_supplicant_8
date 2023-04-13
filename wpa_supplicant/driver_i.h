@@ -350,8 +350,11 @@ static inline int wpa_drv_set_ap(struct wpa_supplicant *wpa_s,
 static inline int wpa_drv_sta_add(struct wpa_supplicant *wpa_s,
 				  struct hostapd_sta_add_params *params)
 {
-	if (wpa_s->driver->sta_add)
+	if (wpa_s->driver->sta_add) {
+		/* Set link_id to -1 as it's needed for AP only */
+		params->mld_link_id = -1;
 		return wpa_s->driver->sta_add(wpa_s->drv_priv, params);
+	}
 	return -1;
 }
 
@@ -801,6 +804,14 @@ static inline int wpa_drv_set_replay_protect(struct wpa_supplicant *wpa_s,
 		return -1;
 	return wpa_s->driver->set_replay_protect(wpa_s->drv_priv, enabled,
 						 window);
+}
+
+static inline int wpa_drv_set_offload(struct wpa_supplicant *wpa_s, u8 offload)
+{
+	if (!wpa_s->driver->set_offload)
+		return -1;
+	return wpa_s->driver->set_offload(wpa_s->drv_priv, offload);
+
 }
 
 static inline int wpa_drv_set_current_cipher_suite(struct wpa_supplicant *wpa_s,

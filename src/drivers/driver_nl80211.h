@@ -49,15 +49,31 @@ struct nl80211_wiphy_data {
 	int wiphy_idx;
 };
 
+#define NL80211_DRV_LINK_ID_NA (-1)
+
+struct i802_link {
+	unsigned int beacon_set:1;
+
+	s8 link_id;
+	int freq;
+	int bandwidth;
+	u8 addr[ETH_ALEN];
+	void *ctx;
+};
+
 struct i802_bss {
 	struct wpa_driver_nl80211_data *drv;
 	struct i802_bss *next;
+
+	size_t n_links;
+	struct i802_link links[MAX_NUM_MLD_LINKS];
+	struct i802_link *flink;
+
 	int ifindex;
 	int br_ifindex;
 	u64 wdev_id;
 	char ifname[IFNAMSIZ + 1];
 	char brname[IFNAMSIZ];
-	unsigned int beacon_set:1;
 	unsigned int added_if_into_bridge:1;
 	unsigned int already_in_bridge:1;
 	unsigned int added_bridge:1;
@@ -70,8 +86,6 @@ struct i802_bss {
 	u8 addr[ETH_ALEN];
 	u8 prev_addr[ETH_ALEN];
 
-	int freq;
-	int bandwidth;
 	int if_dynamic;
 
 	void *ctx;
@@ -184,6 +198,7 @@ struct wpa_driver_nl80211_data {
 	unsigned int brcm_do_acs:1;
 	unsigned int uses_6ghz:1;
 	unsigned int secure_ranging_ctx_vendor_cmd_avail:1;
+	unsigned int puncturing:1;
 
 	u64 vendor_scan_cookie;
 	u64 remain_on_chan_cookie;

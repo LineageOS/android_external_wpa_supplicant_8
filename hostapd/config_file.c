@@ -2316,6 +2316,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 			   sizeof(conf->bss[0]->iface));
 	} else if (os_strcmp(buf, "bridge") == 0) {
 		os_strlcpy(bss->bridge, pos, sizeof(bss->bridge));
+	} else if (os_strcmp(buf, "bridge_hairpin") == 0) {
+		bss->bridge_hairpin = atoi(pos);
 	} else if (os_strcmp(buf, "vlan_bridge") == 0) {
 		os_strlcpy(bss->vlan_bridge, pos, sizeof(bss->vlan_bridge));
 	} else if (os_strcmp(buf, "wds_bridge") == 0) {
@@ -4471,6 +4473,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 #endif /* CONFIG_FILS */
 	} else if (os_strcmp(buf, "multicast_to_unicast") == 0) {
 		bss->multicast_to_unicast = atoi(pos);
+	} else if (os_strcmp(buf, "bridge_multicast_to_unicast") == 0) {
+		bss->bridge_multicast_to_unicast = atoi(pos);
 	} else if (os_strcmp(buf, "broadcast_deauth") == 0) {
 		bss->broadcast_deauth = atoi(pos);
 	} else if (os_strcmp(buf, "notify_mgmt_frames") == 0) {
@@ -4640,6 +4644,16 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->macsec_replay_protect = macsec_replay_protect;
 	} else if (os_strcmp(buf, "macsec_replay_window") == 0) {
 		bss->macsec_replay_window = atoi(pos);
+	} else if (os_strcmp(buf, "macsec_offload") == 0) {
+		int macsec_offload = atoi(pos);
+
+		if (macsec_offload < 0 || macsec_offload > 2) {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: invalid macsec_offload (%d): '%s'.",
+				   line, macsec_offload, pos);
+			return 1;
+		}
+		bss->macsec_offload = macsec_offload;
 	} else if (os_strcmp(buf, "macsec_port") == 0) {
 		int macsec_port = atoi(pos);
 
@@ -4748,6 +4762,18 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		conf->eht_phy_capab.su_beamformee = atoi(pos);
 	} else if (os_strcmp(buf, "eht_mu_beamformer") == 0) {
 		conf->eht_phy_capab.mu_beamformer = atoi(pos);
+	} else if (os_strcmp(buf, "punct_bitmap") == 0) {
+		conf->punct_bitmap = atoi(pos);
+	} else if (os_strcmp(buf, "punct_acs_threshold") == 0) {
+		int val = atoi(pos);
+
+		if (val < 0 || val > 100) {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: punct_acs_threshold must be between 0 and 100",
+				   line);
+			return 1;
+		}
+		conf->punct_acs_threshold = val;
 #endif /* CONFIG_IEEE80211BE */
 	} else {
 		wpa_printf(MSG_ERROR,

@@ -212,6 +212,26 @@ static const char * timeout_next_str(int val)
 }
 
 
+static const char * hw_mode_str(enum hostapd_hw_mode mode)
+{
+	switch (mode) {
+	case HOSTAPD_MODE_IEEE80211B:
+		return "b";
+	case HOSTAPD_MODE_IEEE80211G:
+		return "g";
+	case HOSTAPD_MODE_IEEE80211A:
+		return "a";
+	case HOSTAPD_MODE_IEEE80211AD:
+		return "ad";
+	case HOSTAPD_MODE_IEEE80211ANY:
+		return "any";
+	case NUM_HOSTAPD_MODES:
+		return "invalid";
+	}
+	return "unknown";
+}
+
+
 static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 				      struct sta_info *sta,
 				      char *buf, size_t buflen)
@@ -696,6 +716,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 {
 	struct hostapd_iface *iface = hapd->iface;
 	struct hostapd_hw_modes *mode = iface->current_mode;
+	struct hostapd_config *iconf = hapd->iconf;
 	int len = 0, ret, j;
 	size_t i;
 
@@ -729,6 +750,24 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 	if (os_snprintf_error(buflen - len, ret))
 		return len;
 	len += ret;
+
+	if (mode) {
+		ret = os_snprintf(buf + len, buflen - len, "hw_mode=%s\n",
+				  hw_mode_str(mode->mode));
+		if (os_snprintf_error(buflen - len, ret))
+			return len;
+		len += ret;
+	}
+
+	if (iconf->country[0] && iconf->country[1]) {
+		ret = os_snprintf(buf + len, buflen - len,
+				  "country_code=%c%c\ncountry3=0x%X\n",
+				  iconf->country[0], iconf->country[1],
+				  iconf->country[2]);
+		if (os_snprintf_error(buflen - len, ret))
+			return len;
+		len += ret;
+	}
 
 	if (!iface->cac_started || !iface->dfs_cac_ms) {
 		ret = os_snprintf(buf + len, buflen - len,
@@ -941,16 +980,27 @@ int hostapd_parse_csa_settings(const char *pos,
 		} \
 	} while (0)
 
+#define SET_CSA_SETTING_EXT(str) \
+	do { \
+		const char *pos2 = os_strstr(pos, " " #str "="); \
+		if (pos2) { \
+			pos2 += sizeof(" " #str "=") - 1; \
+			settings->str = atoi(pos2); \
+		} \
+	} while (0)
+
 	SET_CSA_SETTING(center_freq1);
 	SET_CSA_SETTING(center_freq2);
 	SET_CSA_SETTING(bandwidth);
 	SET_CSA_SETTING(sec_channel_offset);
+	SET_CSA_SETTING_EXT(punct_bitmap);
 	settings->freq_params.ht_enabled = !!os_strstr(pos, " ht");
 	settings->freq_params.vht_enabled = !!os_strstr(pos, " vht");
 	settings->freq_params.he_enabled = !!os_strstr(pos, " he");
 	settings->freq_params.eht_enabled = !!os_strstr(pos, " eht");
 	settings->block_tx = !!os_strstr(pos, " blocktx");
 #undef SET_CSA_SETTING
+#undef SET_CSA_SETTING_EXT
 
 	return 0;
 }
