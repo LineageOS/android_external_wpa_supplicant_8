@@ -38,6 +38,7 @@
 #endif /* CONFIG_DPP */
 #include "common/wpa_ctrl.h"
 #include "common/ptksa_cache.h"
+#include "common/hw_features_common.h"
 #include "crypto/tls.h"
 #include "drivers/driver.h"
 #include "eapol_auth/eapol_auth_sm.h"
@@ -2435,8 +2436,31 @@ static int hostapd_ctrl_register_frame(struct hostapd_data *hapd,
 
 
 #ifdef NEED_AP_MLME
-static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params)
+static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
+					  u16 punct_bitmap)
 {
+	u32 start_freq;
+
+	if (is_6ghz_freq(params->freq)) {
+		const int bw_idx[] = { 20, 40, 80, 160, 320 };
+		int idx, bw;
+
+		/* The 6 GHz band requires HE to be enabled. */
+		params->he_enabled = 1;
+
+		if (params->center_freq1) {
+			if (params->freq == 5935)
+				idx = (params->center_freq1 - 5925) / 5;
+			else
+				idx = (params->center_freq1 - 5950) / 5;
+
+			bw = center_idx_to_bw_6ghz(idx);
+			if (bw < 0 || bw > (int) ARRAY_SIZE(bw_idx) ||
+			    bw_idx[bw] != params->bandwidth)
+				return -1;
+		}
+	}
+
 	switch (params->bandwidth) {
 	case 0:
 		/* bandwidth not specified: use 20 MHz by default */
@@ -2448,9 +2472,15 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params)
 
 		if (params->center_freq2 || params->sec_channel_offset)
 			return -1;
+
+		if (punct_bitmap)
+			return -1;
 		break;
 	case 40:
 		if (params->center_freq2 || !params->sec_channel_offset)
+			return -1;
+
+		if (punct_bitmap)
 			return -1;
 
 		if (!params->center_freq1)
@@ -2487,6 +2517,9 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params)
 			return -1;
 		}
 
+		if (params->center_freq2 && punct_bitmap)
+			return -1;
+
 		/* Adjacent and overlapped are not allowed for 80+80 */
 		if (params->center_freq2 &&
 		    params->center_freq1 - params->center_freq2 <= 80 &&
@@ -2521,6 +2554,29 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params)
 		return -1;
 	}
 
+	if (!punct_bitmap)
+		return 0;
+
+	if (!params->eht_enabled) {
+		wpa_printf(MSG_ERROR,
+			   "Preamble puncturing supported only in EHT");
+		return -1;
+	}
+
+	if (params->freq >= 2412 && params->freq <= 2484) {
+		wpa_printf(MSG_ERROR,
+			   "Preamble puncturing is not supported in 2.4 GHz");
+		return -1;
+	}
+
+	start_freq = params->center_freq1 - (params->bandwidth / 2);
+	if (!is_punct_bitmap_valid(params->bandwidth,
+				   (params->freq - start_freq) / 20,
+				   punct_bitmap)) {
+		wpa_printf(MSG_ERROR, "Invalid preamble puncturing bitmap");
+		return -1;
+	}
+
 	return 0;
 }
 #endif /* NEED_AP_MLME */
@@ -2541,7 +2597,8 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 	if (ret)
 		return ret;
 
-	ret = hostapd_ctrl_check_freq_params(&settings.freq_params);
+	ret = hostapd_ctrl_check_freq_params(&settings.freq_params,
+					     settings.punct_bitmap);
 	if (ret) {
 		wpa_printf(MSG_INFO,
 			   "chanswitch: invalid frequency settings provided");
@@ -3554,6 +3611,8 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 			if (hostapd_set_acl(hapd) ||
 			    hostapd_disassoc_accept_mac(hapd))
 				reply_len = -1;
+		} else {
+			reply_len = -1;
 		}
 	} else if (os_strncmp(buf, "DENY_ACL ", 9) == 0) {
 		if (os_strncmp(buf + 9, "ADD_MAC ", 8) == 0) {
@@ -3579,6 +3638,8 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 				&hapd->conf->num_deny_mac);
 			if (hostapd_set_acl(hapd))
 				reply_len = -1;
+		} else {
+			reply_len = -1;
 		}
 #ifdef CONFIG_DPP
 	} else if (os_strncmp(buf, "DPP_QR_CODE ", 12) == 0) {

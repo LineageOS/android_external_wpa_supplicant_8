@@ -326,6 +326,16 @@ int wpa_supplicant_conf_ap_ht(struct wpa_supplicant *wpa_s,
 
 		if (mode && is_6ghz_freq(ssid->frequency) &&
 		    conf->hw_mode == HOSTAPD_MODE_IEEE80211A) {
+			if (mode->eht_capab[wpas_mode_to_ieee80211_mode(
+					    ssid->mode)].eht_supported &&
+			    ssid->eht)
+				conf->ieee80211be = 1;
+
+			if (mode->he_capab[wpas_mode_to_ieee80211_mode(
+					    ssid->mode)].he_supported &&
+			    ssid->he)
+				conf->ieee80211ax = 1;
+
 #ifdef CONFIG_P2P
 			wpas_conf_ap_he_6ghz(wpa_s, mode, ssid, conf);
 #endif /* CONFIG_P2P */
@@ -400,6 +410,11 @@ int wpa_supplicant_conf_ap_ht(struct wpa_supplicant *wpa_s,
 			/* check this before VHT, because setting oper chan
 			 * width and friends is the same call for HE and VHT
 			 * and checks if conf->ieee8021ax == 1 */
+			if (mode->eht_capab[wpas_mode_to_ieee80211_mode(
+					    ssid->mode)].eht_supported &&
+			    ssid->eht)
+				conf->ieee80211be = 1;
+
 			if (mode->he_capab[wpas_mode_to_ieee80211_mode(
 					    ssid->mode)].he_supported &&
 			    ssid->he)
@@ -1826,7 +1841,8 @@ int ap_ctrl_iface_chanswitch(struct wpa_supplicant *wpa_s, const char *pos)
 
 
 void wpas_ap_ch_switch(struct wpa_supplicant *wpa_s, int freq, int ht,
-		       int offset, int width, int cf1, int cf2, int finished)
+		       int offset, int width, int cf1, int cf2,
+		       u16 punct_bitmap, int finished)
 {
 	struct hostapd_iface *iface = wpa_s->ap_iface;
 
@@ -1838,7 +1854,8 @@ void wpas_ap_ch_switch(struct wpa_supplicant *wpa_s, int freq, int ht,
 	if (wpa_s->current_ssid)
 		wpa_s->current_ssid->frequency = freq;
 	hostapd_event_ch_switch(iface->bss[0], freq, ht,
-				offset, width, cf1, cf2, finished);
+				offset, width, cf1, cf2, punct_bitmap,
+				finished);
 }
 
 

@@ -1435,6 +1435,22 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
 		return -1;
 	}
 
+	if (conf->bridge[0]) {
+		/* Set explicitly configured bridge parameters that might have
+		 * been lost if the interface has been removed out of the
+		 * bridge. */
+
+		/* multicast to unicast on bridge ports */
+		if (conf->bridge_multicast_to_unicast)
+			hostapd_drv_br_port_set_attr(
+				hapd, DRV_BR_PORT_ATTR_MCAST2UCAST, 1);
+
+		/* hairpin mode */
+		if (conf->bridge_hairpin)
+			hostapd_drv_br_port_set_attr(
+				hapd, DRV_BR_PORT_ATTR_HAIRPIN_MODE, 1);
+	}
+
 	if (conf->proxy_arp) {
 		if (x_snoop_init(hapd)) {
 			wpa_printf(MSG_ERROR,
@@ -1749,7 +1765,7 @@ static void hostapd_set_6ghz_sec_chan(struct hostapd_iface *iface)
 	bw = center_idx_to_bw_6ghz(seg0);
 	/* Assign the secondary channel if absent in config for
 	 * bandwidths > 20 MHz */
-	if (bw > 20 && !iface->conf->secondary_channel) {
+	if (bw > 0 && !iface->conf->secondary_channel) {
 		if (((iface->conf->channel - 1) / 4) % 2)
 			iface->conf->secondary_channel = -1;
 		else
@@ -1767,6 +1783,11 @@ static int setup_interface2(struct hostapd_iface *iface)
 		 * feature data. */
 	} else {
 		int ret;
+
+		if (iface->conf->acs) {
+			iface->freq = 0;
+			iface->conf->channel = 0;
+		}
 
 		ret = configured_fixed_chan_to_freq(iface);
 		if (ret < 0)
@@ -3634,6 +3655,9 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
 	struct hostapd_iface *iface = hapd->iface;
 	struct hostapd_freq_params old_freq;
 	int ret;
+#ifdef CONFIG_IEEE80211BE
+	u16 old_punct_bitmap;
+#endif /* CONFIG_IEEE80211BE */
 	u8 chan, bandwidth;
 
 	os_memset(&old_freq, 0, sizeof(old_freq));
@@ -3679,9 +3703,16 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_IEEE80211BE
+	old_punct_bitmap = iface->conf->punct_bitmap;
+	iface->conf->punct_bitmap = settings->punct_bitmap;
+#endif /* CONFIG_IEEE80211BE */
 	ret = hostapd_build_beacon_data(hapd, &settings->beacon_after);
 
 	/* change back the configuration */
+#ifdef CONFIG_IEEE80211BE
+	iface->conf->punct_bitmap = old_punct_bitmap;
+#endif /* CONFIG_IEEE80211BE */
 	hostapd_change_config_freq(iface->bss[0], iface->conf,
 				   &old_freq, NULL);
 

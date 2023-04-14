@@ -249,11 +249,11 @@ struct wpa_bss * wpa_bss_get(struct wpa_supplicant *wpa_s, const u8 *bssid,
 			     const u8 *ssid, size_t ssid_len)
 {
 	struct wpa_bss *bss;
-	if (!wpa_supplicant_filter_bssid_match(wpa_s, bssid))
+
+	if (bssid && !wpa_supplicant_filter_bssid_match(wpa_s, bssid))
 		return NULL;
 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
-		if ((!bssid ||
-		     os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0) &&
+		if ((!bssid || os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0) &&
 		    bss->ssid_len == ssid_len &&
 		    os_memcmp(bss->ssid, ssid, ssid_len) == 0)
 			return bss;
@@ -987,6 +987,10 @@ void wpa_bss_flush_by_age(struct wpa_supplicant *wpa_s, int age)
 		return;
 
 	os_get_reltime(&t);
+
+	if (t.sec < age)
+		return; /* avoid underflow; there can be no older entries */
+
 	t.sec -= age;
 
 	dl_list_for_each_safe(bss, n, &wpa_s->bss, struct wpa_bss, list) {

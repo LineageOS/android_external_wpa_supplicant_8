@@ -533,8 +533,7 @@ static u8 * hostapd_eid_mbssid_config(struct hostapd_data *hapd, u8 *eid,
 static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 				   const struct ieee80211_mgmt *req,
 				   int is_p2p, size_t *resp_len,
-				   bool bcast_probe_resp, const u8 *known_bss,
-				   u8 known_bss_len)
+				   const u8 *known_bss, u8 known_bss_len)
 {
 	struct ieee80211_mgmt *resp;
 	u8 *pos, *epos, *csa_pos;
@@ -585,6 +584,8 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
 		buflen += hostapd_eid_eht_capab_len(hapd, IEEE80211_MODE_AP);
 		buflen += 3 + sizeof(struct ieee80211_eht_operation);
+		if (hapd->iconf->punct_bitmap)
+			buflen += EHT_OPER_DISABLED_SUBCHAN_BITMAP_SIZE;
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -603,9 +604,16 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 
 	resp->frame_control = IEEE80211_FC(WLAN_FC_TYPE_MGMT,
 					   WLAN_FC_STYPE_PROBE_RESP);
-	if (req)
+	/* Unicast the response to all requests on bands other than 6 GHz. For
+	 * the 6 GHz, unicast is used only if the actual SSID is not included in
+	 * the Beacon frames. Otherwise, broadcast response is used per IEEE
+	 * Std 802.11ax-2021, 26.17.2.3.2. Broadcast address is also used for
+	 * the Probe Response frame template for the unsolicited (i.e., not as
+	 * a response to a specific request) case. */
+	if (req && (!is_6ghz_op_class(hapd->iconf->op_class) ||
+		    hapd->conf->ignore_broadcast_ssid))
 		os_memcpy(resp->da, req->sa, ETH_ALEN);
-	else if (bcast_probe_resp)
+	else
 		os_memset(resp->da, 0xff, ETH_ALEN);
 
 	os_memcpy(resp->sa, hapd->own_addr, ETH_ALEN);
@@ -1230,7 +1238,7 @@ void handle_probe_req(struct hostapd_data *hapd,
 		     " signal=%d", MAC2STR(mgmt->sa), ssi_signal);
 
 	resp = hostapd_gen_probe_resp(hapd, mgmt, elems.p2p != NULL,
-				      &resp_len, false, elems.mbssid_known_bss,
+				      &resp_len, elems.mbssid_known_bss,
 				      elems.mbssid_known_bss_len);
 	if (resp == NULL)
 		return;
@@ -1301,7 +1309,7 @@ static u8 * hostapd_probe_resp_offloads(struct hostapd_data *hapd,
 			   "this");
 
 	/* Generate a Probe Response template for the non-P2P case */
-	return hostapd_gen_probe_resp(hapd, NULL, 0, resp_len, false, NULL, 0);
+	return hostapd_gen_probe_resp(hapd, NULL, 0, resp_len, NULL, 0);
 }
 
 #endif /* NEED_AP_MLME */
@@ -1320,7 +1328,7 @@ static u8 * hostapd_unsol_bcast_probe_resp(struct hostapd_data *hapd,
 
 	return hostapd_gen_probe_resp(hapd, NULL, 0,
 				      &params->unsol_bcast_probe_resp_tmpl_len,
-				      true, NULL, 0);
+				      NULL, 0);
 }
 #endif /* CONFIG_IEEE80211AX */
 
@@ -1351,6 +1359,9 @@ static u16 hostapd_fils_discovery_cap(struct hostapd_data *hapd)
 		phy_index = FD_CAP_PHY_INDEX_HE;
 
 		switch (hapd->iconf->op_class) {
+		case 137:
+			chwidth = FD_CAP_BSS_CHWIDTH_320;
+			break;
 		case 135:
 			mcs_nss_size += 4;
 			/* fallthrough */
@@ -1404,14 +1415,37 @@ static u16 hostapd_fils_discovery_cap(struct hostapd_data *hapd)
 	cap_info |= phy_index << FD_CAP_PHY_INDEX_SHIFT;
 	cap_info |= chwidth << FD_CAP_BSS_CHWIDTH_SHIFT;
 
-	if (mode) {
-		u16 *mcs = (u16 *) mode->he_capab[IEEE80211_MODE_AP].mcs;
+	if (mode && phy_index == FD_CAP_PHY_INDEX_HE) {
+		const u8 *he_mcs = mode->he_capab[IEEE80211_MODE_AP].mcs;
 		int i;
-		u16 nss = 0;
+		u16 nss = 0, mcs[6];
+
+		os_memset(mcs, 0xffff, 6 * sizeof(u16));
+
+		if (mcs_nss_size == 4) {
+			mcs[0] = WPA_GET_LE16(&he_mcs[0]);
+			mcs[1] = WPA_GET_LE16(&he_mcs[2]);
+		}
+
+		if (mcs_nss_size == 8) {
+			mcs[2] = WPA_GET_LE16(&he_mcs[4]);
+			mcs[3] = WPA_GET_LE16(&he_mcs[6]);
+		}
+
+		if (mcs_nss_size == 12) {
+			mcs[4] = WPA_GET_LE16(&he_mcs[8]);
+			mcs[5] = WPA_GET_LE16(&he_mcs[10]);
+		}
 
 		for (i = 0; i < HE_NSS_MAX_STREAMS; i++) {
 			u16 nss_mask = 0x3 << (i * 2);
 
+			/*
+			 * If NSS values supported by RX and TX are different
+			 * then choose the smaller of the two as the maximum
+			 * supported NSS as that is the value supported by
+			 * both RX and TX.
+			 */
 			if (mcs_nss_size == 4 &&
 			    (((mcs[0] & nss_mask) == nss_mask) ||
 			     ((mcs[1] & nss_mask) == nss_mask)))
@@ -1655,6 +1689,8 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
 		tail_len += hostapd_eid_eht_capab_len(hapd, IEEE80211_MODE_AP);
 		tail_len += 3 + sizeof(struct ieee80211_eht_operation);
+		if (hapd->iconf->punct_bitmap)
+			tail_len += EHT_OPER_DISABLED_SUBCHAN_BITMAP_SIZE;
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -2064,6 +2100,10 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
 #ifdef CONFIG_FILS
 	params.fd_frame_tmpl = hostapd_fils_discovery(hapd, &params);
 #endif /* CONFIG_FILS */
+
+#ifdef CONFIG_IEEE80211BE
+	params.punct_bitmap = iconf->punct_bitmap;
+#endif /* CONFIG_IEEE80211BE */
 
 	if (cmode &&
 	    hostapd_set_freq_params(&freq, iconf->hw_mode, iface->freq,

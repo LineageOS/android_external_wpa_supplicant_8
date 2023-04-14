@@ -663,6 +663,9 @@ static void wiphy_info_ext_feature_flags(struct wiphy_info_data *info,
 			      NL80211_EXT_FEATURE_UNSOL_BCAST_PROBE_RESP))
 		info->drv->unsol_bcast_probe_resp = 1;
 
+	if (ext_feature_isset(ext_features, len, NL80211_EXT_FEATURE_PUNCT))
+		info->drv->puncturing = 1;
+
 	if (ext_feature_isset(ext_features, len,
 			      NL80211_EXT_FEATURE_BEACON_PROTECTION_CLIENT))
 		capa->flags2 |= WPA_DRIVER_FLAGS2_BEACON_PROTECTION_CLIENT;
@@ -2327,43 +2330,15 @@ static void nl80211_set_vht_mode(struct hostapd_hw_modes *mode, int start,
 
 	for (c = 0; c < mode->num_channels; c++) {
 		struct hostapd_channel_data *chan = &mode->channels[c];
-		if (chan->freq - 10 >= start && chan->freq + 70 <= end)
-			chan->flag |= HOSTAPD_CHAN_VHT_10_70;
 
-		if (chan->freq - 30 >= start && chan->freq + 50 <= end)
-			chan->flag |= HOSTAPD_CHAN_VHT_30_50;
+		if (chan->freq - 10 < start || chan->freq + 10 > end)
+			continue;
 
-		if (chan->freq - 50 >= start && chan->freq + 30 <= end)
-			chan->flag |= HOSTAPD_CHAN_VHT_50_30;
+		if (max_bw >= 80)
+			chan->flag |= HOSTAPD_CHAN_VHT_80MHZ_SUBCHANNEL;
 
-		if (chan->freq - 70 >= start && chan->freq + 10 <= end)
-			chan->flag |= HOSTAPD_CHAN_VHT_70_10;
-
-		if (max_bw >= 160) {
-			if (chan->freq - 10 >= start && chan->freq + 150 <= end)
-				chan->flag |= HOSTAPD_CHAN_VHT_10_150;
-
-			if (chan->freq - 30 >= start && chan->freq + 130 <= end)
-				chan->flag |= HOSTAPD_CHAN_VHT_30_130;
-
-			if (chan->freq - 50 >= start && chan->freq + 110 <= end)
-				chan->flag |= HOSTAPD_CHAN_VHT_50_110;
-
-			if (chan->freq - 70 >= start && chan->freq + 90 <= end)
-				chan->flag |= HOSTAPD_CHAN_VHT_70_90;
-
-			if (chan->freq - 90 >= start && chan->freq + 70 <= end)
-				chan->flag |= HOSTAPD_CHAN_VHT_90_70;
-
-			if (chan->freq - 110 >= start && chan->freq + 50 <= end)
-				chan->flag |= HOSTAPD_CHAN_VHT_110_50;
-
-			if (chan->freq - 130 >= start && chan->freq + 30 <= end)
-				chan->flag |= HOSTAPD_CHAN_VHT_130_30;
-
-			if (chan->freq - 150 >= start && chan->freq + 10 <= end)
-				chan->flag |= HOSTAPD_CHAN_VHT_150_10;
-		}
+		if (max_bw >= 160)
+			chan->flag |= HOSTAPD_CHAN_VHT_160MHZ_SUBCHANNEL;
 	}
 }
 

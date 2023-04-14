@@ -339,13 +339,13 @@ struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp,
 	while (wpa_config_get_line(buf, sizeof(buf), f, &line, &pos)) {
 		if (os_strcmp(pos, "network={") == 0) {
 			ssid = wpa_config_read_network(f, &line, id++);
-			ssid->ro = ro;
 			if (ssid == NULL) {
 				wpa_printf(MSG_ERROR, "Line %d: failed to "
 					   "parse network block.", line);
 				errors++;
 				continue;
 			}
+			ssid->ro = ro;
 			if (head == NULL) {
 				head = tail = ssid;
 			} else {
@@ -814,6 +814,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(macsec_integ_only);
 	INT(macsec_replay_protect);
 	INT(macsec_replay_window);
+	INT(macsec_offload);
 	INT(macsec_port);
 	INT_DEF(mka_priority, DEFAULT_PRIO_NOT_KEY_SERVER);
 	INT(macsec_csindex);
@@ -890,6 +891,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(disable_he);
 #endif /* CONFIG_HE_OVERRIDES */
 	INT(disable_eht);
+	INT(enable_4addr_mode);
 
 #undef STR
 #undef INT

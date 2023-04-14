@@ -41,22 +41,11 @@
 #define HOSTAPD_CHAN_DFS_AVAILABLE 0x00000300
 #define HOSTAPD_CHAN_DFS_MASK 0x00000300
 
-#define HOSTAPD_CHAN_VHT_10_70 0x00000800
-#define HOSTAPD_CHAN_VHT_30_50 0x00001000
-#define HOSTAPD_CHAN_VHT_50_30 0x00002000
-#define HOSTAPD_CHAN_VHT_70_10 0x00004000
+#define HOSTAPD_CHAN_VHT_80MHZ_SUBCHANNEL 0x00000800
+#define HOSTAPD_CHAN_VHT_160MHZ_SUBCHANNEL 0x00001000
 
 #define HOSTAPD_CHAN_INDOOR_ONLY 0x00010000
 #define HOSTAPD_CHAN_GO_CONCURRENT 0x00020000
-
-#define HOSTAPD_CHAN_VHT_10_150 0x00100000
-#define HOSTAPD_CHAN_VHT_30_130 0x00200000
-#define HOSTAPD_CHAN_VHT_50_110 0x00400000
-#define HOSTAPD_CHAN_VHT_70_90  0x00800000
-#define HOSTAPD_CHAN_VHT_90_70  0x01000000
-#define HOSTAPD_CHAN_VHT_110_50 0x02000000
-#define HOSTAPD_CHAN_VHT_130_30 0x04000000
-#define HOSTAPD_CHAN_VHT_150_10 0x08000000
 
 /* Allowed bandwidth mask */
 enum hostapd_chan_width_attr {
@@ -181,6 +170,11 @@ struct hostapd_channel_data {
 	 * wmm_rules - WMM regulatory rules
 	 */
 	struct hostapd_wmm_rule wmm_rules[WMM_AC_NUM];
+
+	/**
+	 * punct_bitmap - RU puncturing bitmap
+	 */
+	u16 punct_bitmap;
 };
 
 #define HE_MAC_CAPAB_0		0
@@ -1731,6 +1725,14 @@ struct wpa_driver_ap_params {
 	 * ema - Enhanced MBSSID advertisements support.
 	 */
 	bool ema;
+
+	/**
+	 * punct_bitmap - Preamble puncturing bitmap
+	 * Each bit corresponds to a 20 MHz subchannel, the lowest bit for the
+	 * channel with the lowest frequency. A bit set to 1 indicates that the
+	 * subchannel is punctured, otherwise active.
+	 */
+	u16 punct_bitmap;
 };
 
 struct wpa_driver_mesh_bss_params {
@@ -2324,6 +2326,13 @@ struct wpa_driver_capa {
 
 struct hostapd_data;
 
+enum guard_interval {
+	GUARD_INTERVAL_0_4 = 1,
+	GUARD_INTERVAL_0_8 = 2,
+	GUARD_INTERVAL_1_6 = 3,
+	GUARD_INTERVAL_3_2 = 4,
+};
+
 #define STA_DRV_DATA_TX_MCS BIT(0)
 #define STA_DRV_DATA_RX_MCS BIT(1)
 #define STA_DRV_DATA_TX_VHT_MCS BIT(2)
@@ -2338,6 +2347,10 @@ struct hostapd_data;
 #define STA_DRV_DATA_RX_HE_MCS BIT(11)
 #define STA_DRV_DATA_TX_HE_NSS BIT(12)
 #define STA_DRV_DATA_RX_HE_NSS BIT(13)
+#define STA_DRV_DATA_TX_HE_DCM BIT(14)
+#define STA_DRV_DATA_RX_HE_DCM BIT(15)
+#define STA_DRV_DATA_TX_HE_GI BIT(16)
+#define STA_DRV_DATA_RX_HE_GI BIT(17)
 
 struct hostap_sta_driver_data {
 	unsigned long rx_packets, tx_packets;
@@ -2375,6 +2388,8 @@ struct hostap_sta_driver_data {
 	s8 avg_signal; /* dBm */
 	s8 avg_beacon_signal; /* dBm */
 	s8 avg_ack_signal; /* dBm */
+	enum guard_interval rx_guard_interval, tx_guard_interval;
+	u8 rx_dcm, tx_dcm;
 };
 
 struct hostapd_sta_add_params {
@@ -2408,6 +2423,10 @@ struct hostapd_sta_add_params {
 	const u8 *supp_oper_classes;
 	size_t supp_oper_classes_len;
 	int support_p2p_ps;
+
+	bool mld_link_sta;
+	s8 mld_link_id;
+	const u8 *mld_link_addr;
 };
 
 struct mac_address {
@@ -2582,6 +2601,7 @@ struct beacon_data {
  * @beacon_after: Next beacon/probe resp/asooc resp info
  * @counter_offset_beacon: Offset to the count field in beacon's tail
  * @counter_offset_presp: Offset to the count field in probe resp.
+ * @punct_bitmap - Preamble puncturing bitmap
  */
 struct csa_settings {
 	u8 cs_count;
@@ -2593,6 +2613,8 @@ struct csa_settings {
 
 	u16 counter_offset_beacon[2];
 	u16 counter_offset_presp[2];
+
+	u16 punct_bitmap;
 };
 
 /**
@@ -2652,6 +2674,7 @@ struct macsec_init_params {
 enum drv_br_port_attr {
 	DRV_BR_PORT_ATTR_PROXYARP,
 	DRV_BR_PORT_ATTR_HAIRPIN_MODE,
+	DRV_BR_PORT_ATTR_MCAST2UCAST,
 };
 
 enum drv_br_net_param {
@@ -2740,6 +2763,7 @@ enum wpa_drv_update_connect_params_mask {
  *	the real status code for failures. Used only for the request interface
  *	from user space to the driver.
  * @pmkid: Generated PMKID as part of external auth exchange (e.g., SAE).
+ * @mld_addr: AP's MLD address or %NULL if MLO is not used
  */
 struct external_auth {
 	enum {
@@ -2752,6 +2776,7 @@ struct external_auth {
 	unsigned int key_mgmt_suite;
 	u16 status;
 	const u8 *pmkid;
+	const u8 *mld_addr;
 };
 
 #define WPAS_MAX_PASN_PEERS 10
@@ -4516,6 +4541,16 @@ struct wpa_driver_ops {
 	int (*set_replay_protect)(void *priv, bool enabled, u32 window);
 
 	/**
+	 * set_offload - Set MACsec hardware offload
+	 * @priv: Private driver interface data
+	 * @offload: 0 = MACSEC_OFFLOAD_OFF
+	 *           1 = MACSEC_OFFLOAD_PHY
+	 *           2 = MACSEC_OFFLOAD_MAC
+	 * Returns: 0 on success, -1 on failure (or if not supported)
+	 */
+	int (*set_offload)(void *priv, u8 offload);
+
+	/**
 	 * set_current_cipher_suite - Set current cipher suite
 	 * @priv: Private driver interface data
 	 * @cs: EUI64 identifier
@@ -4956,6 +4991,15 @@ struct wpa_driver_ops {
 	 */
 	int (*get_sta_mlo_info)(void *priv,
 				struct driver_sta_mlo_info *mlo_info);
+
+	/**
+	 * link_add - Add a link to the AP MLD interface
+	 * @priv: Private driver interface data
+	 * @link_id: The link ID
+	 * @addr: The MAC address to use for the link
+	 * Returns: 0 on success, negative value on failure
+	 */
+	int (*link_add)(void *priv, u8 link_id, const u8 *addr);
 
 #ifdef CONFIG_TESTING_OPTIONS
 	int (*register_frame)(void *priv, u16 type,
@@ -6097,6 +6141,12 @@ union wpa_event_data {
 		 * ssi_signal - Signal strength in dBm (or 0 if not available)
 		 */
 		int ssi_signal;
+
+		/**
+		 * link_id - MLO link on which the frame was received or -1 for
+		 * non MLD.
+		 */
+		int link_id;
 	} rx_mgmt;
 
 	/**
@@ -6197,6 +6247,7 @@ union wpa_event_data {
 		const u8 *data;
 		size_t data_len;
 		enum frame_encryption encrypted;
+		int link_id;
 	} eapol_rx;
 
 	/**
@@ -6290,6 +6341,7 @@ union wpa_event_data {
 	 * @cf1: Center frequency 1
 	 * @cf2: Center frequency 2
 	 * @link_id: Link ID of the MLO link
+	 * @punct_bitmap: Puncturing bitmap
 	 */
 	struct ch_switch {
 		int freq;
@@ -6299,6 +6351,7 @@ union wpa_event_data {
 		int cf1;
 		int cf2;
 		int link_id;
+		u16 punct_bitmap;
 	} ch_switch;
 
 	/**
@@ -6551,12 +6604,14 @@ static inline void drv_event_eapol_rx(void *ctx, const u8 *src, const u8 *data,
 	event.eapol_rx.data = data;
 	event.eapol_rx.data_len = data_len;
 	event.eapol_rx.encrypted = FRAME_ENCRYPTION_UNKNOWN;
+	event.eapol_rx.link_id = -1;
 	wpa_supplicant_event(ctx, EVENT_EAPOL_RX, &event);
 }
 
 static inline void drv_event_eapol_rx2(void *ctx, const u8 *src, const u8 *data,
-				      size_t data_len,
-				       enum frame_encryption encrypted)
+				       size_t data_len,
+				       enum frame_encryption encrypted,
+				       int link_id)
 {
 	union wpa_event_data event;
 	os_memset(&event, 0, sizeof(event));
@@ -6564,6 +6619,7 @@ static inline void drv_event_eapol_rx2(void *ctx, const u8 *src, const u8 *data,
 	event.eapol_rx.data = data;
 	event.eapol_rx.data_len = data_len;
 	event.eapol_rx.encrypted = encrypted;
+	event.eapol_rx.link_id = link_id;
 	wpa_supplicant_event(ctx, EVENT_EAPOL_RX, &event);
 }
 

@@ -1310,8 +1310,14 @@ static int dpp_configuration_parse_helper(struct dpp_authentication *auth,
 		auth->conf_sta = conf_sta;
 		auth->conf_ap = conf_ap;
 	} else if (idx == 1) {
-		auth->conf2_sta = conf_sta;
-		auth->conf2_ap = conf_ap;
+		if (!auth->conf_sta)
+			auth->conf_sta = conf_sta;
+		else
+			auth->conf2_sta = conf_sta;
+		if (!auth->conf_ap)
+			auth->conf_ap = conf_ap;
+		else
+			auth->conf2_ap = conf_ap;
 	} else {
 		goto fail;
 	}
@@ -1342,7 +1348,7 @@ static int dpp_configuration_parse(struct dpp_authentication *auth,
 		goto fail;
 	os_memcpy(tmp, cmd, len);
 	tmp[len] = '\0';
-	res = dpp_configuration_parse_helper(auth, cmd, 0);
+	res = dpp_configuration_parse_helper(auth, tmp, 0);
 	str_clear_free(tmp);
 	if (res)
 		goto fail;

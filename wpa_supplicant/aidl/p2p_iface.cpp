@@ -122,11 +122,6 @@ struct wpa_ssid* addGroupClientNetwork(
 	wpa_network->disabled = 2;
 
 	// set necessary fields
-	if (!isAnyEtherAddr(group_owner_bssid)) {
-		os_memcpy(wpa_network->bssid, group_owner_bssid, ETH_ALEN);
-		wpa_network->bssid_set = 1;
-	}
-
 	wpa_network->ssid = (uint8_t *)os_malloc(ssid.size());
 	if (wpa_network->ssid == NULL) {
 		wpa_config_remove_network(wpa_s->conf, wpa_network->id);
@@ -194,7 +189,8 @@ int joinGroup(
 
 	if (wpas_p2p_group_add_persistent(
 		wpa_s, wpa_network, 0, 0, freq, 0, ht40, vht,
-		CONF_OPER_CHWIDTH_USE_HT, he, 0, NULL, 0, 0, is6GhzAllowed(wpa_s), P2P_JOIN_LIMIT, true)) {
+		CONF_OPER_CHWIDTH_USE_HT, he, 0, NULL, 0, 0, is6GhzAllowed(wpa_s),
+		P2P_JOIN_LIMIT, isAnyEtherAddr(group_owner_bssid) ? NULL : group_owner_bssid)) {
 		ret = -1;
 	}
 
@@ -1618,7 +1614,8 @@ ndk::ScopedAStatus P2pIface::addGroupInternal(
 	} else if (ssid->disabled == 2) {
 		if (wpas_p2p_group_add_persistent(
 			wpa_s, ssid, 0, 0, 0, 0, ht40, vht,
-			CONF_OPER_CHWIDTH_USE_HT, he, edmg, NULL, 0, 0, is6GhzAllowed(wpa_s), 0, false)) {
+			CONF_OPER_CHWIDTH_USE_HT, he, edmg, NULL, 0, 0,
+			is6GhzAllowed(wpa_s), 0, NULL)) {
 			return createStatus(SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN);
 		} else {
 			return ndk::ScopedAStatus::ok();
