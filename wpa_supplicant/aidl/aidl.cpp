@@ -1073,3 +1073,17 @@ ssize_t wpas_aidl_get_certificate(const char* alias, uint8_t** value)
 
 	return aidl_manager->getCertificate(alias, value);
 }
+
+void wpas_aidl_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
+		unsigned int count, int **scs_resp)
+{
+	if (!wpa_s || !count || !scs_resp)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying Qos Policy SCS Response");
+	aidl_manager->notifyQosPolicyScsResponse(wpa_s, count, scs_resp);
+}

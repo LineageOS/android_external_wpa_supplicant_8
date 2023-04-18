@@ -599,8 +599,9 @@ void wpas_handle_robust_av_scs_recv_action(struct wpa_supplicant *wpa_s,
 					   size_t len)
 {
 	u8 dialog_token;
-	unsigned int i, count;
+	unsigned int i, count, num_active_scs, j = 0;
 	struct active_scs_elem *scs_desc, *prev;
+	int *scs_resp[2];
 
 	if (len < 2)
 		return;
@@ -629,6 +630,26 @@ void wpas_handle_robust_av_scs_recv_action(struct wpa_supplicant *wpa_s,
 		wpa_printf(MSG_INFO,
 			   "SCS: Drop received frame due to invalid count: %u (remaining %zu octets)",
 			   count, len);
+		return;
+	}
+
+	num_active_scs = dl_list_len(&wpa_s->active_scs_ids);
+	if (num_active_scs < count) {
+		wpa_printf(MSG_ERROR, "Unexpected number of SCS responses."
+			   " Expected < %d, received %d", num_active_scs, count);
+		return;
+	}
+
+	scs_resp[0] = (int *) os_zalloc(num_active_scs);
+	if (!scs_resp[0]) {
+		wpa_printf(MSG_ERROR, "Failed to allocate memory for scs_resp");
+		return;
+	}
+
+	scs_resp[1] = (int *) os_zalloc(num_active_scs);
+	if (!scs_resp[1]) {
+		os_free(scs_resp[0]);
+		wpa_printf(MSG_ERROR, "Failed to allocate memory for scs_resp");
 		return;
 	}
 
@@ -664,6 +685,8 @@ void wpas_handle_robust_av_scs_recv_action(struct wpa_supplicant *wpa_s,
 
 		wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_SCS_RESULT "bssid=" MACSTR
 			" SCSID=%u status_code=%u", MAC2STR(src), id, status);
+		scs_resp[0][j] = id;
+		scs_resp[1][j++] = status;
 	}
 
 	eloop_cancel_timeout(scs_request_timer, wpa_s, NULL);
@@ -676,10 +699,17 @@ void wpas_handle_robust_av_scs_recv_action(struct wpa_supplicant *wpa_s,
 				WPA_EVENT_SCS_RESULT "bssid=" MACSTR
 				" SCSID=%u status_code=response_not_received",
 				MAC2STR(src), scs_desc->scs_id);
+			if (j < num_active_scs) {
+				scs_resp[0][j] = scs_desc->scs_id;
+				scs_resp[1][j++] = -1; /* TIMEOUT indicator for AIDL */
+			}
 			dl_list_del(&scs_desc->list);
 			os_free(scs_desc);
 		}
 	}
+	wpas_notify_qos_policy_scs_response(wpa_s, j, scs_resp);
+	os_free(scs_resp[0]);
+	os_free(scs_resp[1]);
 }
 
 

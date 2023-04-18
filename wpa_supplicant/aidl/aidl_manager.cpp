@@ -2609,6 +2609,64 @@ ssize_t AidlManager::getCertificate(const char* alias, uint8_t** value) {
 	return -1;
 }
 
+QosPolicyScsResponseStatusCode getQosPolicyScsResponseStatusCode(int scsResponseCode)
+{
+	QosPolicyScsResponseStatusCode status = QosPolicyScsResponseStatusCode::TIMEOUT;
+	/* Status code as per Ieee802.11-2020 Table 9-50—Status codes */
+	switch (scsResponseCode) {
+		case 0: /* SUCCESS */
+			status = QosPolicyScsResponseStatusCode::SUCCESS;
+			break;
+		case 37: /* REQUEST_DECLINED */
+			status = QosPolicyScsResponseStatusCode::TCLAS_REQUEST_DECLINED;
+			break;
+		case 56: /* REQUESTED_TCLAS_NOT_SUPPORTED */
+		case 80: /* REQUESTED_TCLAS_NOT_SUPPORTED */
+			status = QosPolicyScsResponseStatusCode::TCLAS_NOT_SUPPORTED_BY_AP;
+			break;
+		case 57: /* INSUFFICIENT_TCLAS_PROCESSING_RESOURCES */
+			status = QosPolicyScsResponseStatusCode::TCLAS_INSUFFICIENT_RESOURCES;
+			break;
+		case 81: /* TCLAS_RESOURCES_EXHAUSTED */
+			status = QosPolicyScsResponseStatusCode::TCLAS_RESOURCES_EXHAUSTED;
+			break;
+		case 128: /* TCLAS_PROCESSING_TERMINATED_INSUFFICIENT_QOS */
+			status = QosPolicyScsResponseStatusCode::TCLAS_PROCESSING_TERMINATED_INSUFFICIENT_QOS;
+			break;
+		case 129: /* TCLAS_PROCESSING_TERMINATED_POLICY_CONFLICT */
+			status = QosPolicyScsResponseStatusCode::TCLAS_PROCESSING_TERMINATED_POLICY_CONFLICT;
+			break;
+		case 97: /* TCLAS_PROCESSING_TERMINATED */
+			status = QosPolicyScsResponseStatusCode::TCLAS_PROCESSING_TERMINATED;
+			break;
+		default:
+			status = QosPolicyScsResponseStatusCode::TIMEOUT;
+			break;
+		return status;
+	}
+	return status;
+}
+
+void AidlManager::notifyQosPolicyScsResponse(struct wpa_supplicant *wpa_s,
+		unsigned int count, int **scs_resp)
+{
+	if (!wpa_s || !count || !scs_resp)
+		return;
+
+	std::vector<QosPolicyScsResponseStatus> scsResponses;
+
+	for (int i = 0; i < count; i++) {
+		QosPolicyScsResponseStatus resp;
+		resp.policyId = scs_resp[0][i] & 0xFF;
+		resp.qosPolicyScsResponseStatusCode = getQosPolicyScsResponseStatusCode(scs_resp[1][i]);
+		scsResponses.push_back(resp);
+	}
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onQosPolicyResponseForScs,
+			std::placeholders::_1, scsResponses));
+}
+
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

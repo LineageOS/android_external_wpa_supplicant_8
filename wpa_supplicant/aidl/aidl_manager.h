@@ -164,6 +164,8 @@ public:
 			struct dscp_policy_data *policies,
 			int num_policies);
 	ssize_t getCertificate(const char* alias, uint8_t** value);
+	void notifyQosPolicyScsResponse(struct wpa_supplicant *wpa_s,
+			unsigned int count, int **scs_resp);
 
 	// Methods called from aidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
