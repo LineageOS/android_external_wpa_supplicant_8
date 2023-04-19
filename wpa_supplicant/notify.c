@@ -1377,3 +1377,12 @@ void wpas_notify_signal_change(struct wpa_supplicant *wpa_s)
 {
 	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_SIGNAL_CHANGE);
 }
+
+void wpas_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
+		unsigned int num_scs_resp, int **scs_resp)
+{
+	if (!wpa_s || !num_scs_resp || !scs_resp)
+		return;
+
+	wpas_aidl_notify_qos_policy_scs_response(wpa_s, num_scs_resp, scs_resp);
+}

@@ -2085,19 +2085,350 @@ StaIface::getSignalPollResultsInternal()
 	return {results, ndk::ScopedAStatus::ok()};
 }
 
+static int set_type4_frame_classifier(QosPolicyScsData qos_policy_data,
+				      struct type4_params *param)
+{
+	u8 classifier_mask = 0;
+	int ret;
+	char addr[INET6_ADDRSTRLEN];
+	uint32_t inMask = static_cast<uint32_t>(qos_policy_data.classifierParams.classifierParamMask);
 
+	if (qos_policy_data.classifierParams.ipVersion ==
+	    IpVersion::VERSION_4) {
+		param->ip_version = IPV4;
+	} else if (qos_policy_data.classifierParams.ipVersion ==
+	    IpVersion::VERSION_6) {
+		param->ip_version = IPV6;
+	} else {
+		wpa_printf(MSG_ERROR, "IP version missing/invalid");
+		return -1;
+	}
+
+	/* Classifier Mask - bit 0 = Ip Version */
+	classifier_mask |= BIT(0);
+
+	if (inMask & static_cast<uint32_t>(QosPolicyClassifierParamsMask::SRC_IP)) {
+		if (param->ip_version == IPV4) {
+			if (qos_policy_data.classifierParams.srcIp.size() !=
+			    sizeof(param->ip_params.v4.src_ip)) {
+				wpa_printf(MSG_ERROR, "Invalid source IP");
+				return -1;
+			}
+			os_memcpy(addr, qos_policy_data.classifierParams.srcIp.data(), 4);
+			ret = inet_pton(AF_INET, addr,
+					&param->ip_params.v4.src_ip);
+		} else {
+			if (qos_policy_data.classifierParams.srcIp.size() !=
+			    sizeof(param->ip_params.v6.src_ip)) {
+				wpa_printf(MSG_ERROR, "Invalid source IP");
+				return -1;
+			}
+			os_memcpy(addr, qos_policy_data.classifierParams.srcIp.data(), 16);
+			ret = inet_pton(AF_INET6, addr,
+					&param->ip_params.v6.src_ip);
+		}
+		if (ret != 1) {
+			wpa_printf(MSG_ERROR,
+				   "Error converting src IP address to binary ret=%d",
+				   ret);
+			return -1;
+		}
+
+		/* Classifier Mask - bit 1 = Source IP Address */
+		classifier_mask |= BIT(1);
+	}
+
+	if (inMask & static_cast<uint32_t>(QosPolicyClassifierParamsMask::DST_IP)) {
+		if (param->ip_version == IPV4) {
+			if (qos_policy_data.classifierParams.dstIp.size() !=
+			    sizeof(param->ip_params.v4.dst_ip)) {
+				wpa_printf(MSG_ERROR, "Invalid destination IP");
+				return -1;
+			}
+			os_memcpy(addr, qos_policy_data.classifierParams.dstIp.data(), 4);
+			ret = inet_pton(AF_INET, addr,
+					&param->ip_params.v4.dst_ip);
+		} else {
+			if (qos_policy_data.classifierParams.dstIp.size() !=
+			    sizeof(param->ip_params.v6.dst_ip)) {
+				wpa_printf(MSG_ERROR, "Invalid destination IP");
+				return -1;
+			}
+			os_memcpy(addr, qos_policy_data.classifierParams.dstIp.data(), 16);
+			ret = inet_pton(AF_INET6, addr,
+					&param->ip_params.v6.dst_ip);
+		}
+
+		if (ret != 1) {
+			wpa_printf(MSG_ERROR,
+				   "Error converting dst IP address to binary ret=%d",
+				   ret);
+			return -1;
+		}
+
+		/* Classifier Mask - bit 2 = Destination IP Address */
+		classifier_mask |= BIT(2);
+	}
+
+	if ((inMask & static_cast<uint32_t>(QosPolicyClassifierParamsMask::SRC_PORT))
+			&& (qos_policy_data.classifierParams.srcPort > 0)) {
+		if (param->ip_version == IPV4)
+			param->ip_params.v4.src_port = qos_policy_data.classifierParams.srcPort;
+		else
+			param->ip_params.v6.src_port = qos_policy_data.classifierParams.srcPort;
+
+		/* Classifier Mask - bit 3 = Source Port */
+		classifier_mask |= BIT(3);
+	}
+
+	if ((inMask & static_cast<uint32_t>(QosPolicyClassifierParamsMask::DST_PORT_RANGE))
+			&& (qos_policy_data.classifierParams.dstPortRange.startPort > 0)) {
+		if (param->ip_version == IPV4)
+			param->ip_params.v4.dst_port = qos_policy_data.classifierParams.dstPortRange.startPort;
+		else
+			param->ip_params.v6.dst_port = qos_policy_data.classifierParams.dstPortRange.startPort;
+
+		/* Classifier Mask - bit 4 = Destination Port range */
+		classifier_mask |= BIT(4);
+	}
+
+	if ((inMask & static_cast<uint32_t>(QosPolicyClassifierParamsMask::DSCP))
+			&& (qos_policy_data.classifierParams.dscp > 0)) {
+		if (param->ip_version == IPV4)
+			param->ip_params.v4.dscp = qos_policy_data.classifierParams.dscp;
+		else
+			param->ip_params.v6.dscp = qos_policy_data.classifierParams.dscp;
+
+		/* Classifier Mask - bit 5 = DSCP */
+		classifier_mask |= BIT(5);
+	}
+
+	if (inMask & static_cast<uint32_t>(QosPolicyClassifierParamsMask::PROTOCOL_NEXT_HEADER)) {
+		if (!((qos_policy_data.classifierParams.protocolNextHdr ==
+		       ProtocolNextHeader::TCP) ||
+		      (qos_policy_data.classifierParams.protocolNextHdr ==
+		       ProtocolNextHeader::UDP) ||
+		      (qos_policy_data.classifierParams.protocolNextHdr ==
+		       ProtocolNextHeader::ESP))) {
+			wpa_printf(MSG_ERROR, "Invalid protocol");
+			return -1;
+		}
+		if (param->ip_version == IPV4) {
+			param->ip_params.v4.protocol =
+				(u8)qos_policy_data.classifierParams.protocolNextHdr;
+		} else {
+			param->ip_params.v6.next_header =
+				(u8)qos_policy_data.classifierParams.protocolNextHdr;
+		}
+
+		/* Classifier Mask - bit 6 = Protocol Number*/
+		classifier_mask |= BIT(6);
+	}
+
+	if (inMask & static_cast<uint32_t>(QosPolicyClassifierParamsMask::FLOW_LABEL)) {
+		if (qos_policy_data.classifierParams.flowLabelIpv6.size() !=
+		    sizeof(param->ip_params.v6.flow_label)) {
+			wpa_printf(MSG_ERROR, "Invalid flow label");
+			return -1;
+		}
+		os_memcpy(param->ip_params.v6.flow_label, qos_policy_data.classifierParams.flowLabelIpv6.data(),
+			  sizeof(qos_policy_data.classifierParams.flowLabelIpv6));
+
+		/* Classifier Mask - bit 7 = flow level */
+		classifier_mask |= BIT(7);
+	}
+
+	param->classifier_mask = classifier_mask;
+	return 0;
+}
+
+static int scs_parse_type4(struct tclas_element *elem, QosPolicyScsData qos_policy_data)
+{
+	struct type4_params type4_param;
+	memset(&type4_param, 0, sizeof(type4_param));
+
+	if (set_type4_frame_classifier(qos_policy_data, &type4_param) < 0) {
+		wpa_printf(MSG_ERROR, "Failed to set frame_classifier 4");
+		return -1;
+	}
+
+	os_memcpy(&elem->frame_classifier.type4_param,
+		  &type4_param, sizeof(struct type4_params));
+	return 0;
+}
+
+/**
+ * This is a request to the AP (if it supports the feature) to apply the QoS policy
+ * on traffic in the Downlink.
+ */
 std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
 StaIface::addQosPolicyRequestForScsInternal(const std::vector<QosPolicyScsData>& qosPolicyData)
 {
-	return {std::vector<QosPolicyScsRequestStatus>(),
-		createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct scs_robust_av_data *scs_data = &wpa_s->scs_robust_av_req;
+	struct scs_desc_elem desc_elem;
+	int user_priority, num_qos_policies;
+	unsigned int num_scs_ids = 0;
+	std::vector<QosPolicyScsRequestStatus> reports;
+
+	if (wpa_s->ongoing_scs_req) {
+		wpa_printf(MSG_ERROR, "AIDL: SCS Request already in queue");
+		return {std::vector<QosPolicyScsRequestStatus>(),
+			createStatus(SupplicantStatusCode::FAILURE_ONGOING_REQUEST)};
+	}
+	free_up_scs_desc(scs_data);
+
+	/**
+	 * format:
+	 * [scs_id=<decimal number>] [scs_up=<0-7>]
+	 * [classifier params based on classifier type]
+	 * [scs_id=<decimal number>] ...
+	 */
+	num_qos_policies = qosPolicyData.size();
+	for (int i = 0; i < num_qos_policies; i++) {
+		struct scs_desc_elem *new_desc_elems;
+		struct active_scs_elem *active_scs_desc;
+		struct tclas_element *elem;
+		bool scsid_active = false;
+		QosPolicyScsRequestStatus status;
+
+		memset(&desc_elem, 0, sizeof(desc_elem));
+		desc_elem.scs_id = qosPolicyData[i].policyId;
+		status.policyId = desc_elem.scs_id;
+		desc_elem.request_type = SCS_REQ_ADD;
+		dl_list_for_each(active_scs_desc, &wpa_s->active_scs_ids,
+				 struct active_scs_elem, list) {
+			if (desc_elem.scs_id == active_scs_desc->scs_id) {
+				scsid_active = true;
+				break;
+			}
+		}
+
+		if (scsid_active) {
+			wpa_printf(MSG_ERROR, "SCSID %d already active",
+				   desc_elem.scs_id);
+			status.qosPolicyScsRequestStatusCode = QosPolicyScsRequestStatusCode::ALREADY_ACTIVE;
+			reports.push_back(status);
+			continue;
+		}
+
+		status.qosPolicyScsRequestStatusCode = QosPolicyScsRequestStatusCode::INVALID;
+		user_priority = qosPolicyData[i].userPriority;
+		if (user_priority < 0 || user_priority > 7) {
+			wpa_printf(MSG_ERROR,
+				   "Intra-Access user priority invalid %d", user_priority);
+			reports.push_back(status);
+			continue;
+		}
+
+		desc_elem.intra_access_priority = user_priority;
+		desc_elem.scs_up_avail = true;
+
+		/**
+		 * Supported classifier type 4.
+		 */
+		desc_elem.tclas_elems = (struct tclas_element *) os_malloc(sizeof(struct tclas_element));
+		if (!desc_elem.tclas_elems) {
+			wpa_printf(MSG_ERROR,
+				   "Classifier type4 failed with Bad malloc");
+			reports.push_back(status);
+			continue;
+		}
+
+		elem = desc_elem.tclas_elems;
+		memset(elem, 0, sizeof(struct tclas_element));
+		elem->classifier_type = 4;
+		if (scs_parse_type4(elem, qosPolicyData[i]) < 0) {
+			os_free(elem);
+			reports.push_back(status);
+			continue;
+		}
+
+		desc_elem.num_tclas_elem = 1;
+
+		/* Reallocate memory to scs_desc_elems to accomodate further policies */
+		new_desc_elems = static_cast<struct scs_desc_elem *>(os_realloc(scs_data->scs_desc_elems,
+				(num_scs_ids + 1) * sizeof(struct scs_desc_elem)));
+		if (!new_desc_elems) {
+			os_free(elem);
+			reports.push_back(status);
+			continue;
+		}
+
+		scs_data->scs_desc_elems = new_desc_elems;
+		os_memcpy((u8 *) scs_data->scs_desc_elems + num_scs_ids *
+			  sizeof(desc_elem), &desc_elem, sizeof(desc_elem));
+		num_scs_ids++;
+		scs_data->num_scs_desc = num_scs_ids;
+		status.qosPolicyScsRequestStatusCode = QosPolicyScsRequestStatusCode::SENT;
+		reports.push_back(status);
+	}
+	wpas_send_scs_req(wpa_s);
+	return {std::vector<QosPolicyScsRequestStatus>(reports),
+		ndk::ScopedAStatus::ok()};
 }
 
 std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
 StaIface::removeQosPolicyForScsInternal(const std::vector<uint8_t>& scsPolicyIds)
 {
-	return {std::vector<QosPolicyScsRequestStatus>(),
-		createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct scs_robust_av_data *scs_data = &wpa_s->scs_robust_av_req;
+	struct scs_desc_elem desc_elem;
+	int count;
+	unsigned int num_scs_ids = 0;
+	std::vector<QosPolicyScsRequestStatus> reports;
+	struct active_scs_elem *scs_desc;
+
+	if (wpa_s->ongoing_scs_req) {
+		wpa_printf(MSG_ERROR, "AIDL: SCS Request already in queue");
+		return {std::vector<QosPolicyScsRequestStatus>(),
+			createStatus(SupplicantStatusCode::FAILURE_ONGOING_REQUEST)};
+	}
+	free_up_scs_desc(scs_data);
+
+	count = scsPolicyIds.size();
+	for (int i = 0; i < count; i++) {
+		struct scs_desc_elem *new_desc_elems;
+		QosPolicyScsRequestStatus status;
+		bool policy_id_exists = false;
+
+		memset(&desc_elem, 0, sizeof(desc_elem));
+		desc_elem.scs_id = scsPolicyIds[i];
+		status.policyId = scsPolicyIds[i];
+		desc_elem.request_type = SCS_REQ_REMOVE;
+		dl_list_for_each(scs_desc, &wpa_s->active_scs_ids,
+				struct active_scs_elem, list) {
+			if (desc_elem.scs_id == scs_desc->scs_id) {
+				policy_id_exists = true;
+				break;
+			}
+		}
+		if (policy_id_exists == false) {
+			status.qosPolicyScsRequestStatusCode = QosPolicyScsRequestStatusCode::NOT_EXIST;
+			reports.push_back(status);
+			continue;
+		}
+
+		new_desc_elems = static_cast<struct scs_desc_elem *>(os_realloc(scs_data->scs_desc_elems, (num_scs_ids + 1) *
+				sizeof(struct scs_desc_elem)));
+		if (!new_desc_elems) {
+			status.qosPolicyScsRequestStatusCode = QosPolicyScsRequestStatusCode::INVALID;
+			reports.push_back(status);
+			continue;
+		}
+
+		scs_data->scs_desc_elems = new_desc_elems;
+		os_memcpy((u8 *) scs_data->scs_desc_elems + num_scs_ids *
+			  sizeof(desc_elem), &desc_elem, sizeof(desc_elem));
+		num_scs_ids++;
+		scs_data->num_scs_desc = num_scs_ids;
+		status.qosPolicyScsRequestStatusCode = QosPolicyScsRequestStatusCode::SENT;
+		reports.push_back(status);
+	}
+	wpas_send_scs_req(wpa_s);
+
+	return {std::vector<QosPolicyScsRequestStatus>(reports),
+		ndk::ScopedAStatus::ok()};
 }
 
 /**
