@@ -2059,13 +2059,13 @@ StaIface::getSignalPollResultsInternal()
 	struct wpa_mlo_signal_info mlo_si;
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 
-	if (wpa_s->valid_links && wpa_drv_mlo_signal_poll(wpa_s, &mlo_si)) {
+	if (wpa_s->valid_links && (wpa_drv_mlo_signal_poll(wpa_s, &mlo_si) == 0)) {
 		for (int i = 0; i < MAX_NUM_MLD_LINKS; i++) {
 			if (!(mlo_si.valid_links & BIT(i)))
 				continue;
 
 			SignalPollResult result;
-			result.linkId = 0;
+			result.linkId = i;
 			result.currentRssiDbm = mlo_si.links[i].data.signal;
 			result.txBitrateMbps = mlo_si.links[i].data.current_tx_rate / 1000;
 			result.rxBitrateMbps = mlo_si.links[i].data.current_rx_rate / 1000;
