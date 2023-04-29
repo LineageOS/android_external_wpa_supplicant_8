@@ -2587,6 +2587,7 @@ static int tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
 			u8 hash[32];
 			const u8 *addr[1];
 			size_t len[1];
+
 			addr[0] = wpabuf_head(cert);
 			len[0] = wpabuf_len(cert);
 			if (sha256_vector(1, addr, len, hash) < 0 ||
@@ -2608,29 +2609,30 @@ static int tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
 	}
 #endif /* CONFIG_SHA256 */
 
-	openssl_tls_cert_event(conn, err_cert, depth, buf);
-
 	if (!preverify_ok) {
-		if (depth > 0) {
-			/* Send cert event for the peer certificate so that
-			 * the upper layers get information about it even if
-			 * validation of a CA certificate fails. */
-			STACK_OF(X509) *chain;
+		/* Send cert events for the peer certificate chain so that
+		 * the upper layers get information about it even if
+		 * validation of a CA certificate fails. */
+		STACK_OF(X509) *chain;
+		int num_of_certs;
 
-			chain = X509_STORE_CTX_get1_chain(x509_ctx);
-			if (chain && sk_X509_num(chain) > 0) {
-				char buf2[256];
-				X509 *cert;
+		chain = X509_STORE_CTX_get1_chain(x509_ctx);
+		num_of_certs = sk_X509_num(chain);
+		if (chain && num_of_certs > 0) {
+			char buf2[256];
+			X509 *cert;
+			int cur_depth;
 
-				cert = sk_X509_value(chain, 0);
+			for (cur_depth = num_of_certs - 1; cur_depth >= 0; cur_depth--) {
+				cert = sk_X509_value(chain, cur_depth);
 				X509_NAME_oneline(X509_get_subject_name(cert),
 						  buf2, sizeof(buf2));
 
-				openssl_tls_cert_event(conn, cert, 0, buf2);
+				openssl_tls_cert_event(conn, cert, cur_depth, buf2);
 			}
-			if (chain)
-				sk_X509_pop_free(chain, X509_free);
 		}
+		if (chain)
+			sk_X509_pop_free(chain, X509_free);
 
 		wpa_printf(MSG_WARNING, "TLS: Certificate verification failed,"
 			   " error %d (%s) depth %d for '%s'", err, err_str,
@@ -2639,6 +2641,8 @@ static int tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
 				       err_str, TLS_FAIL_UNSPECIFIED);
 		return preverify_ok;
 	}
+
+	openssl_tls_cert_event(conn, err_cert, depth, buf);
 
 	wpa_printf(MSG_DEBUG, "TLS: tls_verify_cb - preverify_ok=%d "
 		   "err=%d (%s) ca_cert_verify=%d depth=%d buf='%s'",

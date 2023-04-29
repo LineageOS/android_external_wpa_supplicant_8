@@ -2058,17 +2058,15 @@ void AidlManager::notifyCertification(struct wpa_supplicant *wpa_s,
 		return;
 	}
 	struct wpa_ssid *current_ssid = wpa_s->current_ssid;
+	if (!wpa_key_mgmt_wpa_ieee8021x(current_ssid->key_mgmt)) {
+		return;
+	}
 	if (NULL == subject || NULL == cert_hash || NULL == cert) {
 		wpa_printf(MSG_ERROR,
 				"Incomplete certificate information. Drop Certification event!");
 		return;
 	}
-	if (!wpa_key_mgmt_wpa_ieee8021x(current_ssid->key_mgmt)) {
-		wpa_printf(MSG_ERROR, "Not 802.1x configuration, Drop Certification event!");
-		return;
-	}
-	if (current_ssid->eap.cert.ca_path || current_ssid->eap.cert.ca_cert) {
-		wpa_printf(MSG_DEBUG, "Already has CA certificate. Drop Certification event!");
+	if (current_ssid->eap.cert.ca_cert) {
 		return;
 	}
 
