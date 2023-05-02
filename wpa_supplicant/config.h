@@ -854,8 +854,8 @@ struct wpa_config {
 	int p2p_add_cli_chan;
 	int p2p_ignore_shared_freq;
 	int p2p_optimize_listen_chan;
-
 	int p2p_6ghz_disable;
+	int p2p_dfs_chan_enable;
 
 	struct wpabuf *wps_vendor_ext_m1;
 
