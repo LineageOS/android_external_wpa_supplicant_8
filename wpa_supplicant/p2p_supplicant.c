@@ -3993,7 +3993,7 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 		const struct oper_class_map *o = &global_op_class[op];
 		unsigned int ch;
 		struct p2p_reg_class *reg = NULL, *cli_reg = NULL;
-		bool check_dfs_supported = (wpa_s->conf->p2p_dfs_chan_enable
+		bool check_dfs_supported = (is_p2p_dfs_chan_enabled(wpa_s->global->p2p)
 							&& is_dfs_global_op_class(o->op_class));
 
 		if ((!check_dfs_supported && o->p2p == NO_P2P_SUPP) ||
@@ -4971,6 +4971,7 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 	p2p.p2ps_group_capability = p2ps_group_capability;
 	p2p.get_pref_freq_list = wpas_p2p_get_pref_freq_list;
 	p2p.p2p_6ghz_disable = wpa_s->conf->p2p_6ghz_disable;
+	p2p.p2p_dfs_chan_enable = wpa_s->conf->p2p_dfs_chan_enable;
 
 	os_memcpy(wpa_s->global->p2p_dev_addr, wpa_s->own_addr, ETH_ALEN);
 	os_memcpy(p2p.dev_addr, wpa_s->global->p2p_dev_addr, ETH_ALEN);
