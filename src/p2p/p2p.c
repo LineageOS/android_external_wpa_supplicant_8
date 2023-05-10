@@ -2960,6 +2960,14 @@ bool is_p2p_6ghz_disabled(struct p2p_data *p2p)
 }
 
 
+bool is_p2p_dfs_chan_enabled(struct p2p_data *p2p)
+{
+	if (p2p)
+		return p2p->cfg->p2p_dfs_chan_enable;
+	return false;
+}
+
+
 struct p2p_data * p2p_init(const struct p2p_config *cfg)
 {
 	struct p2p_data *p2p;

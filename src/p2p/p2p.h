@@ -508,6 +508,11 @@ struct p2p_config {
 	bool p2p_6ghz_disable;
 
 	/**
+	 * p2p_dfs_chan_enable - Enable p2p Go to operate on dfs channel
+	 */
+	bool p2p_dfs_chan_enable;
+
+	/**
 	 * pri_dev_type - Primary Device Type (see WPS)
 	 */
 	u8 pri_dev_type[8];
@@ -2114,6 +2119,7 @@ void p2p_update_channel_list(struct p2p_data *p2p,
 			     const struct p2p_channels *cli_chan);
 
 bool is_p2p_6ghz_disabled(struct p2p_data *p2p);
+bool is_p2p_dfs_chan_enabled(struct p2p_data *p2p);
 
 /**
  * p2p_set_best_channels - Update best channel information
