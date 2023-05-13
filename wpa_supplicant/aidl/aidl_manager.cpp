@@ -2607,6 +2607,41 @@ ssize_t AidlManager::getCertificate(const char* alias, uint8_t** value) {
 	return -1;
 }
 
+ssize_t AidlManager::listAliases(const char *prefix, char ***aliases) {
+	if (prefix == nullptr || aliases == nullptr) {
+		wpa_printf(MSG_ERROR, "Null pointer argument was passed to listAliases");
+		return -1;
+	}
+
+	if (auto results =
+			certificate_utils::listAliases(prefix, non_standard_cert_callback_)) {
+		int count = results->size();
+		*aliases = (char **) os_malloc(sizeof(char *) * count);
+		if (*aliases == nullptr) {
+			wpa_printf(MSG_ERROR, "listAliases: os_malloc alias array error");
+			return -1;
+		}
+		os_memset(*aliases, 0, sizeof(char *) * count);
+
+		int index = 0;
+		for (auto it = results->begin(); it != results->end(); ++it) {
+			int alias_len = it->length();
+			char *alias = (char *) os_malloc(alias_len + 1);
+			if (alias == nullptr) {
+				wpa_printf(MSG_ERROR, "listAliases: os_malloc alias string error");
+				for (int i = 0; i < index; ++i) os_free((*aliases)[i]);
+				os_free(*aliases);
+				return -1;
+			}
+			os_memcpy(alias, it->data(), alias_len + 1);
+			(*aliases)[index] = alias;
+			index++;
+		}
+		return count;
+	}
+	return -1;
+}
+
 QosPolicyScsResponseStatusCode getQosPolicyScsResponseStatusCode(int scsResponseCode)
 {
 	QosPolicyScsResponseStatusCode status = QosPolicyScsResponseStatusCode::TIMEOUT;
