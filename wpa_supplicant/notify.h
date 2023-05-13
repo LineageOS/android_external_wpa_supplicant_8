@@ -223,6 +223,7 @@ void wpas_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
 		struct dscp_policy_data *policies, int num_policies);
 void wpas_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency);
 ssize_t wpas_get_certificate(const char *alias, uint8_t** value);
+ssize_t wpas_list_aliases(const char *prefix, char ***aliases);
 void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
 				 struct rsn_pmksa_cache_entry *entry);
 void wpas_notify_signal_change(struct wpa_supplicant *wpa_s);

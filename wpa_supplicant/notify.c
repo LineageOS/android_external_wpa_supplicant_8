@@ -1372,6 +1372,10 @@ ssize_t wpas_get_certificate(const char *alias, uint8_t** value)
 	return wpas_aidl_get_certificate(alias, value);
 }
 
+ssize_t wpas_list_aliases(const char *prefix, char ***aliases)
+{
+	return wpas_aidl_list_aliases(prefix, aliases);
+}
 
 void wpas_notify_signal_change(struct wpa_supplicant *wpa_s)
 {
