@@ -37,6 +37,16 @@ int wpas_notify_supplicant_initialized(struct wpa_global *global)
 	}
 #endif /* CONFIG_CTRL_IFACE_DBUS_NEW */
 
+#ifdef CONFIG_AIDL
+	// Initialize AIDL here if daemonize is disabled.
+	// Otherwise initialize it later.
+	if (!global->params.daemonize) {
+		global->aidl = wpas_aidl_init(global);
+		if (!global->aidl)
+			return -1;
+	}
+#endif /* CONFIG_AIDL */
+
 	return 0;
 }
 
@@ -63,13 +73,14 @@ int wpas_notify_iface_added(struct wpa_supplicant *wpa_s)
 	}
 
 #ifdef CONFIG_AIDL
-	/* AIDL initialization may not be complete at this point.
+	/*
+	 * AIDL initialization may not be complete here if daemonize is enabled.
 	 * Initialization is done after daemonizing in order to avoid
 	 * issues with the file descriptor.
 	 */
-	if (!wpa_s || !wpa_s->global->aidl)
+	if (!wpa_s->global->aidl)
 		return 0;
-	/* HIDL interface wants to keep track of the P2P mgmt iface. */
+	/* AIDL interface wants to keep track of the P2P mgmt iface. */
 	if (wpas_aidl_register_interface(wpa_s))
 		return -1;
 #endif
@@ -85,7 +96,7 @@ void wpas_notify_iface_removed(struct wpa_supplicant *wpa_s)
 		wpas_dbus_unregister_interface(wpa_s);
 	}
 
-	/* HIDL interface wants to keep track of the P2P mgmt iface. */
+	/* AIDL interface wants to keep track of the P2P mgmt iface. */
 	wpas_aidl_unregister_interface(wpa_s);
 }
 

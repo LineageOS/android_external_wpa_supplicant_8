@@ -7920,9 +7920,12 @@ int wpa_supplicant_run(struct wpa_global *global)
 	}
 
 #ifdef CONFIG_AIDL
-	global->aidl = wpas_aidl_init(global);
-	if (!global->aidl)
-		return -1;
+	// If daemonize is enabled, initialize AIDL here.
+	if (global->params.daemonize) {
+		global->aidl = wpas_aidl_init(global);
+		if (!global->aidl)
+			return -1;
+	}
 #endif /* CONFIG_AIDL */
 
 	eloop_register_signal_terminate(wpa_supplicant_terminate, global);
