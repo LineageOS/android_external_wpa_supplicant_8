@@ -28,7 +28,7 @@
 #include "scan.h"
 #include "notify.h"
 #include "dpp_supplicant.h"
-#include "aidl.h"
+#include "aidl/aidl.h"
 
 
 static int wpas_dpp_listen_start(struct wpa_supplicant *wpa_s,
