@@ -646,6 +646,59 @@ int AidlManager::unregisterNetwork(
 	return 0;
 }
 
+// Some of the undefined AKMs in AIDL (Mostly extension AKMs like FT AKMs)
+// are mapped to the main AKM. This is for the framework to map the AKM to
+// correct security type.
+KeyMgmtMask convertSupplicantSelectedKeyMgmtForConnectionToAidl(int key_mgmt)
+{
+	switch (key_mgmt) {
+		case WPA_KEY_MGMT_IEEE8021X:
+			return KeyMgmtMask::WPA_EAP;
+		case WPA_KEY_MGMT_PSK:
+			return KeyMgmtMask::WPA_PSK;
+		case WPA_KEY_MGMT_NONE:
+			return KeyMgmtMask::NONE;
+		case WPA_KEY_MGMT_IEEE8021X_NO_WPA:
+			return KeyMgmtMask::IEEE8021X;
+		case WPA_KEY_MGMT_FT_IEEE8021X:
+			return KeyMgmtMask::FT_EAP;
+		case WPA_KEY_MGMT_FT_PSK:
+			return KeyMgmtMask::FT_PSK;
+		case WPA_KEY_MGMT_IEEE8021X_SHA256:
+			return KeyMgmtMask::WPA_EAP_SHA256;
+		case WPA_KEY_MGMT_PSK_SHA256:
+			return KeyMgmtMask::WPA_PSK_SHA256;
+		case WPA_KEY_MGMT_SAE:
+		case WPA_KEY_MGMT_FT_SAE:
+		case WPA_KEY_MGMT_SAE_EXT_KEY:
+		case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
+			return KeyMgmtMask::SAE;
+		case WPA_KEY_MGMT_WAPI_PSK:
+			return KeyMgmtMask::WAPI_PSK;
+		case WPA_KEY_MGMT_WAPI_CERT:
+			return KeyMgmtMask::WAPI_CERT;
+		case WPA_KEY_MGMT_OSEN:
+			return KeyMgmtMask::OSEN;
+		case WPA_KEY_MGMT_IEEE8021X_SUITE_B_192:
+		case WPA_KEY_MGMT_FT_IEEE8021X_SHA384:
+			return KeyMgmtMask::SUITE_B_192;
+		case WPA_KEY_MGMT_FILS_SHA256:
+		case WPA_KEY_MGMT_FT_FILS_SHA256:
+			return KeyMgmtMask::FILS_SHA256;
+		case WPA_KEY_MGMT_FILS_SHA384:
+		case WPA_KEY_MGMT_FT_FILS_SHA384:
+			return KeyMgmtMask::FILS_SHA384;
+		case WPA_KEY_MGMT_OWE:
+			return KeyMgmtMask::OWE;
+		case WPA_KEY_MGMT_DPP:
+			return KeyMgmtMask::DPP;
+		default:
+			wpa_printf(MSG_INFO, "Unable to convert supplicant key_mgmt 0x%x to AIDL",
+				    key_mgmt);
+			return (KeyMgmtMask) key_mgmt;
+	}
+}
+
 /**
  * Notify all listeners about any state changes on a particular interface.
  *
@@ -690,10 +743,17 @@ int AidlManager::notifyStateChange(struct wpa_supplicant *wpa_s)
 		(wpa_auth_alg_fils(wpa_s->auth_alg) &&
 		 !dl_list_empty(&wpa_s->fils_hlp_req) &&
 		 (wpa_s->wpa_state == WPA_COMPLETED)) ? true : false;
-	aidl_state_change_data.keyMgmtMask = (KeyMgmtMask) wpa_s->key_mgmt;
-	// wpa_supplicant sets the frequency on receiving the EVENT_ASSOC.
-	aidl_state_change_data.frequencyMhz =
-		wpa_s->wpa_state >= WPA_ASSOCIATED ? wpa_s->assoc_freq : 0;
+	if (wpa_s->wpa_state >= WPA_ASSOCIATED) {
+		// wpa_supplicant sets the frequency on receiving the EVENT_ASSOC.
+		aidl_state_change_data.frequencyMhz = wpa_s->assoc_freq;
+		// The key_mgmt is selected prior to sending the connect command
+		// to driver. But in case of CROSS-AKM Connection/Roaming, the
+		// key_mgmt is updated with the one from association IE. So the
+		// selected key_mgmt is accurate only after moving to
+		// associated state.
+		aidl_state_change_data.keyMgmtMask =
+			convertSupplicantSelectedKeyMgmtForConnectionToAidl(wpa_s->key_mgmt);
+	}
 
 	// Invoke the |onStateChanged| method on all registered callbacks.
 	std::function<
