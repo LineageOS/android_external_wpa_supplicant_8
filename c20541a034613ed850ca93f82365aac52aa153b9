@@ -16,6 +16,23 @@
       "message": "works on rtwo",
       "revId": "c20541a034613ed850ca93f82365aac52aa153b9",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "bc439147_f491894c",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 13648
+      },
+      "writtenOn": "2023-10-29T18:19:12Z",
+      "side": 1,
+      "message": "@Luca, just FIY these changes are part of android-14.0.0_r1.",
+      "revId": "c20541a034613ed850ca93f82365aac52aa153b9",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
