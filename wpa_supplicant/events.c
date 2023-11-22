@@ -3889,6 +3889,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 			 * EVENT_PORT_AUTHORIZED handler when the driver is done
 			 * with the 4-way handshake.
 			 */
+			wpa_supplicant_set_state(wpa_s, WPA_4WAY_HANDSHAKE);
 			wpa_msg(wpa_s, MSG_INFO,
 				"ASSOC INFO: wait for driver port authorized indication");
 		}
@@ -5020,7 +5021,7 @@ static void wpa_supplicant_notify_avoid_freq(struct wpa_supplicant *wpa_s,
 
 static void wpa_supplicant_event_port_authorized(struct wpa_supplicant *wpa_s)
 {
-	if (wpa_s->wpa_state == WPA_ASSOCIATED) {
+	if (wpa_s->wpa_state >= WPA_ASSOCIATED) {
 		wpa_supplicant_cancel_auth_timeout(wpa_s);
 		wpa_supplicant_set_state(wpa_s, WPA_COMPLETED);
 		eapol_sm_notify_portValid(wpa_s->eapol, true);
