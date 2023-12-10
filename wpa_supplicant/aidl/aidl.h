@@ -52,6 +52,10 @@ extern "C"
 	void wpas_aidl_notify_hs20_rx_terms_and_conditions_acceptance(
 			struct wpa_supplicant *wpa_s, const char *url);
 	void wpas_aidl_notify_disconnect_reason(struct wpa_supplicant *wpa_s);
+	void wpas_aidl_notify_mlo_info_change_reason(
+		struct wpa_supplicant *wpa_s,
+		enum mlo_info_change_reason reason);
+
 	void wpas_aidl_notify_assoc_reject(struct wpa_supplicant *wpa_s, const u8 *bssid,
 		u8 timed_out, const u8 *assoc_resp_ie, size_t assoc_resp_ie_len);
 	void wpas_aidl_notify_auth_timeout(struct wpa_supplicant *wpa_s);
@@ -198,6 +202,9 @@ static void wpas_aidl_notify_hs20_rx_terms_and_conditions_acceptance(
 		struct wpa_supplicant *wpa_s, const char *url)
 {}
 static void wpas_aidl_notify_disconnect_reason(struct wpa_supplicant *wpa_s) {}
+static void wpas_aidl_notify_mlo_info_change_reason(
+	struct wpa_supplicant *wpa_s, enum mlo_info_change_reason reason)
+{}
 static void wpas_aidl_notify_assoc_reject(struct wpa_supplicant *wpa_s, const u8 *bssid,
 	u8 timed_out, const u8 *assoc_resp_ie, size_t assoc_resp_ie_len) {}
 static void wpas_aidl_notify_auth_timeout(struct wpa_supplicant *wpa_s) {}

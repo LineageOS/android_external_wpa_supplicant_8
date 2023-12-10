@@ -2653,6 +2653,23 @@ void AidlManager::notifyQosPolicyRequest(struct wpa_supplicant *wpa_s,
 			std::placeholders::_1, wpa_s->dscp_req_dialog_token, qosPolicyData));
 }
 
+void AidlManager::notifyMloLinksInfoChanged(struct wpa_supplicant *wpa_s,
+					    enum mlo_info_change_reason reason)
+{
+	if (!wpa_s)
+		return;
+
+	if (sta_iface_object_map_.find(wpa_s->ifname) ==
+		sta_iface_object_map_.end())
+		return;
+
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname),
+		std::bind(&ISupplicantStaIfaceCallback::onMloLinksInfoChanged,
+			  std::placeholders::_1,
+			  static_cast<ISupplicantStaIfaceCallback::MloLinkInfoChangeReason>(reason)));
+}
+
 ssize_t AidlManager::getCertificate(const char* alias, uint8_t** value) {
 	if (alias == nullptr || value == nullptr) {
 		wpa_printf(MSG_ERROR, "Null pointer argument was passed to getCertificate");

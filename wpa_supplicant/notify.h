@@ -229,5 +229,7 @@ void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
 void wpas_notify_signal_change(struct wpa_supplicant *wpa_s);
 void wpas_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 		unsigned int num_scs_resp, int **scs_resp);
+void wpas_notify_mlo_info_change_reason(struct wpa_supplicant *wpa_s,
+					enum mlo_info_change_reason reason);
 
 #endif /* NOTIFY_H */

@@ -167,6 +167,8 @@ public:
 	ssize_t listAliases(const char *prefix, char ***aliases);
 	void notifyQosPolicyScsResponse(struct wpa_supplicant *wpa_s,
 			unsigned int count, int **scs_resp);
+	void notifyMloLinksInfoChanged(struct wpa_supplicant *wpa_s,
+				       enum mlo_info_change_reason reason);
 
 	// Methods called from aidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);

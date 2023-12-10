@@ -1476,11 +1476,11 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
 		return -1;
 	}
 
-	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
+	if (start_beacon && hostapd_start_beacon(hapd, flush_old_stations) < 0)
 		return -1;
 
-	if (start_beacon)
-		return hostapd_start_beacon(hapd, flush_old_stations);
+	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
+		return -1;
 
 	return 0;
 }
@@ -1756,16 +1756,15 @@ static int configured_fixed_chan_to_freq(struct hostapd_iface *iface)
 
 static void hostapd_set_6ghz_sec_chan(struct hostapd_iface *iface)
 {
-	int bw, seg0;
+	int bw;
 
 	if (!is_6ghz_op_class(iface->conf->op_class))
 		return;
 
-	seg0 = hostapd_get_oper_centr_freq_seg0_idx(iface->conf);
-	bw = center_idx_to_bw_6ghz(seg0);
+	bw = op_class_to_bandwidth(iface->conf->op_class);
 	/* Assign the secondary channel if absent in config for
 	 * bandwidths > 20 MHz */
-	if (bw > 0 && !iface->conf->secondary_channel) {
+	if (bw >= 40 && !iface->conf->secondary_channel) {
 		if (((iface->conf->channel - 1) / 4) % 2)
 			iface->conf->secondary_channel = -1;
 		else
@@ -3340,7 +3339,6 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 		return;
 	}
 
-	hostapd_prune_associations(hapd, sta->addr);
 	ap_sta_clear_disconnect_timeouts(hapd, sta);
 	sta->post_csa_sa_query = 0;
 
@@ -3602,6 +3600,7 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
 	case 40:
 	case 80:
 	case 160:
+	case 320:
 		conf->ht_capab |= HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
 		break;
 	default:
@@ -3673,6 +3672,9 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
 		break;
 	case 160:
 		bandwidth = CONF_OPER_CHWIDTH_160MHZ;
+		break;
+	case 320:
+		bandwidth = CONF_OPER_CHWIDTH_320MHZ;
 		break;
 	default:
 		bandwidth = CONF_OPER_CHWIDTH_USE_HT;

@@ -430,6 +430,18 @@ struct wpa_driver_scan_ssid {
 	size_t ssid_len;
 };
 
+struct t2lm_mapping {
+	/**
+	 * downlink - Bitmap of TIDs mapped with a link in downlink direction
+	 */
+	u8 downlink;
+
+	/**
+	 * uplink - Bitmap of TIDs mapped with a link in uplink direction
+	 */
+	u8 uplink;
+};
+
 /**
  * struct wpa_driver_scan_params - Scan parameters
  * Data for struct wpa_driver_ops::scan2().
@@ -1733,6 +1745,38 @@ struct wpa_driver_ap_params {
 	 * subchannel is punctured, otherwise active.
 	 */
 	u16 punct_bitmap;
+
+	/**
+	 * rnr_elem - This buffer contains all of reduced neighbor report (RNR)
+	 * elements
+	 */
+	u8 *rnr_elem;
+
+	/**
+	 * rnr_elem_len - Length of rnr_elem buffer
+	 */
+	size_t rnr_elem_len;
+
+	/**
+	 * rnr_elem_count - Number of RNR elements
+	 */
+	unsigned int rnr_elem_count;
+
+	/**
+	 * rnr_elem_offset - The offsets to the elements in rnr_elem.
+	 * The driver will use these to include RNR elements in EMA beacons.
+	 */
+	u8 **rnr_elem_offset;
+
+	/**
+	 * allowed_freqs - List of allowed 20 MHz channel center frequencies in
+	 * MHz for AP operation. Drivers which support this parameter will
+	 * generate a new list based on this provided list by filtering out
+	 * channels that cannot be used at that time due to regulatory or other
+	 * constraints. The resulting list is used as the list of all allowed
+	 * channels whenever performing operations like ACS and DFS.
+	 */
+	int *allowed_freqs;
 };
 
 struct wpa_driver_mesh_bss_params {
@@ -2889,6 +2933,7 @@ struct weighted_pcl {
 };
 
 struct driver_sta_mlo_info {
+	bool default_map;
 	u16 req_links; /* bitmap of requested link IDs */
 	u16 valid_links; /* bitmap of accepted link IDs */
 	u8 assoc_link_id;
@@ -2897,6 +2942,7 @@ struct driver_sta_mlo_info {
 		u8 addr[ETH_ALEN];
 		u8 bssid[ETH_ALEN];
 		unsigned int freq;
+		struct t2lm_mapping t2lmap;
 	} links[MAX_NUM_MLD_LINKS];
 };
 
@@ -5618,6 +5664,21 @@ enum wpa_event_type {
 	 * Described in wpa_event_data.ch_switch.
 	 */
 	EVENT_LINK_CH_SWITCH_STARTED,
+
+	/**
+	 * EVENT_TID_LINK_MAP - MLD event to set TID-to-link mapping
+	 *
+	 * This event is used by the driver to indicate the received TID-to-link
+	 * mapping response from the associated AP MLD.
+	 *
+	 * Described in wpa_event_data.t2l_map_info.
+	 */
+	EVENT_TID_LINK_MAP,
+
+	/**
+	 * EVENT_LINK_RECONFIG - Notification that AP links removed
+	 */
+	EVENT_LINK_RECONFIG,
 };
 
 
@@ -6542,6 +6603,15 @@ union wpa_event_data {
 		const u8 *td_bitmap;
 		size_t td_bitmap_len;
 	} port_authorized;
+
+	/**
+	 * struct tid_link_map_info - Data for EVENT_TID_LINK_MAP
+	 */
+	struct tid_link_map_info {
+		bool default_map;
+		u8 valid_links;
+		struct t2lm_mapping t2lmap[MAX_NUM_MLD_LINKS];
+	} t2l_map_info;
 };
 
 /**

@@ -199,6 +199,7 @@ struct wpa_driver_nl80211_data {
 	unsigned int uses_6ghz:1;
 	unsigned int secure_ranging_ctx_vendor_cmd_avail:1;
 	unsigned int puncturing:1;
+	unsigned int qca_ap_allowed_freqs:1;
 
 	u64 vendor_scan_cookie;
 	u64 remain_on_chan_cookie;
@@ -257,6 +258,10 @@ struct wpa_driver_nl80211_data {
 	bool roam_indication_done;
 	u8 *pending_roam_data;
 	size_t pending_roam_data_len;
+	u8 *pending_t2lm_data;
+	size_t pending_t2lm_data_len;
+	u8 *pending_link_reconfig_data;
+	size_t pending_link_reconfig_data_len;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 };
 

@@ -373,23 +373,46 @@ std::string CreateHostapdConfig(
 				WPA2_PSK_PASSPHRASE_MAX_LEN_IN_BYTES))) {
 			return "";
 		}
-		encryption_config_as_string = StringPrintf(
-			"wpa=2\n"
-			"rsn_pairwise=%s\n"
-			"wpa_key_mgmt=%s\n"
-			"ieee80211w=1\n"
-			"sae_require_mfp=1\n"
-			"wpa_passphrase=%s\n"
-			"sae_password=%s",
-			is_60Ghz_band_only ? "GCMP" : "CCMP",
+		// WPA3 transition mode or SAE+WPA_PSK key management(AKM) is not allowed in 6GHz.
+		// Auto-convert any such configurations to SAE.
+		if ((band & band6Ghz) != 0) {
+			wpa_printf(MSG_INFO, "WPA3_SAE_TRANSITION configured in 6GHz band."
+				   "Enable only SAE in key_mgmt");
+			encryption_config_as_string = StringPrintf(
+				"wpa=2\n"
+				"rsn_pairwise=CCMP\n"
+				"wpa_key_mgmt=%s\n"
+				"ieee80211w=2\n"
+				"sae_require_mfp=2\n"
+				"sae_pwe=%d\n"
+				"sae_password=%s",
 #ifdef CONFIG_IEEE80211BE
-			iface_params.hwModeParams.enable80211BE ?
-			    "WPA-PSK SAE SAE-EXT-KEY" : "WPA-PSK SAE",
+				iface_params.hwModeParams.enable80211BE ?
+					"SAE SAE-EXT-KEY" : "SAE",
 #else
-			"WPA-PSK SAE",
+					"SAE",
 #endif
-			nw_params.passphrase.c_str(),
-			nw_params.passphrase.c_str());
+				is_6Ghz_band_only ? 1 : 2,
+				nw_params.passphrase.c_str());
+		} else {
+			encryption_config_as_string = StringPrintf(
+				"wpa=2\n"
+				"rsn_pairwise=%s\n"
+				"wpa_key_mgmt=%s\n"
+				"ieee80211w=1\n"
+				"sae_require_mfp=1\n"
+				"wpa_passphrase=%s\n"
+				"sae_password=%s",
+				is_60Ghz_band_only ? "GCMP" : "CCMP",
+#ifdef CONFIG_IEEE80211BE
+				iface_params.hwModeParams.enable80211BE ?
+					"WPA-PSK SAE SAE-EXT-KEY" : "WPA-PSK SAE",
+#else
+					"WPA-PSK SAE",
+#endif
+				nw_params.passphrase.c_str(),
+				nw_params.passphrase.c_str());
+                }
 		break;
 	case EncryptionType::WPA3_SAE:
 		if (!validatePassphrase(nw_params.passphrase.size(), 1, -1)) {

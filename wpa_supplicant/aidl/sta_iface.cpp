@@ -2009,6 +2009,7 @@ ndk::ScopedAStatus StaIface::removeAllQosPoliciesInternal()
 std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoInternal()
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct driver_sta_mlo_info mlo;
 	MloLinksInfo linksInfo;
 	MloLink link;
 
@@ -2016,6 +2017,7 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 	if (!wpa_s->valid_links)
 		 return {linksInfo, ndk::ScopedAStatus::ok()};
 
+	wpas_drv_get_sta_mlo_info(wpa_s, &mlo);
 	for (int i = 0; i < MAX_NUM_MLD_LINKS; i++) {
 		if (!(wpa_s->valid_links & BIT(i)))
 			continue;
@@ -2043,8 +2045,13 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 		// mapping by the AP, a default TID-to-link mapping is assumed
 		// unless an individual TID-to-link mapping is successfully
 		// negotiated.
-		link.tidsUplinkMap = 0xFF;
-		link.tidsDownlinkMap = 0xFF;
+		if (!mlo.default_map) {
+			link.tidsUplinkMap = mlo.links[i].t2lmap.uplink;
+			link.tidsDownlinkMap = mlo.links[i].t2lmap.downlink;
+		} else {
+			link.tidsUplinkMap = 0xFF;
+			link.tidsDownlinkMap = 0xFF;
+		}
 		linksInfo.links.push_back(link);
 	}
 

@@ -154,6 +154,16 @@ void wpas_notify_disconnect_reason(struct wpa_supplicant *wpa_s)
 }
 
 
+void wpas_notify_mlo_info_change_reason(struct wpa_supplicant *wpa_s,
+					enum mlo_info_change_reason reason)
+{
+	if (wpa_s->p2p_mgmt)
+		return;
+
+	wpas_aidl_notify_mlo_info_change_reason(wpa_s, reason);
+}
+
+
 void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s)
 {
 	if (wpa_s->p2p_mgmt)
