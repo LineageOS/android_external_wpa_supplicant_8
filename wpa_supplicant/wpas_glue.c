@@ -380,6 +380,12 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 		wpa_printf(MSG_DEBUG, "Failed to set PMK to the driver");
 	}
 
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X) {
+		/* Add PMKSA cache entry */
+		wpa_printf(MSG_INFO, "add pmksa entry for the PMK");
+		wpa_sm_set_pmk(wpa_s->wpa, pmk, pmk_len, NULL, wpa_sm_get_auth_addr(wpa_s->wpa));
+	}
+
 	wpa_supplicant_cancel_scan(wpa_s);
 	wpa_supplicant_cancel_auth_timeout(wpa_s);
 	wpa_supplicant_set_state(wpa_s, WPA_COMPLETED);

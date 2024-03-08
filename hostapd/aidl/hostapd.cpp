@@ -788,7 +788,7 @@ void onAsyncSetupCompleteCb(void* ctx)
 std::function<void(struct hostapd_data*, const u8 *mac_addr, int authorized,
 		const u8 *p2p_dev_addr)> on_sta_authorized_internal_callback;
 void onAsyncStaAuthorizedCb(void* ctx, const u8 *mac_addr, int authorized,
-		const u8 *p2p_dev_addr)
+		const u8 *p2p_dev_addr, const u8 *ip)
 {
 	struct hostapd_data* iface_hapd = (struct hostapd_data*)ctx;
 	if (on_sta_authorized_internal_callback) {

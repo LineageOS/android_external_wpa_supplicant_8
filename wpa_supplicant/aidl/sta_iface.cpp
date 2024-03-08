@@ -843,6 +843,18 @@ bool StaIface::isValid()
 	    &StaIface::removeQosPolicyForScsInternal, _aidl_return, in_scsPolicyIds);
 }
 
+::ndk::ScopedAStatus StaIface::configureMscs(const MscsParams& in_params) {
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
+	    &StaIface::configureMscsInternal, in_params);
+}
+
+::ndk::ScopedAStatus StaIface::disableMscs() {
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		&StaIface::disableMscsInternal);
+}
+
 std::pair<std::string, ndk::ScopedAStatus> StaIface::getNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -1087,6 +1099,7 @@ ndk::ScopedAStatus StaIface::initiateAnqpQueryInternal(
 	if (info_elements.size() > kMaxAnqpElems) {
 		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
 	}
+#ifdef CONFIG_INTERWORKING
 	uint16_t info_elems_buf[kMaxAnqpElems];
 	uint32_t num_info_elems = 0;
 	for (const auto &info_element : info_elements) {
@@ -1110,11 +1123,15 @@ ndk::ScopedAStatus StaIface::initiateAnqpQueryInternal(
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
+#else
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+#endif /* CONFIG_INTERWORKING */
 }
 
 ndk::ScopedAStatus StaIface::initiateVenueUrlAnqpQueryInternal(
 	const std::vector<uint8_t> &mac_address)
 {
+#ifdef CONFIG_INTERWORKING
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	uint16_t info_elems_buf[1] = {ANQP_VENUE_URL};
 	if (mac_address.size() != ETH_ALEN) {
@@ -1126,11 +1143,15 @@ ndk::ScopedAStatus StaIface::initiateVenueUrlAnqpQueryInternal(
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
+#else
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+#endif /* CONFIG_INTERWORKING */
 }
 
 ndk::ScopedAStatus StaIface::initiateHs20IconQueryInternal(
 	const std::vector<uint8_t> &mac_address, const std::string &file_name)
 {
+#ifdef CONFIG_HS20
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	if (mac_address.size() != ETH_ALEN) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
@@ -1143,6 +1164,9 @@ ndk::ScopedAStatus StaIface::initiateHs20IconQueryInternal(
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
+#else
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+#endif /* CONFIG_HS20 */
 }
 
 std::pair<std::vector<uint8_t>, ndk::ScopedAStatus>
@@ -2413,6 +2437,14 @@ StaIface::removeQosPolicyForScsInternal(const std::vector<uint8_t>& scsPolicyIds
 
 	return {std::vector<QosPolicyScsRequestStatus>(reports),
 		ndk::ScopedAStatus::ok()};
+}
+
+::ndk::ScopedAStatus StaIface::configureMscsInternal(const MscsParams& params) {
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus StaIface::disableMscsInternal() {
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
 
 /**

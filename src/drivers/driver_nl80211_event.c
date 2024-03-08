@@ -1109,6 +1109,7 @@ static void mlme_event_connect(struct wpa_driver_nl80211_data *drv,
 	 * operation that happened in parallel with the disconnection request.
 	 */
 	drv->ignore_next_local_disconnect = 0;
+	drv->sta_mlo_info.default_map = true;
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
 	if (drv->pending_t2lm_data)

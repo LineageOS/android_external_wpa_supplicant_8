@@ -37,10 +37,20 @@ constexpr size_t kGsmRandLenBytes = GSM_RAND_LEN;
 constexpr size_t kUmtsRandLenBytes = EAP_AKA_RAND_LEN;
 constexpr size_t kUmtsAutnLenBytes = EAP_AKA_AUTN_LEN;
 const std::vector<uint8_t> kZeroBssid = {0, 0, 0, 0, 0, 0};
+int32_t aidl_service_version = 0;
 
 using aidl::android::hardware::wifi::supplicant::GsmRand;
 using aidl::android::hardware::wifi::supplicant::KeyMgmtMask;
 
+/**
+  * Check that the AIDL service is running at least the expected version.
+  * Use to avoid the case where the AIDL interface version
+  * is greater than the version implemented by the service.
+  */
+inline int32_t isAidlServiceVersionAtLeast(int32_t expected_version)
+{
+	return expected_version <= aidl_service_version;
+}
 /**
  * Check if the provided |wpa_supplicant| structure represents a P2P iface or
  * not.
@@ -407,8 +417,11 @@ int AidlManager::registerAidlService(struct wpa_global *global)
 {
 	// Create the main aidl service object and register it.
 	wpa_printf(MSG_INFO, "Starting AIDL supplicant");
-	wpa_printf(MSG_INFO, "Interface version: %d", Supplicant::version);
 	supplicant_object_ = ndk::SharedRefBase::make<Supplicant>(global);
+	if (!supplicant_object_->getInterfaceVersion(&aidl_service_version).isOk()) {
+		aidl_service_version = Supplicant::version;
+	}
+	wpa_printf(MSG_INFO, "AIDL Interface version: %d", aidl_service_version);
 	wpa_global_ = global;
 	std::string instance = std::string() + Supplicant::descriptor + "/default";
 	if (AServiceManager_addService(supplicant_object_->asBinder().get(),
@@ -833,6 +846,7 @@ int AidlManager::notifyNetworkRequest(
 	return 1;
 }
 
+#ifdef CONFIG_INTERWORKING
 /**
  * Notify that the AT_PERMANENT_ID_REQ is denied from eap_peer when the strict
  * conservative peer mode is enabled.
@@ -903,6 +917,7 @@ void AidlManager::notifyAnqpQueryDone(
 			}
 		}
 
+#ifdef CONFIG_HS20
 		aidl_hs20_anqp_data.operatorFriendlyName =
 			misc_utils::convertWpaBufToVector(
 			anqp->hs20_operator_friendly_name);
@@ -914,6 +929,16 @@ void AidlManager::notifyAnqpQueryDone(
 		aidl_hs20_anqp_data.osuProvidersList =
 			misc_utils::convertWpaBufToVector(
 			anqp->hs20_osu_providers_list);
+#else
+		aidl_hs20_anqp_data.operatorFriendlyName =
+			misc_utils::convertWpaBufToVector(NULL);
+		aidl_hs20_anqp_data.wanMetrics =
+			misc_utils::convertWpaBufToVector(NULL);
+		aidl_hs20_anqp_data.connectionCapability =
+			misc_utils::convertWpaBufToVector(NULL);
+		aidl_hs20_anqp_data.osuProvidersList =
+			misc_utils::convertWpaBufToVector(NULL);
+#endif /* CONFIG_HS20 */
 	}
 
 	callWithEachStaIfaceCallback(
@@ -922,6 +947,7 @@ void AidlManager::notifyAnqpQueryDone(
 				   std::placeholders::_1, macAddrToVec(bssid), aidl_anqp_data,
 				   aidl_hs20_anqp_data));
 }
+#endif /* CONFIG_INTERWORKING */
 
 /**
  * Notify all listeners about the end of an HS20 icon query.
@@ -1318,16 +1344,35 @@ void AidlManager::notifyP2pDeviceFound(
 			std::back_inserter(aidl_vendor_elems));
 	}
 
-	const std::function<
-		ndk::ScopedAStatus(std::shared_ptr<ISupplicantP2pIfaceCallback>)>
-		func = std::bind(
-		&ISupplicantP2pIfaceCallback::onDeviceFoundWithVendorElements,
-		std::placeholders::_1, macAddrToVec(addr), macAddrToVec(info->p2p_device_addr),
-		byteArrToVec(info->pri_dev_type, 8), misc_utils::charBufToString(info->device_name),
-		static_cast<WpsConfigMethods>(info->config_methods),
-		info->dev_capab, static_cast<P2pGroupCapabilityMask>(info->group_capab), aidl_peer_wfd_device_info,
-		aidl_peer_wfd_r2_device_info, aidl_vendor_elems);
-	callWithEachP2pIfaceCallback(wpa_s->ifname, func);
+	if (isAidlServiceVersionAtLeast(3)) {
+		P2pDeviceFoundEventParams params;
+		params.srcAddress = macAddrToArray(addr);
+		params.p2pDeviceAddress = macAddrToArray(info->p2p_device_addr);
+		params.primaryDeviceType = byteArrToVec(info->pri_dev_type, 8);
+		params.deviceName = misc_utils::charBufToString(info->device_name);
+		params.configMethods = info->config_methods;
+		params.deviceCapabilities = info->dev_capab;
+		params.groupCapabilities = info->group_capab;
+		params.wfdDeviceInfo = aidl_peer_wfd_device_info;
+		params.wfdR2DeviceInfo = aidl_peer_wfd_r2_device_info;
+		params.vendorElemBytes = aidl_vendor_elems;
+		callWithEachP2pIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&ISupplicantP2pIfaceCallback::onDeviceFoundWithParams,
+			std::placeholders::_1, params));
+	} else {
+		const std::function<
+			ndk::ScopedAStatus(std::shared_ptr<ISupplicantP2pIfaceCallback>)>
+			func = std::bind(
+			&ISupplicantP2pIfaceCallback::onDeviceFoundWithVendorElements,
+			std::placeholders::_1, macAddrToVec(addr), macAddrToVec(info->p2p_device_addr),
+			byteArrToVec(info->pri_dev_type, 8), misc_utils::charBufToString(info->device_name),
+			static_cast<WpsConfigMethods>(info->config_methods),
+			info->dev_capab, static_cast<P2pGroupCapabilityMask>(info->group_capab), aidl_peer_wfd_device_info,
+			aidl_peer_wfd_r2_device_info, aidl_vendor_elems);
+		callWithEachP2pIfaceCallback(wpa_s->ifname, func);
+	}
 }
 
 void AidlManager::notifyP2pDeviceLost(
@@ -1545,7 +1590,7 @@ void AidlManager::notifyP2pInvitationResult(
 void AidlManager::notifyP2pProvisionDiscovery(
 	struct wpa_supplicant *wpa_s, const u8 *dev_addr, int request,
 	enum p2p_prov_disc_status status, u16 config_methods,
-	unsigned int generated_pin)
+	unsigned int generated_pin, const char *group_ifname)
 {
 	if (!wpa_s || !dev_addr)
 		return;
@@ -1559,15 +1604,33 @@ void AidlManager::notifyP2pProvisionDiscovery(
 		aidl_generated_pin =
 			misc_utils::convertWpsPinToString(generated_pin);
 	}
-	bool aidl_is_request = (request == 1 ? true : false);
+	bool aidl_is_request = (request == 1);
 
-	callWithEachP2pIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname),
-		std::bind(
-		&ISupplicantP2pIfaceCallback::onProvisionDiscoveryCompleted,
-		std::placeholders::_1, macAddrToVec(dev_addr), aidl_is_request,
-		static_cast<P2pProvDiscStatusCode>(status),
-		static_cast<WpsConfigMethods>(config_methods), aidl_generated_pin));
+	if (isAidlServiceVersionAtLeast(3)) {
+		P2pProvisionDiscoveryCompletedEventParams params;
+		params.p2pDeviceAddress =  macAddrToArray(dev_addr);
+		params.isRequest = aidl_is_request;
+		params.status = static_cast<P2pProvDiscStatusCode>(status);
+		params.configMethods = static_cast<WpsConfigMethods>(config_methods);
+		params.generatedPin = aidl_generated_pin;
+		if (group_ifname != NULL) {
+			params.groupInterfaceName = misc_utils::charBufToString(group_ifname);
+		}
+		callWithEachP2pIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&ISupplicantP2pIfaceCallback::onProvisionDiscoveryCompletedEvent,
+			std::placeholders::_1, params));
+	} else {
+		// Use legacy callback if interface version < 3
+		callWithEachP2pIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&ISupplicantP2pIfaceCallback::onProvisionDiscoveryCompleted,
+			std::placeholders::_1, macAddrToVec(dev_addr), aidl_is_request,
+			static_cast<P2pProvDiscStatusCode>(status),
+			static_cast<WpsConfigMethods>(config_methods), aidl_generated_pin));
+	}
 }
 
 void AidlManager::notifyP2pSdResponse(
@@ -1590,19 +1653,40 @@ void AidlManager::notifyP2pSdResponse(
 }
 
 void AidlManager::notifyApStaAuthorized(
-	struct wpa_supplicant *wpa_group_s, const u8 *sta, const u8 *p2p_dev_addr)
+	struct wpa_supplicant *wpa_group_s, const u8 *sta, const u8 *p2p_dev_addr,
+	const u8 *ip)
 {
 	if (!wpa_group_s || !wpa_group_s->parent || !sta)
 		return;
 	wpa_supplicant *wpa_s = getTargetP2pIfaceForGroup(wpa_group_s);
 	if (!wpa_s)
 		return;
-	callWithEachP2pIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname),
-		std::bind(
-		&ISupplicantP2pIfaceCallback::onStaAuthorized,
-		std::placeholders::_1, macAddrToVec(sta),
-		p2p_dev_addr ? macAddrToVec(p2p_dev_addr) : kZeroBssid));
+
+	if (isAidlServiceVersionAtLeast(3)) {
+		P2pPeerClientJoinedEventParams params;
+		params.groupInterfaceName = misc_utils::charBufToString(wpa_group_s->ifname);
+		params.clientInterfaceAddress = macAddrToArray(sta);
+		params.clientDeviceAddress = p2p_dev_addr ?
+				macAddrToArray(p2p_dev_addr) : macAddrToArray(kZeroBssid.data());
+		int aidl_ip = 0;
+		if (NULL != ip) {
+			os_memcpy(&aidl_ip, &ip[0], 4);
+		}
+		params.clientIpAddress = aidl_ip;
+		callWithEachP2pIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&ISupplicantP2pIfaceCallback::onPeerClientJoined,
+			std::placeholders::_1, params));
+	} else {
+		// Use legacy callback if interface version < 3
+		callWithEachP2pIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&ISupplicantP2pIfaceCallback::onStaAuthorized,
+			std::placeholders::_1, macAddrToVec(sta),
+			p2p_dev_addr ? macAddrToVec(p2p_dev_addr) : kZeroBssid));
+	}
 }
 
 void AidlManager::notifyApStaDeauthorized(
@@ -1614,12 +1698,27 @@ void AidlManager::notifyApStaDeauthorized(
 	if (!wpa_s)
 		return;
 
-	callWithEachP2pIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname),
-		std::bind(
-		&ISupplicantP2pIfaceCallback::onStaDeauthorized,
-		std::placeholders::_1, macAddrToVec(sta),
-		p2p_dev_addr ? macAddrToVec(p2p_dev_addr) : kZeroBssid));
+	if (isAidlServiceVersionAtLeast(3)) {
+		P2pPeerClientDisconnectedEventParams params;
+		params.groupInterfaceName = misc_utils::charBufToString(wpa_group_s->ifname);
+		params.clientInterfaceAddress = macAddrToArray(sta);
+		params.clientDeviceAddress = p2p_dev_addr ?
+				macAddrToArray(p2p_dev_addr) : macAddrToArray(kZeroBssid.data());
+
+		callWithEachP2pIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&ISupplicantP2pIfaceCallback::onPeerClientDisconnected,
+			std::placeholders::_1, params));
+	} else {
+		// Use legacy callback if interface version < 3
+		callWithEachP2pIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&ISupplicantP2pIfaceCallback::onStaDeauthorized,
+			std::placeholders::_1, macAddrToVec(sta),
+			p2p_dev_addr ? macAddrToVec(p2p_dev_addr) : kZeroBssid));
+	}
 }
 
 void AidlManager::notifyExtRadioWorkStart(

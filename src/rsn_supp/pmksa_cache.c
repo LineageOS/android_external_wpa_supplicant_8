@@ -224,22 +224,22 @@ pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
 	if (pmk_len > PMK_LEN_MAX)
 		return NULL;
 
-	if (wpa_key_mgmt_suite_b(akmp) && !kck)
-		return NULL;
-
 	entry = os_zalloc(sizeof(*entry));
 	if (entry == NULL)
 		return NULL;
 	os_memcpy(entry->pmk, pmk, pmk_len);
 	entry->pmk_len = pmk_len;
-	if (pmkid)
-		os_memcpy(entry->pmkid, pmkid, PMKID_LEN);
-	else if (akmp == WPA_KEY_MGMT_IEEE8021X_SUITE_B_192)
-		rsn_pmkid_suite_b_192(kck, kck_len, aa, spa, entry->pmkid);
-	else if (wpa_key_mgmt_suite_b(akmp))
-		rsn_pmkid_suite_b(kck, kck_len, aa, spa, entry->pmkid);
-	else
-		rsn_pmkid(pmk, pmk_len, aa, spa, entry->pmkid, akmp);
+	if (pmkid) {
+ 		os_memcpy(entry->pmkid, pmkid, PMKID_LEN);
+	} else if (akmp == WPA_KEY_MGMT_IEEE8021X_SUITE_B_192) {
+		if (kck)
+			rsn_pmkid_suite_b_192(kck, kck_len, aa, spa, entry->pmkid);
+	} else if (wpa_key_mgmt_suite_b(akmp)) {
+		if (kck)
+			rsn_pmkid_suite_b(kck, kck_len, aa, spa, entry->pmkid);
+	} else {
+ 		rsn_pmkid(pmk, pmk_len, aa, spa, entry->pmkid, akmp);
+	}
 	os_get_reltime(&now);
 	if (pmksa->sm) {
 		pmk_lifetime = pmksa->sm->dot11RSNAConfigPMKLifetime;

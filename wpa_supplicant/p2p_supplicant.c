@@ -2666,6 +2666,7 @@ done:
 				     wfd_dev_info_len, wfd_r2_dev_info,
 				     wfd_r2_dev_info_len, new_device);
 	os_free(wfd_dev_info);
+	os_free(wfd_r2_dev_info);
 }
 
 
@@ -2904,7 +2905,7 @@ static void wpas_prov_disc_req(void *ctx, const u8 *peer, u16 config_methods,
 			wpa_printf(MSG_DEBUG, "P2P: Could not generate PIN");
 			wpas_notify_p2p_provision_discovery(
 				wpa_s, peer, 0 /* response */,
-				P2P_PROV_DISC_INFO_UNAVAILABLE, 0, 0);
+				P2P_PROV_DISC_INFO_UNAVAILABLE, 0, 0, NULL);
 			return;
 		}
 		wpas_prov_disc_local_display(wpa_s, peer, params,
@@ -2917,7 +2918,8 @@ static void wpas_prov_disc_req(void *ctx, const u8 *peer, u16 config_methods,
 
 	wpas_notify_p2p_provision_discovery(wpa_s, peer, 1 /* request */,
 					    P2P_PROV_DISC_SUCCESS,
-					    config_methods, generated_pin);
+					    config_methods, generated_pin,
+					    group ? group->ifname : NULL);
 }
 
 
@@ -2955,7 +2957,7 @@ static void wpas_prov_disc_resp(void *ctx, const u8 *peer, u16 config_methods)
 			wpa_printf(MSG_DEBUG, "P2P: Could not generate PIN");
 			wpas_notify_p2p_provision_discovery(
 				wpa_s, peer, 0 /* response */,
-				P2P_PROV_DISC_INFO_UNAVAILABLE, 0, 0);
+				P2P_PROV_DISC_INFO_UNAVAILABLE, 0, 0, NULL);
 			return;
 		}
 		wpas_prov_disc_local_display(wpa_s, peer, params,
@@ -2966,7 +2968,8 @@ static void wpas_prov_disc_resp(void *ctx, const u8 *peer, u16 config_methods)
 
 	wpas_notify_p2p_provision_discovery(wpa_s, peer, 0 /* response */,
 					    P2P_PROV_DISC_SUCCESS,
-					    config_methods, generated_pin);
+					    config_methods, generated_pin,
+					    NULL);
 }
 
 
@@ -3013,7 +3016,7 @@ static void wpas_prov_disc_fail(void *ctx, const u8 *peer,
 	}
 
 	wpas_notify_p2p_provision_discovery(wpa_s, peer, 0 /* response */,
-					    status, 0, 0);
+					    status, 0, 0, NULL);
 }
 
 

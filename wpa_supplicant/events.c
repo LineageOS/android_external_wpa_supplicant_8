@@ -5830,6 +5830,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			notify_bss_changes(
 				wpa_s, WPA_BSS_FREQ_CHANGED_FLAG,
 				wpa_s->links[data->ch_switch.link_id].bss);
+			if (data->ch_switch.freq)
+				wpas_notify_frequency_changed(wpa_s, data->ch_switch.freq);
 		}
 		break;
 	case EVENT_CH_SWITCH_STARTED:

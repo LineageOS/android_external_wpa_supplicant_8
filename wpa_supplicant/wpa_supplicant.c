@@ -5742,14 +5742,14 @@ int wpa_supplicant_driver_init(struct wpa_supplicant *wpa_s)
 			wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 			interface_count = 0;
 		}
-#ifndef ANDROID
+#ifndef CONFIG_CTRL_IFACE_AIDL
 		if (!wpa_s->p2p_mgmt &&
 		    wpa_supplicant_delayed_sched_scan(wpa_s,
 						      interface_count % 3,
 						      100000))
 			wpa_supplicant_req_scan(wpa_s, interface_count % 3,
 						100000);
-#endif /* ANDROID */
+#endif /* CONFIG_CTRL_IFACE_AIDL */
 		interface_count++;
 	} else
 		wpa_supplicant_set_state(wpa_s, WPA_INACTIVE);

@@ -693,4 +693,14 @@ typedef ssize_t (*tls_get_certificate_cb)
 
 void tls_register_cert_callback(tls_get_certificate_cb cb);
 
+/**
+ * tls_register_openssl_failure_callback - Register a callback to indicate
+ * that an OpenSSL failure has occurred
+ * @cb: Callback object to register
+ */
+typedef void (*tls_openssl_failure_cb)
+(void* ctx, const char* msg);
+
+void tls_register_openssl_failure_callback(tls_openssl_failure_cb cb);
+
 #endif /* TLS_H */

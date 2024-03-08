@@ -67,7 +67,7 @@ cc_defaults {
     defaults: ["wpa_supplicant_cflags_defaults"],
     srcs: [":wpa_supplicant_srcs"],
     shared_libs: [
-        "android.hardware.wifi.supplicant-V2-ndk",
+        "android.hardware.wifi.supplicant-V3-ndk",
         "android.system.keystore2-V1-ndk",
         "libbase",
         "libbinder_ndk",

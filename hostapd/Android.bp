@@ -45,7 +45,7 @@ cc_defaults {
     defaults: ["hostapd_cflags_defaults"],
     srcs: [":hostapd_srcs"],
     shared_libs: [
-        "android.hardware.wifi.hostapd-V1-ndk",
+        "android.hardware.wifi.hostapd-V2-ndk",
         "libbase",
         "libutils",
         "libbinder_ndk",

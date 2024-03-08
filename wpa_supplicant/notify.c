@@ -793,6 +793,10 @@ void wpas_notify_p2p_sd_response(struct wpa_supplicant *wpa_s,
  * @status: Valid only in case of response (0 in case of success)
  * @config_methods: WPS config methods
  * @generated_pin: PIN to be displayed in case of WPS_CONFIG_DISPLAY method
+ * @group_ifname: Group interface name of the group owner in case the provision
+ *                discovery request is received with P2P Group ID attribute.
+ *                i.e., valid only when the peer device is joining an
+ *                operating P2P group.
  *
  * This can be used to notify:
  * - Requests or responses
@@ -803,7 +807,8 @@ void wpas_notify_p2p_provision_discovery(struct wpa_supplicant *wpa_s,
 					 const u8 *dev_addr, int request,
 					 enum p2p_prov_disc_status status,
 					 u16 config_methods,
-					 unsigned int generated_pin)
+					 unsigned int generated_pin,
+					 const char *group_ifname)
 {
 	wpas_dbus_signal_p2p_provision_discovery(wpa_s, dev_addr, request,
 						 status, config_methods,
@@ -811,7 +816,7 @@ void wpas_notify_p2p_provision_discovery(struct wpa_supplicant *wpa_s,
 
 	wpas_aidl_notify_p2p_provision_discovery(wpa_s, dev_addr, request,
 						 status, config_methods,
-						 generated_pin);
+						 generated_pin, group_ifname);
 
 }
 
@@ -863,7 +868,7 @@ void wpas_notify_p2p_invitation_received(struct wpa_supplicant *wpa_s,
 
 static void wpas_notify_ap_sta_authorized(struct wpa_supplicant *wpa_s,
 					  const u8 *sta,
-					  const u8 *p2p_dev_addr)
+					  const u8 *p2p_dev_addr, const u8 *ip)
 {
 #ifdef CONFIG_P2P
 	wpas_p2p_notify_ap_sta_authorized(wpa_s, p2p_dev_addr);
@@ -882,7 +887,7 @@ static void wpas_notify_ap_sta_authorized(struct wpa_supplicant *wpa_s,
 	/* Notify listeners a new station has been authorized */
 	wpas_dbus_signal_sta_authorized(wpa_s, sta);
 
-	wpas_aidl_notify_ap_sta_authorized(wpa_s, sta, p2p_dev_addr);
+	wpas_aidl_notify_ap_sta_authorized(wpa_s, sta, p2p_dev_addr, ip);
 }
 
 
@@ -902,7 +907,7 @@ static void wpas_notify_ap_sta_deauthorized(struct wpa_supplicant *wpa_s,
 	/* Notify listeners a station has been deauthorized */
 	wpas_dbus_signal_sta_deauthorized(wpa_s, sta);
 
-        wpas_aidl_notify_ap_sta_deauthorized(wpa_s, sta, p2p_dev_addr);
+	wpas_aidl_notify_ap_sta_deauthorized(wpa_s, sta, p2p_dev_addr);
 	/* Unregister the station */
 	wpas_dbus_unregister_sta(wpa_s, sta);
 }
@@ -910,10 +915,10 @@ static void wpas_notify_ap_sta_deauthorized(struct wpa_supplicant *wpa_s,
 
 void wpas_notify_sta_authorized(struct wpa_supplicant *wpa_s,
 				const u8 *mac_addr, int authorized,
-				const u8 *p2p_dev_addr)
+				const u8 *p2p_dev_addr, const u8 *ip)
 {
 	if (authorized)
-		wpas_notify_ap_sta_authorized(wpa_s, mac_addr, p2p_dev_addr);
+		wpas_notify_ap_sta_authorized(wpa_s, mac_addr, p2p_dev_addr, ip);
 	else
 		wpas_notify_ap_sta_deauthorized(wpa_s, mac_addr, p2p_dev_addr);
 }

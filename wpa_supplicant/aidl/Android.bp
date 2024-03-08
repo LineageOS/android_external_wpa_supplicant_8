@@ -33,7 +33,7 @@ cc_library_static {
     defaults: ["wpa_supplicant_cflags_defaults"],
     soc_specific: true,
     shared_libs: [
-        "android.hardware.wifi.supplicant-V2-ndk",
+        "android.hardware.wifi.supplicant-V3-ndk",
         "android.system.keystore2-V1-ndk",
         "libbinder_ndk",
         "libbase",

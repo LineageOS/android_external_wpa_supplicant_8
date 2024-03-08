@@ -815,6 +815,21 @@ ndk::ScopedAStatus P2pIface::addGroup(
 		in_ipAddressGo, in_ipAddressMask, in_ipAddressStart, in_ipAddressEnd);
 }
 
+::ndk::ScopedAStatus P2pIface::connectWithParams(
+		const P2pConnectInfo& in_connectInfo, std::string* _aidl_return)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&P2pIface::connectWithParamsInternal, _aidl_return, in_connectInfo);
+}
+
+::ndk::ScopedAStatus P2pIface::findWithParams(const P2pDiscoveryInfo& in_discoveryInfo)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&P2pIface::findWithParamsInternal, in_discoveryInfo);
+}
+
 std::pair<std::string, ndk::ScopedAStatus> P2pIface::getNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -1850,6 +1865,33 @@ ndk::ScopedAStatus P2pIface::configureEapolIpAddressAllocationParamsInternal(
 	os_memcpy(wpa_s->conf->ip_addr_end, &ipAddressEnd, 4);
 
 	return ndk::ScopedAStatus::ok();
+}
+
+std::pair<std::string, ndk::ScopedAStatus> P2pIface::connectWithParamsInternal(
+		const P2pConnectInfo& connectInfo)
+{
+	std::vector<uint8_t> peerAddressVec {
+		connectInfo.peerAddress.begin(), connectInfo.peerAddress.end()};
+	return connectInternal(peerAddressVec, connectInfo.provisionMethod,
+		connectInfo.preSelectedPin, connectInfo.joinExistingGroup,
+		connectInfo.persistent, connectInfo.goIntent);
+}
+
+ndk::ScopedAStatus P2pIface::findWithParamsInternal(const P2pDiscoveryInfo& discoveryInfo)
+{
+	switch (discoveryInfo.scanType) {
+		case P2pScanType::FULL:
+			return findInternal(discoveryInfo.timeoutInSec);
+		case P2pScanType::SOCIAL:
+			return findOnSocialChannelsInternal(discoveryInfo.timeoutInSec);
+		case P2pScanType::SPECIFIC_FREQ:
+			return findOnSpecificFrequencyInternal(
+				discoveryInfo.frequencyMhz, discoveryInfo.timeoutInSec);
+		default:
+			wpa_printf(MSG_DEBUG,
+				"findWithParams received invalid scan type %d", discoveryInfo.scanType);
+			return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+	}
 }
 
 /**

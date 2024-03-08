@@ -22,6 +22,10 @@
 #include "ieee802_1x_kay_i.h"
 #include "ieee802_1x_secy_ops.h"
 
+#ifdef CONFIG_AIDL_MACSEC_PSK_METHODS
+#include "aidl/aidl_psk.h"
+#endif
+
 
 #define DEFAULT_SA_KEY_LEN	16
 #define DEFAULT_ICV_LEN		16
@@ -1659,9 +1663,15 @@ ieee802_1x_mka_encode_dist_sak_body(
 		os_memcpy(body->sak, &cs, CS_ID_LEN);
 		sak_pos = CS_ID_LEN;
 	}
+#ifdef CONFIG_AIDL_MACSEC_PSK_METHODS
+	if (aidl_psk_aes_wrap(participant->kek.key, participant->kek.len,
+		     cipher_suite_tbl[cs_index].sak_len / 8,
+		     sak->key, body->sak + sak_pos)) {
+#else
 	if (aes_wrap(participant->kek.key, participant->kek.len,
 		     cipher_suite_tbl[cs_index].sak_len / 8,
 		     sak->key, body->sak + sak_pos)) {
+#endif
 		wpa_printf(MSG_ERROR, "KaY: AES wrap failed");
 		return -1;
 	}
@@ -1800,8 +1810,13 @@ ieee802_1x_mka_decode_dist_sak_body(
 		wpa_printf(MSG_ERROR, "KaY-%s: Out of memory", __func__);
 		return -1;
 	}
+#ifdef CONFIG_AIDL_MACSEC_PSK_METHODS
+	if (aidl_psk_aes_unwrap(participant->kek.key, participant->kek.len,
+		       sak_len >> 3, wrap_sak, unwrap_sak)) {
+#else
 	if (aes_unwrap(participant->kek.key, participant->kek.len,
 		       sak_len >> 3, wrap_sak, unwrap_sak)) {
+#endif
 		wpa_printf(MSG_ERROR, "KaY: AES unwrap failed");
 		os_free(unwrap_sak);
 		return -1;
@@ -1896,7 +1911,11 @@ ieee802_1x_mka_encode_icv_body(struct ieee802_1x_mka_participant *participant,
 		set_mka_param_body_len(body, length);
 	}
 
+#ifdef CONFIG_AIDL_MACSEC_PSK_METHODS
+	if (aidl_psk_icv_hash(
+#else
 	if (mka_alg_tbl[participant->kay->mka_algindex].icv_hash(
+#endif
 		    participant->ick.key, participant->ick.len,
 		    wpabuf_head(buf), wpabuf_len(buf), cmac)) {
 		wpa_printf(MSG_ERROR, "KaY: failed to calculate ICV");
@@ -2198,10 +2217,17 @@ ieee802_1x_kay_generate_new_sak(struct ieee802_1x_mka_participant *participant)
 	os_memcpy(context + ctx_offset, &kay->dist_kn, sizeof(kay->dist_kn));
 
 	if (key_len == 16 || key_len == 32) {
+#ifdef CONFIG_AIDL_MACSEC_PSK_METHODS
+		if (aidl_psk_sak_aes_cmac(participant->cak.key,
+					  participant->cak.len,
+					  context, ctx_len,
+					  key, key_len)) {
+#else
 		if (ieee802_1x_sak_aes_cmac(participant->cak.key,
 					    participant->cak.len,
 					    context, ctx_len,
 					    key, key_len)) {
+#endif
 			wpa_printf(MSG_ERROR, "KaY: Failed to generate SAK");
 			goto fail;
 		}
@@ -3183,7 +3209,11 @@ static int ieee802_1x_kay_mkpdu_validity_check(struct ieee802_1x_kay *kay,
 	 * packet body length.
 	 */
 	if (len < mka_alg_tbl[kay->mka_algindex].icv_len ||
+#ifdef CONFIG_AIDL_MACSEC_PSK_METHODS
+	    aidl_psk_icv_hash(
+#else
 	    mka_alg_tbl[kay->mka_algindex].icv_hash(
+#endif
 		    participant->ick.key, participant->ick.len,
 		    buf, len - mka_alg_tbl[kay->mka_algindex].icv_len, icv)) {
 		wpa_printf(MSG_ERROR, "KaY: Failed to calculate ICV");
@@ -3745,6 +3775,18 @@ ieee802_1x_kay_create_mka(struct ieee802_1x_kay *kay,
 	wpa_printf(MSG_DEBUG, "KaY: Selected random MI: %s",
 		   mi_txt(participant->mi));
 
+#ifdef CONFIG_AIDL_MACSEC_PSK_METHODS
+	if (mode != PSK)  {
+		wpa_printf(MSG_ERROR, "CONFIG_AIDL_MACSEC_PSK_METHODS only support PSK");
+		goto fail;
+	}
+	wpa_printf(MSG_INFO, "Init macsec PSK HAL");
+        if (aidl_psk_init()) {
+		wpa_printf(MSG_ERROR, "Cannot init aidl macsec psk HAL");
+		goto fail;
+        }
+#endif
+
 	participant->lrx = false;
 	participant->ltx = false;
 	participant->orx = false;
@@ -3763,6 +3805,14 @@ ieee802_1x_kay_create_mka(struct ieee802_1x_kay *kay,
 	if (secy_create_transmit_sc(kay, participant->txsc))
 		goto fail;
 
+#ifdef CONFIG_AIDL_MACSEC_PSK_METHODS
+	/* If using external PSK methods, we don't need to generate kek and ick
+	 * key here and cak.key is actually a reference index */
+	participant->kek.len = participant->cak.len;
+	participant->ick.len = participant->cak.len;
+	memcpy(participant->kek.key, participant->cak.key, participant->cak.len);
+	memcpy(participant->ick.key, participant->cak.key, participant->cak.len);
+#else
 	/* to derive KEK from CAK and CKN */
 	participant->kek.len = participant->cak.len;
 	if (mka_alg_tbl[kay->mka_algindex].kek_trfm(participant->cak.key,
@@ -3790,6 +3840,7 @@ ieee802_1x_kay_create_mka(struct ieee802_1x_kay *kay,
 	}
 	wpa_hexdump_key(MSG_DEBUG, "KaY: Derived ICK",
 			participant->ick.key, participant->ick.len);
+#endif
 
 	dl_list_add(&kay->participant_list, &participant->list);
 

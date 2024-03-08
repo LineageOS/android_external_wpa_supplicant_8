@@ -1661,6 +1661,7 @@ static int interworking_connect_roaming_consortium(
 	if (interworking_set_hs20_params(wpa_s, ssid) < 0)
 		goto fail;
 
+#ifdef CONFIG_HS20
 	ie = wpa_bss_get_ie(bss, WLAN_EID_ROAMING_CONSORTIUM);
 	anqp = bss->anqp ? bss->anqp->roaming_consortium : NULL;
 	for (i = 0; (ie || anqp) && i < cred->num_roaming_consortiums; i++) {
@@ -1679,6 +1680,7 @@ static int interworking_connect_roaming_consortium(
 			cred->roaming_consortiums_len[i];
 		break;
 	}
+#endif /* CONFIG_HS20 */
 
 	if (cred->eap_method == NULL) {
 		wpa_msg(wpa_s, MSG_DEBUG,

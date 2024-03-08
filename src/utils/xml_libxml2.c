@@ -8,7 +8,7 @@
 
 #include "includes.h"
 #define LIBXML_VALID_ENABLED
-#include <libxml/tree.h>
+#include <libxml/parser.h>
 #include <libxml/xmlschemastypes.h>
 
 #include "common.h"

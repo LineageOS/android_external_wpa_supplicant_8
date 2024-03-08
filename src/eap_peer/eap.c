@@ -2207,6 +2207,14 @@ ssize_t tls_certificate_callback(void* ctx, const char* alias, uint8_t** value) 
 	return -1;
 }
 
+void tls_openssl_failure_callback(void* ctx, const char* msg) {
+	if (ctx == NULL || msg == NULL) return;
+	struct eap_sm *sm = (struct eap_sm*) ctx;
+	if (sm->eapol_cb && sm->eapol_cb->notify_open_ssl_failure) {
+		sm->eapol_cb->notify_open_ssl_failure(sm->eapol_ctx, msg);
+	}
+}
+
 /**
  * eap_peer_sm_init - Allocate and initialize EAP peer state machine
  * @eapol_ctx: Context data to be used with eapol_cb calls
@@ -2251,6 +2259,7 @@ struct eap_sm * eap_peer_sm_init(void *eapol_ctx,
 	tlsconf.cb_ctx = sm;
 	tlsconf.cert_in_cb = conf->cert_in_cb;
 	tls_register_cert_callback(&tls_certificate_callback);
+	tls_register_openssl_failure_callback(&tls_openssl_failure_callback);
 	sm->ssl_ctx = tls_init(&tlsconf);
 	if (sm->ssl_ctx == NULL) {
 		wpa_printf(MSG_WARNING, "SSL: Failed to initialize TLS "
