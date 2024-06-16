@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "31716bf3_bad17aea",
+        "filename": "src/drivers/driver.h",
+        "patchSetId": 1
+      },
+      "lineNbr": 1139,
+      "author": {
+        "id": 25925
+      },
+      "writtenOn": "2024-06-16T13:15:44Z",
+      "side": 1,
+      "message": "This section should be dropped (or renamed), see below\nIt\u0027ll now cause a build failure if CONFIG_BRCM_SAE is enabled",
+      "revId": "1b6bff97c63f809ca1eba9cedb97b28dcc099dbb",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
