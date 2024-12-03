@@ -451,6 +451,9 @@ hostapd_cc_defaults_type {
     }) + select(soong_config_variable("wpa_supplicant_8", "hostapd_11ax"), {
         true: ["-DCONFIG_IEEE80211AX"],
         default: [],
+    }) + select(soong_config_variable("wpa_supplicant_8", "hostapd_11be"), {
+        true: ["-DCONFIG_IEEE80211BE"],
+        default: [],
     }) + select(soong_config_variable("wpa_supplicant_8", "board_hostapd_config_80211w_mfp_optional"), {
         true: ["-DENABLE_HOSTAPD_CONFIG_80211W_MFP_OPTIONAL"],
         default: [],
@@ -601,6 +604,10 @@ cc_defaults {
         "src/ap/acs.c",
     ] + select(soong_config_variable("wpa_supplicant_8", "hostapd_11ax"), {
         true: ["src/ap/ieee802_11_he.c"],
+        default: [],
+    }) +
+    select(soong_config_variable("wpa_supplicant_8", "hostapd_11be"), {
+        true: ["src/ap/ieee802_11_eht.c"],
         default: [],
     }),
     defaults: [

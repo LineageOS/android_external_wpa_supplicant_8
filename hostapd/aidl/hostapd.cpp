@@ -138,6 +138,12 @@ int band60Ghz = (int)BandMask::BAND_60_GHZ;
 int32_t aidl_client_version = 0;
 int32_t aidl_service_version = 0;
 
+inline std::array<uint8_t, ETH_ALEN> macAddrToArray(const uint8_t* mac_addr) {
+	std::array<uint8_t, ETH_ALEN> arr;
+	std::copy(mac_addr, mac_addr + ETH_ALEN, std::begin(arr));
+	return arr;
+}
+
 /**
  * Check that the AIDL service is running at least the expected version.
  * Use to avoid the case where the AIDL interface version
@@ -1279,7 +1285,7 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 				return hapd;
 		}
 	}
-#endif
+#endif /* CONFIG_IEEE80211BE */
 	return NULL;
 }
 
@@ -1374,7 +1380,7 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 						&& strlen(iface_hapd->conf->bridge) == 0) {
 					instanceName = std::to_string(iface_hapd->mld_link_id);
 				}
-#endif
+#endif /* CONFIG_IEEE80211BE */
 				for (const auto& callback : callbacks_) {
 					auto status = callback->onFailure(
 						strlen(iface_hapd->conf->bridge) > 0 ?
@@ -1403,7 +1409,7 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 				&& strlen(iface_hapd->conf->bridge) == 0) {
 			instanceName = std::to_string(iface_hapd->mld_link_id);
 		}
-#endif
+#endif /* CONFIG_IEEE80211BE */
 		info.apIfaceInstance = instanceName;
 		info.clientAddress.assign(mac_addr, mac_addr + ETH_ALEN);
 		info.isConnected = authorized;
@@ -1439,7 +1445,7 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 			if (iface_hapd->conf->mld_ap && strlen(iface_hapd->conf->bridge) == 0) {
 				instanceName = std::to_string(iface_hapd->mld_link_id);
 			}
-#endif
+#endif /* CONFIG_IEEE80211BE */
 			ApInfo info;
 			info.ifaceName = strlen(iface_hapd->conf->bridge) > 0 ?
 				iface_hapd->conf->bridge : iface_hapd->conf->iface,
@@ -1449,6 +1455,11 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 			info.generation = getGeneration(iface_hapd->iface->current_mode);
 			info.apIfaceInstanceMacAddress.assign(iface_hapd->own_addr,
 				iface_hapd->own_addr + ETH_ALEN);
+#ifdef CONFIG_IEEE80211BE
+			if (iface_hapd->conf->mld_ap) {
+				info.mldMacAddress = macAddrToArray(iface_hapd->mld->mld_addr);
+			}
+#endif /* CONFIG_IEEE80211BE */
 			for (const auto &callback : callbacks_) {
 				auto status = callback->onApInstanceInfoChanged(info);
 				if (!status.isOk()) {
@@ -1464,7 +1475,7 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 			if (iface_hapd->conf->mld_ap && strlen(iface_hapd->conf->bridge) == 0) {
 				instanceName = std::to_string(iface_hapd->mld_link_id);
 			}
-#endif
+#endif /* CONFIG_IEEE80211BE */
 			// Invoke the failure callback on all registered clients.
 			for (const auto& callback : callbacks_) {
 				auto status =
@@ -1589,6 +1600,7 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 ::ndk::ScopedAStatus Hostapd::removeLinkFromMultipleLinkBridgedApIfaceInternal(
 const std::string& iface_name, const std::string& linkIdentity)
 {
+#ifdef CONFIG_IEEE80211BE
 	if (!hostapd_get_iface(interfaces_, iface_name.c_str())) {
 		wpa_printf(MSG_ERROR, "Interface %s doesn't exist", iface_name.c_str());
 		return createStatus(HostapdStatusCode::FAILURE_IFACE_UNKNOWN);
@@ -1596,11 +1608,18 @@ const std::string& iface_name, const std::string& linkIdentity)
 	struct hostapd_data* iface_hapd =
 		hostapd_get_iface_by_link_id(interfaces_, (size_t) linkIdentity.c_str());
 	if (iface_hapd) {
+// Currently, hostapd_link_remove is still under CONFIG_TESTING_OPTIONS.
+// TODO: b/340821197 - Make sure to take out the hostapd_link_remove() and other related code
+// out of CONFIG_TESTING_OPTIONS.
+#ifdef CONFIG_TESTING_OPTIONS
 		if (0 == hostapd_link_remove(iface_hapd, 1)) {
 			return ndk::ScopedAStatus::ok();
 		}
+#endif /* CONFIG_TESTING_OPTIONS */
 	}
 	return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
+#endif /* CONFIG_IEEE80211BE */
+	return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
 }
 
 }  // namespace hostapd
