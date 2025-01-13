@@ -873,17 +873,11 @@ wpa_supplicant_cc_defaults_type {
     ] + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_use_stub_lib"), {
         true: ["-DANDROID_LIB_STUB"],
         default: [],
-    }) + select(soong_config_variable("wpa_supplicant_8", "board_hostapd_config_80211w_mfp_optional"), {
-        true: ["-DENABLE_HOSTAPD_CONFIG_80211W_MFP_OPTIONAL"],
-        default: [],
     }) + select(soong_config_variable("wpa_supplicant_8", "board_wpa_supplicant_private_lib_event"), {
         true: ["-DANDROID_LIB_EVENT"],
         default: [],
     }) + select(soong_config_variable("wpa_supplicant_8", "wifi_priv_cmd_update_mbo_cell_status"), {
         true: ["-DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS"],
-        default: [],
-    }) + select(soong_config_variable("wpa_supplicant_8", "hostapd_11ax"), {
-        true: ["-DCONFIG_IEEE80211AX"],
         default: [],
     }) + select(soong_config_variable("wpa_supplicant_8", "wifi_brcm_open_source_multi_akm"), {
         true: ["-DWIFI_BRCM_OPEN_SOURCE_MULTI_AKM"],
@@ -1160,10 +1154,7 @@ cc_defaults {
         "src/wps/wps_upnp_event.c",
         "src/wps/wps_upnp_ssdp.c",
         "src/wps/wps_upnp_web.c",
-    ] + select(soong_config_variable("wpa_supplicant_8", "hostapd_11ax"), {
-        true: ["src/ap/ieee802_11_he.c"],
-        default: [],
-    }),
+    ],
     defaults: [
         "wpa_supplicant_driver_srcs_default",
     ],
