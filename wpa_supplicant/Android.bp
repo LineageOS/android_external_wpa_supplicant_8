@@ -882,6 +882,12 @@ wpa_supplicant_cc_defaults_type {
     }) + select(soong_config_variable("wpa_supplicant_8", "wifi_brcm_open_source_multi_akm"), {
         true: ["-DWIFI_BRCM_OPEN_SOURCE_MULTI_AKM"],
         default: [],
+    }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11ax"), {
+        true: ["-DCONFIG_IEEE80211AX"],
+        default: [],
+    }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
+        true: ["-DCONFIG_IEEE80211BE"],
+        default: [],
     }),
     arch: {
         arm: {
