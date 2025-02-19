@@ -1160,7 +1160,13 @@ cc_defaults {
         "src/wps/wps_upnp_event.c",
         "src/wps/wps_upnp_ssdp.c",
         "src/wps/wps_upnp_web.c",
-    ],
+    ] + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11ax"), {
+        true: ["src/ap/ieee802_11_he.c"],
+        default: [],
+    }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
+        true: ["src/ap/ieee802_11_eht.c"],
+        default: [],
+    }),
     defaults: [
         "wpa_supplicant_driver_srcs_default",
     ],
