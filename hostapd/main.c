@@ -193,7 +193,6 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 			os_memcpy(hapd->own_addr, b, ETH_ALEN);
 		}
 
-		hostapd_mld_add_link(hapd);
 		wpa_printf(MSG_DEBUG,
 			   "Setup of non first link (%d) BSS of MLD %s",
 			   hapd->mld_link_id, hapd->conf->iface);
@@ -280,7 +279,6 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		else
 			os_memcpy(hapd->own_addr, b, ETH_ALEN);
 
-		hostapd_mld_add_link(hapd);
 		wpa_printf(MSG_DEBUG, "Setup of first link (%d) BSS of MLD %s",
 			   hapd->mld_link_id, hapd->conf->iface);
 	}
@@ -340,8 +338,14 @@ setup_mld:
 			   hapd->mld_link_id, MAC2STR(hapd->mld->mld_addr),
 			   MAC2STR(hapd->own_addr));
 
-		hostapd_drv_link_add(hapd, hapd->mld_link_id,
-				     hapd->own_addr);
+		if (hostapd_drv_link_add(hapd, hapd->mld_link_id,
+					 hapd->own_addr)) {
+			wpa_printf(MSG_ERROR,
+				   "MLD: Failed to add link %d in MLD %s",
+				   hapd->mld_link_id, hapd->conf->iface);
+			return -1;
+		}
+		hostapd_mld_add_link(hapd);
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -757,6 +761,7 @@ static void hostapd_global_cleanup_mld(struct hapd_interfaces *interfaces)
 		if (!interfaces->mld[i])
 			continue;
 
+		interfaces->mld_ctrl_iface_deinit(interfaces->mld[i]);
 		os_free(interfaces->mld[i]);
 		interfaces->mld[i] = NULL;
 	}
@@ -802,6 +807,10 @@ int main(int argc, char *argv[])
 	interfaces.global_iface_path = NULL;
 	interfaces.global_iface_name = NULL;
 	interfaces.global_ctrl_sock = -1;
+#ifdef CONFIG_IEEE80211BE
+	interfaces.mld_ctrl_iface_init = hostapd_mld_ctrl_iface_init;
+	interfaces.mld_ctrl_iface_deinit = hostapd_mld_ctrl_iface_deinit;
+#endif /* CONFIG_IEEE80211BE */
 	dl_list_init(&interfaces.global_ctrl_dst);
 #ifdef CONFIG_ETH_P_OUI
 	dl_list_init(&interfaces.eth_p_oui);

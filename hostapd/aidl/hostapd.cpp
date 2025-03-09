@@ -35,6 +35,11 @@ extern "C"
 #include "drivers/linux_ioctl.h"
 }
 
+
+#ifdef ANDROID_HOSTAPD_UNITTEST
+#include "tests/unittest_overrides.h"
+#endif
+
 // The AIDL implementation for hostapd creates a hostapd.conf dynamically for
 // each interface. This file can then be used to hook onto the normal config
 // file parsing logic in hostapd code.  Helps us to avoid duplication of code
@@ -43,9 +48,78 @@ extern "C"
 namespace {
 constexpr char kConfFileNameFmt[] = "/data/vendor/wifi/hostapd/hostapd_%s.conf";
 
+/**
+ * To add an overlay file, add
+ *
+ * PRODUCT_COPY_FILES += \
+ *   <your/path/here>/hostapd_unmetered_overlay.conf:/vendor/etc/wifi/hostapd_unmetered_overlay.conf
+ *
+ * to the build file for your device, with the <your/path/here> being the path to your overlay in
+ * your repo. See the resolveVendorConfPath function in this file for more specifics on where this
+ * overlay file will wind up on your device.
+ *
+ * This overlay may configure any of the parameters listed in kOverlayableKeys. The kOverlayableKeys
+ * list is subject to change over time, as certain parameters may be added as APIs instead in the
+ * future.
+ *
+ * Example of what an overlay file might look like:
+ * $> cat hostapd_unmetered_overlay.conf
+ * dtim_period=2
+ * ap_max_inactivity=300
+ *
+ * Anything added to this overlay will be prepended to the hostapd.conf for unmetered (typically
+ * local only hotspots) interfaces.
+ */
+constexpr char kUnmeteredIfaceOverlayPath[] = "/etc/wifi/hostapd_unmetered_overlay.conf";
+
+/**
+ * Allow-list of hostapd.conf parameters (keys) that can be set via overlay.
+ *
+ * If introducing new APIs, be sure to remove keys from this list that would otherwise be
+ * controlled by the new API. This way we can avoid conflicting settings.
+ * Please file an FR to add new keys to this list.
+ */
+static const std::set<std::string> kOverlayableKeys = {
+	"ap_max_inactivity",
+	"assocresp_elements"
+	"beacon_int",
+	"disassoc_low_ack",
+	"dtim_period",
+	"fragm_threshold",
+	"max_listen_interval",
+	"max_num_sta",
+	"rts_threshold",
+	"skip_inactivity_poll",
+	"uapsd_advertisement_enabled",
+	"wmm_enabled",
+	"wmm_ac_vo_aifs",
+	"wmm_ac_vo_cwmin",
+	"wmm_ac_vo_cwmax",
+	"wmm_ac_vo_txop_limit",
+	"wmm_ac_vo_acm",
+	"wmm_ac_vi_aifs",
+	"wmm_ac_vi_cwmin",
+	"wmm_ac_vi_cwmax",
+	"wmm_ac_vi_txop_limit",
+	"wmm_ac_vi_acm",
+	"wmm_ac_bk_cwmin"
+	"wmm_ac_bk_cwmax"
+	"wmm_ac_bk_aifs",
+	"wmm_ac_bk_txop_limit",
+	"wmm_ac_bk_acm",
+	"wmm_ac_be_aifs",
+	"wmm_ac_be_cwmin",
+	"wmm_ac_be_cwmax",
+	"wmm_ac_be_txop_limit",
+	"wmm_ac_be_acm",
+};
+
 using android::base::RemoveFileIfExists;
 using android::base::StringPrintf;
+#ifndef ANDROID_HOSTAPD_UNITTEST
+using android::base::ReadFileToString;
 using android::base::WriteStringToFile;
+#endif
 using aidl::android::hardware::wifi::hostapd::BandMask;
 using aidl::android::hardware::wifi::hostapd::ChannelBandwidth;
 using aidl::android::hardware::wifi::hostapd::ChannelParams;
@@ -77,6 +151,12 @@ inline int32_t isAidlServiceVersionAtLeast(int32_t expected_version)
 inline int32_t isAidlClientVersionAtLeast(int32_t expected_version)
 {
 	return expected_version <= aidl_client_version;
+}
+
+inline int32_t areAidlServiceAndClientAtLeastVersion(int32_t expected_version)
+{
+	return isAidlServiceVersionAtLeast(expected_version)
+		&& isAidlClientVersionAtLeast(expected_version);
 }
 
 #define MAX_PORTS 1024
@@ -119,11 +199,42 @@ bool GetInterfacesInBridge(std::string br_name,
 	return true;
 }
 
-std::string WriteHostapdConfig(
-    const std::string& interface_name, const std::string& config)
+std::string resolveVendorConfPath(const std::string& conf_path)
 {
+#if defined(__ANDROID_APEX__)
+	// returns "/apex/<apexname>" + conf_path
+	std::string path = android::base::GetExecutablePath();
+	return path.substr(0, path.find_first_of('/', strlen("/apex/"))) + conf_path;
+#else
+	return std::string("/vendor") + conf_path;
+#endif
+}
+
+void logHostapdConfigError(int error, const std::string& file_path) {
+	wpa_printf(MSG_ERROR, "Cannot read/write hostapd config %s, error: %s", file_path.c_str(),
+			strerror(error));
+	struct stat st;
+	int result = stat(file_path.c_str(), &st);
+	if (result == 0) {
+		wpa_printf(MSG_ERROR, "hostapd config file uid: %d, gid: %d, mode: %d",st.st_uid,
+				st.st_gid, st.st_mode);
+	} else {
+		wpa_printf(MSG_ERROR, "Error calling stat() on hostapd config file: %s",
+				strerror(errno));
+	}
+}
+
+std::string WriteHostapdConfig(
+    const std::string& instance_name, const std::string& config,
+    const std::string br_name, const bool usesMlo)
+{
+	std::string conf_name_as_string = instance_name;
+	if (usesMlo) {
+		conf_name_as_string = StringPrintf(
+				"%s-%s", br_name.c_str(), instance_name.c_str());
+	}
 	const std::string file_path =
-	    StringPrintf(kConfFileNameFmt, interface_name.c_str());
+		StringPrintf(kConfFileNameFmt, conf_name_as_string.c_str());
 	if (WriteStringToFile(
 		config, file_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
 		getuid(), getgid())) {
@@ -131,21 +242,7 @@ std::string WriteHostapdConfig(
 	}
 	// Diagnose failure
 	int error = errno;
-	wpa_printf(
-		MSG_ERROR, "Cannot write hostapd config to %s, error: %s",
-		file_path.c_str(), strerror(error));
-	struct stat st;
-	int result = stat(file_path.c_str(), &st);
-	if (result == 0) {
-		wpa_printf(
-			MSG_ERROR, "hostapd config file uid: %d, gid: %d, mode: %d",
-			st.st_uid, st.st_gid, st.st_mode);
-	} else {
-		wpa_printf(
-			MSG_ERROR,
-			"Error calling stat() on hostapd config file: %s",
-			strerror(errno));
-	}
+	logHostapdConfigError(errno, file_path);
 	return "";
 }
 
@@ -337,6 +434,14 @@ std::string getInterfaceMacAddress(const std::string& if_name)
 	mac_addr = StringPrintf("" MACSTR, MAC2STR(addr));
 
 	return mac_addr;
+}
+
+std::string trimWhitespace(const std::string& str) {
+	size_t pos = 0;
+	size_t len = str.size();
+	for (pos; pos < str.size() && std::isspace(str[pos]); ++pos){}
+	for (len; len - 1 > 0 && std::isspace(str[len-1]); --len){}
+	return str.substr(pos, len);
 }
 
 std::string CreateHostapdConfig(
@@ -587,17 +692,25 @@ std::string CreateHostapdConfig(
 #ifdef CONFIG_IEEE80211BE
 	if (iface_params.hwModeParams.enable80211BE && !is_60Ghz_used) {
 		eht_params_as_string = "ieee80211be=1\n";
-		if (isAidlServiceVersionAtLeast(2) && isAidlClientVersionAtLeast(2)) {
-			std::string interface_mac_addr = getInterfaceMacAddress(iface_params.name);
+		if (areAidlServiceAndClientAtLeastVersion(2)) {
+			std::string interface_mac_addr = getInterfaceMacAddress(
+					iface_params.usesMlo ? br_name : iface_params.name);
 			if (interface_mac_addr.empty()) {
 				wpa_printf(MSG_ERROR,
 				    "Unable to set interface mac address as bssid for 11BE SAP");
 				return "";
 			}
-			eht_params_as_string += StringPrintf(
-				"bssid=%s\n"
-				"mld_ap=1",
-				interface_mac_addr.c_str());
+            if (iface_params.usesMlo) {
+                eht_params_as_string += StringPrintf(
+                    "mld_addr=%s\n"
+                    "mld_ap=1",
+                    interface_mac_addr.c_str());
+            } else {
+                eht_params_as_string += StringPrintf(
+                    "bssid=%s\n"
+                    "mld_ap=1",
+                    interface_mac_addr.c_str());
+            }
 		}
 		/* TODO set eht_su_beamformer, eht_su_beamformee, eht_mu_beamformer */
 	} else {
@@ -714,7 +827,7 @@ std::string CreateHostapdConfig(
 #endif /* CONFIG_INTERWORKING */
 
 	std::string bridge_as_string;
-	if (!br_name.empty()) {
+	if (!br_name.empty() && !iface_params.usesMlo) {
 		bridge_as_string = StringPrintf("bridge=%s", br_name.c_str());
 	}
 
@@ -736,10 +849,33 @@ std::string CreateHostapdConfig(
 			"owe_transition_ifname=%s", owe_transition_ifname.c_str());
 	}
 
+	std::string ap_isolation_as_string = StringPrintf("ap_isolate=%s",
+			isAidlServiceVersionAtLeast(3) && nw_params.isClientIsolationEnabled ?
+			"1" : "0");
+
+	// Overlay for LOHS (unmetered SoftAP)
+	std::string overlay_path = resolveVendorConfPath(kUnmeteredIfaceOverlayPath);
+	std::string overlay_string;
+	if (!nw_params.isMetered
+			&& 0 == access(overlay_path.c_str(), R_OK)
+			&& !ReadFileToString(overlay_path, &overlay_string)) {
+		logHostapdConfigError(errno, overlay_path);
+		return "";
+	}
+	std::string sanitized_overlay = "";
+	std::istringstream overlay_stream(overlay_string);
+	for (std::string line; std::getline(overlay_stream, line);) {
+		std::string overlay_key = trimWhitespace(line.substr(0, line.find("=")));
+		if (kOverlayableKeys.contains(overlay_key)) {
+			sanitized_overlay.append(line + "\n");
+		}
+	}
+
 	return StringPrintf(
+		"%s\n"
 		"interface=%s\n"
 		"driver=nl80211\n"
-		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl\n"
+		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl_%s\n"
 		// ssid2 signals to hostapd that the value is not a literal value
 		// for use as a SSID.  In this case, we're giving it a hex
 		// std::string and hostapd needs to expect that.
@@ -761,8 +897,12 @@ std::string CreateHostapdConfig(
 		"%s\n"
 		"%s\n"
 		"%s\n"
+		"%s\n"
 		"%s\n",
-		iface_params.name.c_str(), ssid_as_string.c_str(),
+		sanitized_overlay.c_str(),
+		iface_params.usesMlo ? br_name.c_str() : iface_params.name.c_str(),
+		iface_params.name.c_str(),
+		ssid_as_string.c_str(),
 		channel_config_as_string.c_str(),
 		iface_params.hwModeParams.enable80211N ? 1 : 0,
 		iface_params.hwModeParams.enable80211AC ? 1 : 0,
@@ -778,7 +918,8 @@ std::string CreateHostapdConfig(
 		owe_transition_ifname_as_string.c_str(),
 		enable_edmg_as_string.c_str(),
 		edmg_channel_as_string.c_str(),
-		vendor_elements_as_string.c_str());
+		vendor_elements_as_string.c_str(),
+		ap_isolation_as_string.c_str());
 }
 
 Generation getGeneration(hostapd_hw_modes *current_mode)
@@ -839,23 +980,39 @@ ChannelBandwidth getChannelBandwidth(struct hostapd_config *iconf)
 	}
 }
 
+std::optional<struct sta_info*> getStaInfoByMacAddr(const struct hostapd_data* iface_hapd,
+		const u8 *mac_addr) {
+	if (iface_hapd == nullptr || mac_addr == nullptr){
+		wpa_printf(MSG_ERROR, "nullptr passsed to getStaInfoByMacAddr!");
+		return std::nullopt;
+	}
+
+	for (struct sta_info* sta_ptr = iface_hapd->sta_list; sta_ptr; sta_ptr = sta_ptr->next) {
+		int res;
+		res = memcmp(sta_ptr->addr, mac_addr, ETH_ALEN);
+		if (res == 0) {
+			return sta_ptr;
+		}
+	}
+	return std::nullopt;
+}
+
 bool forceStaDisconnection(struct hostapd_data* hapd,
 			   const std::vector<uint8_t>& client_address,
 			   const uint16_t reason_code) {
-	struct sta_info *sta;
 	if (client_address.size() != ETH_ALEN) {
 		return false;
 	}
-	for (sta = hapd->sta_list; sta; sta = sta->next) {
-		int res;
-		res = memcmp(sta->addr, client_address.data(), ETH_ALEN);
-		if (res == 0) {
-			wpa_printf(MSG_INFO, "Force client:" MACSTR " disconnect with reason: %d",
-			    MAC2STR(client_address.data()), reason_code);
-			ap_sta_disconnect(hapd, sta, sta->addr, reason_code);
-			return true;
-		}
+
+	auto sta_ptr_optional = getStaInfoByMacAddr(hapd, client_address.data());
+	if (sta_ptr_optional.has_value()) {
+		wpa_printf(MSG_INFO, "Force client:" MACSTR " disconnect with reason: %d",
+				MAC2STR(client_address.data()), reason_code);
+		ap_sta_disconnect(hapd, sta_ptr_optional.value(), sta_ptr_optional.value()->addr,
+				reason_code);
+		return true;
 	}
+
 	return false;
 }
 
@@ -979,6 +1136,12 @@ Hostapd::Hostapd(struct hapd_interfaces* interfaces)
 	return setDebugParamsInternal(level);
 }
 
+::ndk::ScopedAStatus Hostapd::removeLinkFromMultipleLinkBridgedApIface(
+        const std::string& iface_name, const std::string& linkIdentity)
+{
+	return removeLinkFromMultipleLinkBridgedApIfaceInternal(iface_name, linkIdentity);
+}
+
 ::ndk::ScopedAStatus Hostapd::addAccessPointInternal(
 	const IfaceParams& iface_params,
 	const NetworkParams& nw_params)
@@ -1011,35 +1174,58 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	return vssid;
 }
 
+
+// Both of bridged dual APs and MLO AP will be treated as concurrenct APs.
+// -----------------------------------------
+//                  | br_name     |  instance#1 | instance#2 |
+// ___________________________________________________________
+// bridged dual APs | ap_br_wlanX |   wlan X    |   wlanY    |
+// ___________________________________________________________
+// MLO AP           | wlanX       |     0       |     1      |
+// ___________________________________________________________
+// Both will be added in br_interfaces_[$br_name] and use instance's name
+// to be iface_params_new.name to create single Access point.
 ::ndk::ScopedAStatus Hostapd::addConcurrentAccessPoints(
 	const IfaceParams& iface_params, const NetworkParams& nw_params)
 {
 	int channelParamsListSize = iface_params.channelParams.size();
 	// Get available interfaces in bridge
-	std::vector<std::string> managed_interfaces;
-	std::string br_name = StringPrintf(
-		"%s", iface_params.name.c_str());
-	if (!GetInterfacesInBridge(br_name, &managed_interfaces)) {
-		return createStatusWithMsg(HostapdStatusCode::FAILURE_UNKNOWN,
-			"Get interfaces in bridge failed.");
+	std::vector<std::string> managed_instances;
+	std::string br_name = StringPrintf("%s", iface_params.name.c_str());
+	if (iface_params.usesMlo) {
+		// MLO AP is using link id as instance.
+		for (std::size_t i = 0; i < iface_params.instanceIdentities->size(); i++) {
+			managed_instances.push_back(iface_params.instanceIdentities->at(i)->c_str());
+		}
+	} else {
+		if (!GetInterfacesInBridge(br_name, &managed_instances)) {
+			return createStatusWithMsg(HostapdStatusCode::FAILURE_UNKNOWN,
+					"Get interfaces in bridge failed.");
+		}
 	}
-	if (managed_interfaces.size() < channelParamsListSize) {
+	// Either bridged AP or MLO AP should have two instances.
+	if (managed_instances.size() < channelParamsListSize) {
 		return createStatusWithMsg(HostapdStatusCode::FAILURE_UNKNOWN,
-			"Available interfaces less than requested bands");
+				"Available interfaces less than requested bands");
+	}
+
+	if (iface_params.usesMlo
+				&& nw_params.encryptionType == EncryptionType::WPA3_OWE_TRANSITION) {
+		return createStatusWithMsg(HostapdStatusCode::FAILURE_UNKNOWN,
+				"Invalid encryptionType (OWE transition) for MLO SAP.");
 	}
 	// start BSS on specified bands
 	for (std::size_t i = 0; i < channelParamsListSize; i ++) {
 		IfaceParams iface_params_new = iface_params;
 		NetworkParams nw_params_new = nw_params;
-		iface_params_new.name = managed_interfaces[i];
-
 		std::string owe_transition_ifname = "";
+		iface_params_new.name = managed_instances[i];
 		if (nw_params.encryptionType == EncryptionType::WPA3_OWE_TRANSITION) {
 			if (i == 0 && i+1 < channelParamsListSize) {
-				owe_transition_ifname = managed_interfaces[i+1];
+				owe_transition_ifname = managed_instances[i+1];
 				nw_params_new.encryptionType = EncryptionType::NONE;
 			} else {
-				owe_transition_ifname = managed_interfaces[0];
+				owe_transition_ifname = managed_instances[0];
 				nw_params_new.isHidden = true;
 				nw_params_new.ssid = generateRandomOweSsid();
 			}
@@ -1050,15 +1236,61 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		    br_name, owe_transition_ifname);
 		if (!status.isOk()) {
 			wpa_printf(MSG_ERROR, "Failed to addAccessPoint %s",
-				   managed_interfaces[i].c_str());
+				   managed_instances[i].c_str());
 			return status;
 		}
 	}
+
+	if (iface_params.usesMlo) {
+		std::size_t i = 0;
+		std::size_t j = 0;
+		for (i = 0; i < interfaces_->count; i++) {
+			struct hostapd_iface *iface = interfaces_->iface[i];
+
+			for (j = 0; j < iface->num_bss; j++) {
+				struct hostapd_data *iface_hapd = iface->bss[j];
+				if (hostapd_enable_iface(iface_hapd->iface) < 0) {
+					wpa_printf(
+					MSG_ERROR, "Enabling interface %s failed on %zu",
+						iface_params.name.c_str(), i);
+					return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
+				}
+			}
+		}
+    }
 	// Save bridge interface info
-	br_interfaces_[br_name] = managed_interfaces;
+	br_interfaces_[br_name] = managed_instances;
 	return ndk::ScopedAStatus::ok();
 }
 
+struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *interfaces,
+					const size_t link_id)
+{
+#ifdef CONFIG_IEEE80211BE
+	size_t i, j;
+
+	for (i = 0; i < interfaces->count; i++) {
+		struct hostapd_iface *iface = interfaces->iface[i];
+
+		for (j = 0; j < iface->num_bss; j++) {
+			struct hostapd_data *hapd = iface->bss[j];
+
+			if (link_id == hapd->mld_link_id)
+				return hapd;
+		}
+	}
+#endif
+	return NULL;
+}
+
+// Both of bridged dual APs and MLO AP will be treated as concurrenct APs.
+// -----------------------------------------
+//                  | br_name                 |  iface_params.name
+// _______________________________________________________________
+// bridged dual APs | bridged interface name  |  interface name
+// _______________________________________________________________
+// MLO AP           | AP interface name       |  mld link id as instance name
+// _______________________________________________________________
 ::ndk::ScopedAStatus Hostapd::addSingleAccessPoint(
 	const IfaceParams& iface_params,
 	const ChannelParams& channelParams,
@@ -1066,10 +1298,19 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	const std::string br_name,
 	const std::string owe_transition_ifname)
 {
-	if (hostapd_get_iface(interfaces_, iface_params.name.c_str())) {
+	if (iface_params.usesMlo) { // the mlo case, iface name is instance name which is mld_link_id
+		if (hostapd_get_iface_by_link_id(interfaces_, (size_t) iface_params.name.c_str())) {
+			wpa_printf(
+				MSG_ERROR, "Instance link id %s already present",
+				iface_params.name.c_str());
+			return createStatus(HostapdStatusCode::FAILURE_IFACE_EXISTS);
+		}
+	}
+	if (hostapd_get_iface(interfaces_,
+			iface_params.usesMlo ? br_name.c_str() : iface_params.name.c_str())) {
 		wpa_printf(
-			MSG_ERROR, "Interface %s already present",
-			iface_params.name.c_str());
+			MSG_ERROR, "Instance interface %s already present",
+			iface_params.usesMlo ? br_name.c_str() : iface_params.name.c_str());
 		return createStatus(HostapdStatusCode::FAILURE_IFACE_EXISTS);
 	}
 	const auto conf_params = CreateHostapdConfig(iface_params, channelParams, nw_params,
@@ -1079,26 +1320,46 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
 	}
 	const auto conf_file_path =
-		WriteHostapdConfig(iface_params.name, conf_params);
+		WriteHostapdConfig(iface_params.name, conf_params, br_name, iface_params.usesMlo);
 	if (conf_file_path.empty()) {
 		wpa_printf(MSG_ERROR, "Failed to write config file");
 		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
 	}
 	std::string add_iface_param_str = StringPrintf(
-		"%s config=%s", iface_params.name.c_str(),
+		"%s config=%s", iface_params.usesMlo ? br_name.c_str(): iface_params.name.c_str(),
 		conf_file_path.c_str());
 	std::vector<char> add_iface_param_vec(
 		add_iface_param_str.begin(), add_iface_param_str.end() + 1);
 	if (hostapd_add_iface(interfaces_, add_iface_param_vec.data()) < 0) {
 		wpa_printf(
-			MSG_ERROR, "Adding interface %s failed",
+			MSG_ERROR, "Adding hostapd iface %s failed",
 			add_iface_param_str.c_str());
 		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
 	}
-	struct hostapd_data* iface_hapd =
-	    hostapd_get_iface(interfaces_, iface_params.name.c_str());
+
+	// find the iface and set up callback.
+	struct hostapd_data* iface_hapd = iface_params.usesMlo ?
+		hostapd_get_iface_by_link_id(interfaces_, (size_t) iface_params.name.c_str()) :
+		hostapd_get_iface(interfaces_, iface_params.name.c_str());
 	WPA_ASSERT(iface_hapd != nullptr && iface_hapd->iface != nullptr);
+	if (iface_params.usesMlo) {
+		memcmp(iface_hapd->conf->iface, br_name.c_str(), br_name.size());
+	}
+
+	// Callback discrepancy between bridged dual APs and MLO AP
+	// Note: Only bridged dual APs will have "iface_hapd->conf->bridge" and
+	// Only MLO AP will have "iface_hapd->mld_link_id"
 	// Register the setup complete callbacks
+	// -----------------------------------------
+	//                    |   bridged dual APs     | bridged single link MLO | MLO SAP
+	// _________________________________________________________________________________________
+	// hapd->conf->bridge | bridged interface name |  bridged interface nam  | N/A
+	// _________________________________________________________________________________________
+	// hapd->conf->iface  | AP interface name      |  AP interface name      | AP interface name
+	// _________________________________________________________________________________________
+	// hapd->mld_link_id  | 0 (default value)      |      link id (0)        | link id (0 or 1)
+	// _________________________________________________________________________________________
+	// hapd->mld_ap       |         0              |            1            |     1
 	on_setup_complete_internal_callback =
 		[this](struct hostapd_data* iface_hapd) {
 			wpa_printf(
@@ -1107,11 +1368,18 @@ std::vector<uint8_t>  generateRandomOweSsid()
 			if (iface_hapd->iface->state == HAPD_IFACE_DISABLED) {
 				// Invoke the failure callback on all registered
 				// clients.
+				std::string instanceName = iface_hapd->conf->iface;
+#ifdef CONFIG_IEEE80211BE
+				if (iface_hapd->conf->mld_ap
+						&& strlen(iface_hapd->conf->bridge) == 0) {
+					instanceName = std::to_string(iface_hapd->mld_link_id);
+				}
+#endif
 				for (const auto& callback : callbacks_) {
 					auto status = callback->onFailure(
 						strlen(iface_hapd->conf->bridge) > 0 ?
 						iface_hapd->conf->bridge : iface_hapd->conf->iface,
-							    iface_hapd->conf->iface);
+							    instanceName);
 					if (!status.isOk()) {
 						wpa_printf(MSG_ERROR, "Failed to invoke onFailure");
 					}
@@ -1129,9 +1397,25 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		ClientInfo info;
 		info.ifaceName = strlen(iface_hapd->conf->bridge) > 0 ?
 			iface_hapd->conf->bridge : iface_hapd->conf->iface;
-		info.apIfaceInstance = iface_hapd->conf->iface;
+		std::string instanceName = iface_hapd->conf->iface;
+#ifdef CONFIG_IEEE80211BE
+		if (iface_hapd->conf->mld_ap
+				&& strlen(iface_hapd->conf->bridge) == 0) {
+			instanceName = std::to_string(iface_hapd->mld_link_id);
+		}
+#endif
+		info.apIfaceInstance = instanceName;
 		info.clientAddress.assign(mac_addr, mac_addr + ETH_ALEN);
 		info.isConnected = authorized;
+		if(isAidlServiceVersionAtLeast(3) && !authorized) {
+			u16 disconnect_reason_code = WLAN_REASON_UNSPECIFIED;
+			auto sta_ptr_optional = getStaInfoByMacAddr(iface_hapd, mac_addr);
+			if (sta_ptr_optional.has_value()){
+				disconnect_reason_code = sta_ptr_optional.value()->deauth_reason;
+			}
+			info.disconnectReasonCode =
+					static_cast<common::DeauthenticationReasonCode>(disconnect_reason_code);
+		}
 		for (const auto &callback : callbacks_) {
 			auto status = callback->onConnectedClientsChanged(info);
 			if (!status.isOk()) {
@@ -1150,10 +1434,16 @@ std::vector<uint8_t>  generateRandomOweSsid()
 					strlen(AP_EVENT_ENABLED)) == 0 ||
 			os_strncmp(txt, WPA_EVENT_CHANNEL_SWITCH,
 					strlen(WPA_EVENT_CHANNEL_SWITCH)) == 0) {
+			std::string instanceName = iface_hapd->conf->iface;
+#ifdef CONFIG_IEEE80211BE
+			if (iface_hapd->conf->mld_ap && strlen(iface_hapd->conf->bridge) == 0) {
+				instanceName = std::to_string(iface_hapd->mld_link_id);
+			}
+#endif
 			ApInfo info;
 			info.ifaceName = strlen(iface_hapd->conf->bridge) > 0 ?
 				iface_hapd->conf->bridge : iface_hapd->conf->iface,
-			info.apIfaceInstance = iface_hapd->conf->iface;
+			info.apIfaceInstance = instanceName;
 			info.freqMhz = iface_hapd->iface->freq;
 			info.channelBandwidth = getChannelBandwidth(iface_hapd->iconf);
 			info.generation = getGeneration(iface_hapd->iface->current_mode);
@@ -1169,11 +1459,18 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		} else if (os_strncmp(txt, AP_EVENT_DISABLED, strlen(AP_EVENT_DISABLED)) == 0
                            || os_strncmp(txt, INTERFACE_DISABLED, strlen(INTERFACE_DISABLED)) == 0)
 		{
+			std::string instanceName = iface_hapd->conf->iface;
+#ifdef CONFIG_IEEE80211BE
+			if (iface_hapd->conf->mld_ap && strlen(iface_hapd->conf->bridge) == 0) {
+				instanceName = std::to_string(iface_hapd->mld_link_id);
+			}
+#endif
 			// Invoke the failure callback on all registered clients.
 			for (const auto& callback : callbacks_) {
-				auto status = callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
+				auto status =
+					callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
 					iface_hapd->conf->bridge : iface_hapd->conf->iface,
-						    iface_hapd->conf->iface);
+						instanceName);
 				if (!status.isOk()) {
 					wpa_printf(MSG_ERROR, "Failed to invoke onFailure");
 				}
@@ -1188,7 +1485,8 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	iface_hapd->sta_authorized_cb_ctx = iface_hapd;
 	wpa_msg_register_aidl_cb(onAsyncWpaEventCb);
 
-	if (hostapd_enable_iface(iface_hapd->iface) < 0) {
+	// Multi-link MLO should enable iface after both links have been set.
+	if (!iface_params.usesMlo && hostapd_enable_iface(iface_hapd->iface) < 0) {
 		wpa_printf(
 			MSG_ERROR, "Enabling interface %s failed",
 			iface_params.name.c_str());
@@ -1286,6 +1584,23 @@ std::vector<uint8_t>  generateRandomOweSsid()
 {
 	wpa_debug_level = static_cast<uint32_t>(level);
 	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus Hostapd::removeLinkFromMultipleLinkBridgedApIfaceInternal(
+const std::string& iface_name, const std::string& linkIdentity)
+{
+	if (!hostapd_get_iface(interfaces_, iface_name.c_str())) {
+		wpa_printf(MSG_ERROR, "Interface %s doesn't exist", iface_name.c_str());
+		return createStatus(HostapdStatusCode::FAILURE_IFACE_UNKNOWN);
+	}
+	struct hostapd_data* iface_hapd =
+		hostapd_get_iface_by_link_id(interfaces_, (size_t) linkIdentity.c_str());
+	if (iface_hapd) {
+		if (0 == hostapd_link_remove(iface_hapd, 1)) {
+			return ndk::ScopedAStatus::ok();
+		}
+	}
+	return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
 }
 
 }  // namespace hostapd

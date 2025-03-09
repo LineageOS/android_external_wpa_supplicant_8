@@ -14,7 +14,7 @@
 extern "C"
 {
 #include "aidl.h"
-#include "aidl_i.h"
+#include "aidl/shared/aidl_i.h"
 #include "utils/common.h"
 #include "utils/eloop.h"
 #include "utils/includes.h"

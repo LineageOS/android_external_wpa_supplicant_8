@@ -55,6 +55,8 @@ public:
 	    const std::vector<uint8_t>& client_address,
 	    Ieee80211ReasonCode reason_code) override;
 	::ndk::ScopedAStatus setDebugParams(DebugLevel level) override;
+	::ndk::ScopedAStatus removeLinkFromMultipleLinkBridgedApIface(
+		const std::string& iface_name, const std::string& linkIdentity) override;
 private:
 	// Corresponding worker functions for the AIDL methods.
 	::ndk::ScopedAStatus addAccessPointInternal(
@@ -77,7 +79,8 @@ private:
 	    const std::vector<uint8_t>& client_address,
 	    Ieee80211ReasonCode reason_code);
 	::ndk::ScopedAStatus setDebugParamsInternal(DebugLevel level);
-
+	::ndk::ScopedAStatus removeLinkFromMultipleLinkBridgedApIfaceInternal(
+		const std::string& iface_name, const std::string& linkIdentity);
 	// Raw pointer to the global structure maintained by the core.
 	struct hapd_interfaces* interfaces_;
 	// Callbacks registered.

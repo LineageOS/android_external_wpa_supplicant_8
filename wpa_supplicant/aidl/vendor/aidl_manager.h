@@ -120,6 +120,15 @@ public:
 	void notifyP2pSdResponse(
 		struct wpa_supplicant *wpa_s, const u8 *sa, u16 update_indic,
 		const u8 *tlvs, size_t tlvs_len);
+	void notifyUsdBasedServiceDiscoveryResult(
+		struct wpa_supplicant *wpa_s, const u8 *peer_addr, int subscribe_id,
+		int peer_publish_id, int srv_proto_type, const u8 *ssi, size_t ssi_len);
+	void notifyUsdBasedServiceDiscoveryTerminated(
+		struct wpa_supplicant *wpa_s, int subscribe_id,
+		int reason);
+	void notifyUsdBasedServiceAdvertisementTerminated(
+		struct wpa_supplicant *wpa_s, int publish_id,
+		int reason);
 	void notifyApStaAuthorized(
 		struct wpa_supplicant *wpa_s, const u8 *sta,
 		const u8 *p2p_dev_addr, const u8 *ip);
@@ -173,6 +182,7 @@ public:
 	// Methods called from aidl objects.
 	int32_t isAidlServiceVersionAtLeast(int32_t expected_version);
 	int32_t isAidlClientVersionAtLeast(int32_t expected_version);
+	int32_t areAidlServiceAndClientAtLeastVersion(int32_t expected_version);
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
 	void notifyExtRadioWorkTimeout(
 		struct wpa_supplicant *wpa_s, uint32_t id);

@@ -64,3 +64,40 @@ filegroup {
         "src/wps/http_server.c",
     ],
 }
+
+filegroup {
+    name: "wpa_supplicant_macsec_extra_driver_srcs",
+    srcs: [
+        "src/drivers/driver_macsec_linux.c",
+        "src/drivers/driver_wired_common.c",
+    ],
+}
+
+filegroup {
+    name: "hs20_client_srcs",
+    srcs: [
+        "hs20/client/est.c",
+        "hs20/client/oma_dm_client.c",
+        "hs20/client/osu_client.c",
+        "hs20/client/spp_client.c",
+        "src/common/wpa_ctrl.c",
+        "src/common/wpa_helpers.c",
+        "src/crypto/crypto_internal.c",
+        "src/crypto/md5-internal.c",
+        "src/crypto/sha1-internal.c",
+        "src/crypto/sha256-internal.c",
+        "src/crypto/tls_openssl_ocsp.c",
+        "src/utils/base64.c",
+        "src/utils/browser-wpadebug.c",
+        "src/utils/common.c",
+        "src/utils/eloop.c",
+        "src/utils/http_curl.c",
+        "src/utils/os_unix.c",
+        "src/utils/wpa_debug.c",
+        "src/utils/wpabuf.c",
+        "src/utils/xml-utils.c",
+        "src/utils/xml_libxml2.c",
+        "src/wps/http_server.c",
+        "src/wps/httpread.c",
+    ],
+}

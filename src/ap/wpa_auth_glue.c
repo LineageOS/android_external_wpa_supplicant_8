@@ -132,6 +132,46 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 			  wpabuf_head(conf->own_ie_override),
 			  wconf->own_ie_override_len);
 	}
+	if (conf->rsne_override &&
+	    wpabuf_len(conf->rsne_override) <= MAX_OWN_IE_OVERRIDE) {
+		wconf->rsne_override_len = wpabuf_len(conf->rsne_override);
+		os_memcpy(wconf->rsne_override,
+			  wpabuf_head(conf->rsne_override),
+			  wconf->rsne_override_len);
+		wconf->rsne_override_set = true;
+	}
+	if (conf->rsnoe_override &&
+	    wpabuf_len(conf->rsnoe_override) <= MAX_OWN_IE_OVERRIDE) {
+		wconf->rsnoe_override_len = wpabuf_len(conf->rsnoe_override);
+		os_memcpy(wconf->rsnoe_override,
+			  wpabuf_head(conf->rsnoe_override),
+			  wconf->rsnoe_override_len);
+		wconf->rsnoe_override_set = true;
+	}
+	if (conf->rsno2e_override &&
+	    wpabuf_len(conf->rsno2e_override) <= MAX_OWN_IE_OVERRIDE) {
+		wconf->rsno2e_override_len = wpabuf_len(conf->rsno2e_override);
+		os_memcpy(wconf->rsno2e_override,
+			  wpabuf_head(conf->rsno2e_override),
+			  wconf->rsno2e_override_len);
+		wconf->rsno2e_override_set = true;
+	}
+	if (conf->rsnxe_override &&
+	    wpabuf_len(conf->rsnxe_override) <= MAX_OWN_IE_OVERRIDE) {
+		wconf->rsnxe_override_len = wpabuf_len(conf->rsnxe_override);
+		os_memcpy(wconf->rsnxe_override,
+			  wpabuf_head(conf->rsnxe_override),
+			  wconf->rsnxe_override_len);
+		wconf->rsnxe_override_set = true;
+	}
+	if (conf->rsnxoe_override &&
+	    wpabuf_len(conf->rsnxoe_override) <= MAX_OWN_IE_OVERRIDE) {
+		wconf->rsnxoe_override_len = wpabuf_len(conf->rsnxoe_override);
+		os_memcpy(wconf->rsnxoe_override,
+			  wpabuf_head(conf->rsnxoe_override),
+			  wconf->rsnxoe_override_len);
+		wconf->rsnxoe_override_set = true;
+	}
 	if (conf->rsne_override_eapol &&
 	    wpabuf_len(conf->rsne_override_eapol) <= MAX_OWN_IE_OVERRIDE) {
 		wconf->rsne_override_eapol_set = 1;
@@ -199,6 +239,7 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 	if (conf->eapol_m3_elements)
 		wconf->eapol_m3_elements = wpabuf_dup(conf->eapol_m3_elements);
 	wconf->eapol_m3_no_encrypt = conf->eapol_m3_no_encrypt;
+	wconf->eapol_key_reserved_random = conf->eapol_key_reserved_random;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_P2P
 	os_memcpy(wconf->ip_addr_go, conf->ip_addr_go, 4);
@@ -237,6 +278,8 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 	wconf->no_disconnect_on_group_keyerror =
 		conf->bss_max_idle && conf->ap_max_inactivity &&
 		conf->no_disconnect_on_group_keyerror;
+
+	wconf->rsn_override_omit_rsnxe = conf->rsn_override_omit_rsnxe;
 }
 
 
@@ -1547,7 +1590,8 @@ static int hostapd_set_ltf_keyseed(void *ctx, const u8 *peer_addr,
 #ifdef CONFIG_IEEE80211BE
 
 static int hostapd_wpa_auth_get_ml_key_info(void *ctx,
-					    struct wpa_auth_ml_key_info *info)
+					    struct wpa_auth_ml_key_info *info,
+					    bool rekey)
 {
 	struct hostapd_data *hapd = ctx;
 	unsigned int i;
@@ -1571,7 +1615,8 @@ static int hostapd_wpa_auth_get_ml_key_info(void *ctx,
 			wpa_auth_ml_get_key_info(hapd->wpa_auth,
 						 &info->links[i],
 						 info->mgmt_frame_prot,
-						 info->beacon_prot);
+						 info->beacon_prot,
+						 rekey);
 			continue;
 		}
 
@@ -1582,7 +1627,8 @@ static int hostapd_wpa_auth_get_ml_key_info(void *ctx,
 			wpa_auth_ml_get_key_info(bss->wpa_auth,
 						 &info->links[i],
 						 info->mgmt_frame_prot,
-						 info->beacon_prot);
+						 info->beacon_prot,
+						 rekey);
 			link_bss_found = true;
 			break;
 		}

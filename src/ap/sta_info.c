@@ -1625,6 +1625,7 @@ void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
 
 	if (sta == NULL)
 		return;
+	sta->deauth_reason = reason;
 	ap_sta_set_authorized(hapd, sta, 0);
 	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC);
 	hostapd_set_sta_flags(hapd, sta);
@@ -1654,7 +1655,6 @@ void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
 		return;
 	}
 
-	sta->deauth_reason = reason;
 	sta->flags |= WLAN_STA_PENDING_DEAUTH_CB;
 	eloop_cancel_timeout(ap_sta_deauth_cb_timeout, hapd, sta);
 	eloop_register_timeout(hapd->iface->drv_flags &

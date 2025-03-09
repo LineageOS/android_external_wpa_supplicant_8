@@ -65,6 +65,8 @@ struct ieee802_11_elems {
 	const u8 *vendor_ht_cap;
 	const u8 *vendor_vht;
 	const u8 *p2p;
+	const u8 *p2p2_ie;
+	const u8 *pasn_encrypted_data;
 	const u8 *wfd;
 	const u8 *link_id;
 	const u8 *interworking;
@@ -118,6 +120,7 @@ struct ieee802_11_elems {
 	const u8 *mbssid;
 	const u8 *rsne_override;
 	const u8 *rsne_override_2;
+	const u8 *rsn_selection;
 
 	u8 ssid_len;
 	u8 supp_rates_len;
@@ -138,6 +141,8 @@ struct ieee802_11_elems {
 	u8 vendor_ht_cap_len;
 	u8 vendor_vht_len;
 	u8 p2p_len;
+	u8 p2p2_ie_len;
+	u8 pasn_encrypted_data_len;
 	u8 wfd_len;
 	u8 interworking_len;
 	u8 qos_map_set_len;
@@ -183,6 +188,7 @@ struct ieee802_11_elems {
 	u8 mbssid_len;
 	size_t rsne_override_len;
 	size_t rsne_override_2_len;
+	size_t rsn_selection_len;
 
 	struct mb_ies_info mb_ies;
 

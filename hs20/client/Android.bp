@@ -1,0 +1,61 @@
+//
+// Copyright (C) 2024 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package {
+    // See: http://go/android-license-faq
+    default_applicable_licenses: [
+        "external_wpa_supplicant_8_license",
+    ],
+}
+
+cc_binary {
+    name: "hs20-osu-client",
+    vendor: true,
+    srcs: [
+        ":hs20_client_srcs",
+    ],
+    shared_libs: [
+        "libc",
+        "libcrypto",
+        "libcurl",
+        "libcutils",
+        "liblog",
+        "libssl",
+        "libxml2",
+    ],
+    cflags: [
+        "-DCONFIG_CTRL_IFACE",
+        "-DCONFIG_CTRL_IFACE_UNIX",
+        "-DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/misc/wifi/sockets\"",
+        "-DCONFIG_DEBUG_FILE",
+        "-DEAP_TLS_OPENSSL",
+        "-Wno-unused-parameter",
+        "-DCONFIG_ANDROID_LOG",
+        "-DANDROID_LOG_NAME=\"hs20-osu-client\"",
+    ],
+    local_include_dirs: [
+        ".",
+    ],
+    include_dirs: [
+        "external/curl/include",
+        "external/libxml2/include",
+        "external/wpa_supplicant_8/src",
+        "external/wpa_supplicant_8/src/common",
+        "external/wpa_supplicant_8/src/utils",
+    ],
+    defaults: [
+        "wpa_supplicant_cflags_default",
+    ],
+}

@@ -12,6 +12,8 @@
 #include "supplicant.h"
 #include "p2p_iface.h"
 
+#include "aidl/shared/shared_utils.h"
+
 #include <android-base/file.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -22,8 +24,6 @@ namespace {
 // Note: This may differ for other OEM's. So, modify this accordingly.
 // When wpa_supplicant is in its APEX, overlay/template configurations should be
 // loaded from the same APEX.
-constexpr char kIfaceDriverName[] = "nl80211";
-
 constexpr char kStaIfaceConfPath[] =
 	"/data/vendor/wifi/wpa/wpa_supplicant.conf";
 constexpr char kStaIfaceConfOverlayPath[] =
@@ -42,7 +42,6 @@ constexpr char kVendorTemplateConfPath[] =
 
 constexpr char kOldStaIfaceConfPath[] = "/data/misc/wifi/wpa_supplicant.conf";
 constexpr char kOldP2pIfaceConfPath[] = "/data/misc/wifi/p2p_supplicant.conf";
-constexpr mode_t kConfigFileMode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
 
 std::string resolveVendorConfPath(const std::string& conf_path)
 {
@@ -114,26 +113,15 @@ int ensureConfigFileExists(
 	const std::string& config_file_path,
 	const std::string& old_config_file_path)
 {
-	int ret = access(config_file_path.c_str(), R_OK | W_OK);
+	// Check if config file already exists at |config_file_path|
+	int ret = ensureConfigFileExistsAtPath(config_file_path);
 	if (ret == 0) {
+		wpa_printf(MSG_INFO, "Config file already exists at %s", config_file_path.c_str());
 		return 0;
-	}
-	if (errno == EACCES) {
-		ret = chmod(config_file_path.c_str(), kConfigFileMode);
-		if (ret == 0) {
-			return 0;
-		} else {
-			wpa_printf(
-				MSG_ERROR, "Cannot set RW to %s. Errno: %s",
-				config_file_path.c_str(), strerror(errno));
-			return -1;
-		}
-	} else if (errno != ENOENT) {
-		wpa_printf(
-			MSG_ERROR, "Cannot acces %s. Errno: %s",
-			config_file_path.c_str(), strerror(errno));
+	} else if (ret != ENOENT) {
 		return -1;
 	}
+
 	ret = copyFileIfItExists(old_config_file_path, config_file_path);
 	if (ret == 0) {
 		wpa_printf(
@@ -145,6 +133,7 @@ int ensureConfigFileExists(
 		unlink(config_file_path.c_str());
 		return -1;
 	}
+
 	std::string vendor_template_conf_path = resolveVendorConfPath(kVendorTemplateConfPath);
 	ret = copyFileIfItExists(vendor_template_conf_path, config_file_path);
 	if (ret == 0) {
@@ -156,6 +145,7 @@ int ensureConfigFileExists(
 		unlink(config_file_path.c_str());
 		return -1;
 	}
+
 	ret = copyFileIfItExists(kSystemTemplateConfPath, config_file_path);
 	if (ret == 0) {
 		wpa_printf(
@@ -166,6 +156,7 @@ int ensureConfigFileExists(
 		unlink(config_file_path.c_str());
 		return -1;
 	}
+
 	// Did not create the conf file.
 	return -1;
 }

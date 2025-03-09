@@ -1173,16 +1173,23 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
 static void sae_pick_next_group(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	struct sae_data *sae = sta->sae;
-	int i, *groups = hapd->conf->sae_groups;
-	int default_groups[] = { 19, 0 };
+	struct hostapd_bss_config *conf = hapd->conf;
+	int i, *groups = conf->sae_groups;
+	int default_groups[] = { 19, 0, 0 };
 
 	if (sae->state != SAE_COMMITTED)
 		return;
 
 	wpa_printf(MSG_DEBUG, "SAE: Previously selected group: %d", sae->group);
 
-	if (!groups)
+	if (!groups) {
 		groups = default_groups;
+		if (wpa_key_mgmt_sae_ext_key(conf->wpa_key_mgmt |
+					     conf->rsn_override_key_mgmt |
+					     conf->rsn_override_key_mgmt_2))
+			default_groups[1] = 20;
+	}
+
 	for (i = 0; groups[i] > 0; i++) {
 		if (sae->group == groups[i])
 			break;
@@ -1247,12 +1254,18 @@ static int sae_status_success(struct hostapd_data *hapd, u16 status_code)
 
 static int sae_is_group_enabled(struct hostapd_data *hapd, int group)
 {
-	int *groups = hapd->conf->sae_groups;
-	int default_groups[] = { 19, 0 };
+	struct hostapd_bss_config *conf = hapd->conf;
+	int *groups = conf->sae_groups;
+	int default_groups[] = { 19, 0, 0 };
 	int i;
 
-	if (!groups)
+	if (!groups) {
 		groups = default_groups;
+		if (wpa_key_mgmt_sae_ext_key(conf->wpa_key_mgmt |
+					     conf->rsn_override_key_mgmt |
+					     conf->rsn_override_key_mgmt_2))
+			default_groups[1] = 20;
+	}
 
 	for (i = 0; groups[i] > 0; i++) {
 		if (groups[i] == group)
@@ -1309,14 +1322,20 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 {
 	int resp = WLAN_STATUS_SUCCESS;
 	struct wpabuf *data = NULL;
-	int *groups = hapd->conf->sae_groups;
-	int default_groups[] = { 19, 0 };
+	struct hostapd_bss_config *conf = hapd->conf;
+	int *groups = conf->sae_groups;
+	int default_groups[] = { 19, 0, 0 };
 	const u8 *pos, *end;
 	int sta_removed = 0;
 	bool success_status;
 
-	if (!groups)
+	if (!groups) {
 		groups = default_groups;
+		if (wpa_key_mgmt_sae_ext_key(conf->wpa_key_mgmt |
+					     conf->rsn_override_key_mgmt |
+					     conf->rsn_override_key_mgmt_2))
+			default_groups[1] = 20;
+	}
 
 #ifdef CONFIG_TESTING_OPTIONS
 	if (hapd->conf->sae_reflection_attack && auth_transaction == 1) {
@@ -1609,12 +1628,12 @@ reply:
 		    !data && end - pos >= 2)
 			data = wpabuf_alloc_copy(pos, 2);
 
-		sae_sme_send_external_auth_status(hapd, sta, resp);
 		send_auth_reply(hapd, sta, sta->addr,
 				WLAN_AUTH_SAE,
 				auth_transaction, resp,
 				data ? wpabuf_head(data) : (u8 *) "",
 				data ? wpabuf_len(data) : 0, "auth-sae");
+		sae_sme_send_external_auth_status(hapd, sta, resp);
 		if (sta->sae && sta->sae->tmp && sta->sae->tmp->pw_id &&
 		    resp == WLAN_STATUS_UNKNOWN_PASSWORD_IDENTIFIER &&
 		    auth_transaction == 1) {
@@ -1935,6 +1954,8 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 		goto fail;
 	}
 
+	wpa_auth_set_rsn_selection(sta->wpa_sm, elems.rsn_selection,
+				   elems.rsn_selection_len);
 	res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
 				  hapd->iface->freq,
 				  elems.rsn_ie - 2, elems.rsn_ie_len + 2,
@@ -1944,9 +1965,6 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 	resp = wpa_res_to_status_code(res);
 	if (resp != WLAN_STATUS_SUCCESS)
 		goto fail;
-
-	wpa_auth_set_rsn_override(sta->wpa_sm, elems.rsne_override != NULL);
-	wpa_auth_set_rsn_override_2(sta->wpa_sm, elems.rsne_override_2 != NULL);
 
 	if (!elems.fils_nonce) {
 		wpa_printf(MSG_DEBUG, "FILS: No FILS Nonce field");
@@ -2463,7 +2481,8 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
 			      wpabuf_head(pasn->secret),
 			      wpabuf_len(pasn->secret),
 			      pasn_get_ptk(sta->pasn), pasn_get_akmp(sta->pasn),
-			      pasn_get_cipher(sta->pasn), sta->pasn->kdk_len);
+			      pasn_get_cipher(sta->pasn), sta->pasn->kdk_len,
+			      sta->pasn->kek_len);
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed to derive PTK");
 		goto fail;
@@ -2832,7 +2851,7 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
 
 		hapd_pasn_update_params(hapd, sta, mgmt, len);
 		if (handle_auth_pasn_1(sta->pasn, hapd->own_addr,
-				       sta->addr, mgmt, len) < 0)
+				       sta->addr, mgmt, len, false) < 0)
 			ap_free_sta(hapd, sta);
 	} else if (trans_seq == 3) {
 		if (!sta->pasn) {
@@ -4134,10 +4153,8 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 #endif /* CONFIG_IEEE80211BE */
 
 		wpa_auth_set_auth_alg(sta->wpa_sm, sta->auth_alg);
-		wpa_auth_set_rsn_override(sta->wpa_sm,
-					  elems->rsne_override != NULL);
-		wpa_auth_set_rsn_override_2(sta->wpa_sm,
-					    elems->rsne_override_2 != NULL);
+		wpa_auth_set_rsn_selection(sta->wpa_sm, elems->rsn_selection,
+					   elems->rsn_selection_len);
 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
 					  hapd->iface->freq,
 					  wpa_ie, wpa_ie_len,
@@ -4998,7 +5015,8 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 #endif /* CONFIG_IEEE80211AX */
 
 	p = hostapd_eid_ext_capab(hapd, p, false);
-	p = hostapd_eid_bss_max_idle_period(hapd, p, sta->max_idle_period);
+	p = hostapd_eid_bss_max_idle_period(hapd, p,
+					    sta ? sta->max_idle_period : 0);
 	if (sta && sta->qos_map_enabled)
 		p = hostapd_eid_qos_map_set(hapd, p);
 
@@ -7230,16 +7248,11 @@ u8 * hostapd_eid_txpower_envelope(struct hostapd_data *hapd, u8 *eid)
 }
 
 
-u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
+/* Wide Bandwidth Channel Switch subelement */
+static u8 * hostapd_eid_wb_channel_switch(struct hostapd_data *hapd, u8 *eid,
+					  u8 chan1, u8 chan2)
 {
-	u8 bw, chan1 = 0, chan2 = 0;
-	int freq1;
-
-	if (!hapd->cs_freq_params.channel ||
-	    (!hapd->cs_freq_params.vht_enabled &&
-	     !hapd->cs_freq_params.he_enabled &&
-	     !hapd->cs_freq_params.eht_enabled))
-		return eid;
+	u8 bw;
 
 	/* bandwidth: 0: 40, 1: 80, 160, 80+80, 4: 320 as per
 	 * IEEE P802.11-REVme/D4.0, 9.4.2.159 and Table 9-314. */
@@ -7261,20 +7274,6 @@ u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
 		return eid;
 	}
 
-	freq1 = hapd->cs_freq_params.center_freq1 ?
-		hapd->cs_freq_params.center_freq1 :
-		hapd->cs_freq_params.freq;
-	if (ieee80211_freq_to_chan(freq1, &chan1) !=
-	    HOSTAPD_MODE_IEEE80211A)
-		return eid;
-
-	if (hapd->cs_freq_params.center_freq2 &&
-	    ieee80211_freq_to_chan(hapd->cs_freq_params.center_freq2,
-				   &chan2) != HOSTAPD_MODE_IEEE80211A)
-		return eid;
-
-	*eid++ = WLAN_EID_CHANNEL_SWITCH_WRAPPER;
-	*eid++ = 5; /* Length of Channel Switch Wrapper */
 	*eid++ = WLAN_EID_WIDE_BW_CHSWITCH;
 	*eid++ = 3; /* Length of Wide Bandwidth Channel Switch element */
 	*eid++ = bw; /* New Channel Width */
@@ -7296,6 +7295,118 @@ u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
 	*eid++ = chan1; /* New Channel Center Frequency Segment 0 */
 	*eid++ = chan2; /* New Channel Center Frequency Segment 1 */
 
+	return eid;
+}
+
+
+#ifdef CONFIG_IEEE80211BE
+/* Bandwidth Indication element that is also used as the Bandwidth Indication
+ * For Channel Switch subelement within a Channel Switch Wrapper element. */
+static u8 * hostapd_eid_bw_indication(struct hostapd_data *hapd, u8 *eid,
+				      u8 chan1, u8 chan2)
+{
+	u16 punct_bitmap = hostapd_get_punct_bitmap(hapd);
+	struct ieee80211_bw_ind_element *bw_ind_elem;
+	size_t elen = 3;
+
+	if (hapd->cs_freq_params.bandwidth <= 160 && !punct_bitmap)
+		return eid;
+
+	if (punct_bitmap)
+		elen += EHT_OPER_DISABLED_SUBCHAN_BITMAP_SIZE;
+
+	*eid++ = WLAN_EID_EXTENSION;
+	*eid++ = 1 + elen;
+	*eid++ = WLAN_EID_EXT_BANDWIDTH_INDICATION;
+
+	bw_ind_elem = (struct ieee80211_bw_ind_element *) eid;
+	os_memset(bw_ind_elem, 0, sizeof(struct ieee80211_bw_ind_element));
+
+	switch (hapd->cs_freq_params.bandwidth) {
+	case 320:
+		bw_ind_elem->bw_ind_info.control |= BW_IND_CHANNEL_WIDTH_320MHZ;
+		chan2 = chan1;
+		if (hapd->cs_freq_params.channel < chan1)
+			chan1 -= 16;
+		else
+			chan1 += 16;
+		break;
+	case 160:
+		bw_ind_elem->bw_ind_info.control |= BW_IND_CHANNEL_WIDTH_160MHZ;
+		chan2 = chan1;
+		if (hapd->cs_freq_params.channel < chan1)
+			chan1 -= 8;
+		else
+			chan1 += 8;
+		break;
+	case 80:
+		bw_ind_elem->bw_ind_info.control |= BW_IND_CHANNEL_WIDTH_80MHZ;
+		break;
+	case 40:
+		if (hapd->cs_freq_params.sec_channel_offset == 1)
+			bw_ind_elem->bw_ind_info.control |=
+				BW_IND_CHANNEL_WIDTH_40MHZ;
+		else
+			bw_ind_elem->bw_ind_info.control |=
+				BW_IND_CHANNEL_WIDTH_20MHZ;
+		break;
+	default:
+		bw_ind_elem->bw_ind_info.control |= BW_IND_CHANNEL_WIDTH_20MHZ;
+		break;
+	}
+
+	bw_ind_elem->bw_ind_info.ccfs0 = chan1;
+	bw_ind_elem->bw_ind_info.ccfs1 = chan2;
+
+	if (punct_bitmap) {
+		bw_ind_elem->bw_ind_params |=
+			BW_IND_PARAMETER_DISABLED_SUBCHAN_BITMAP_PRESENT;
+		bw_ind_elem->bw_ind_info.disabled_chan_bitmap =
+			host_to_le16(punct_bitmap);
+	}
+
+	return eid + elen;
+}
+#endif /* CONFIG_IEEE80211BE */
+
+
+u8 * hostapd_eid_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
+{
+	u8 chan1 = 0, chan2 = 0;
+	u8 *eid_len_offset;
+	int freq1;
+
+	if (!hapd->cs_freq_params.channel ||
+	    (!hapd->cs_freq_params.vht_enabled &&
+	     !hapd->cs_freq_params.he_enabled &&
+	     !hapd->cs_freq_params.eht_enabled))
+		return eid;
+
+	freq1 = hapd->cs_freq_params.center_freq1 ?
+		hapd->cs_freq_params.center_freq1 :
+		hapd->cs_freq_params.freq;
+	if (ieee80211_freq_to_chan(freq1, &chan1) !=
+	    HOSTAPD_MODE_IEEE80211A)
+		return eid;
+
+	if (hapd->cs_freq_params.center_freq2 &&
+	    ieee80211_freq_to_chan(hapd->cs_freq_params.center_freq2,
+				   &chan2) != HOSTAPD_MODE_IEEE80211A)
+		return eid;
+
+	*eid++ = WLAN_EID_CHANNEL_SWITCH_WRAPPER;
+	eid_len_offset = eid++; /* Length of Channel Switch Wrapper element */
+
+	eid = hostapd_eid_wb_channel_switch(hapd, eid, chan1, chan2);
+
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+		/* Bandwidth Indication For Channel Switch subelement */
+		eid = hostapd_eid_bw_indication(hapd, eid, chan1, chan2);
+	}
+#endif /* CONFIG_IEEE80211BE */
+
+	*eid_len_offset = (eid - eid_len_offset) - 1;
 	return eid;
 }
 

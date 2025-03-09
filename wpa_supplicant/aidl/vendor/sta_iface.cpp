@@ -38,22 +38,9 @@ using aidl::android::hardware::wifi::supplicant::KeyMgmtMask;
 using aidl::android::hardware::wifi::supplicant::LegacyMode;
 using aidl::android::hardware::wifi::supplicant::RxFilterType;
 using aidl::android::hardware::wifi::supplicant::SupplicantStatusCode;
+using aidl::android::hardware::wifi::supplicant::WifiChannelWidthInMhz;
 using aidl::android::hardware::wifi::supplicant::WifiTechnology;
 using aidl::android::hardware::wifi::supplicant::misc_utils::createStatus;
-
-// Enum definition copied from the Vendor HAL interface.
-// See android.hardware.wifi.WifiChannelWidthInMhz
-enum WifiChannelWidthInMhz {
-  WIDTH_20	= 0,
-  WIDTH_40	= 1,
-  WIDTH_80	= 2,
-  WIDTH_160   = 3,
-  WIDTH_80P80 = 4,
-  WIDTH_5	 = 5,
-  WIDTH_10	= 6,
-  WIDTH_320	= 7,
-  WIDTH_INVALID = -1
-};
 
 constexpr uint32_t kMaxAnqpElems = 100;
 constexpr char kGetMacAddress[] = "MACADDR";
@@ -854,6 +841,58 @@ bool StaIface::isValid()
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
 		&StaIface::disableMscsInternal);
+}
+
+::ndk::ScopedAStatus StaIface::getUsdCapabilities(UsdCapabilities* _aidl_return)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		&StaIface::getUsdCapabilitiesInternal, _aidl_return);
+}
+
+::ndk::ScopedAStatus StaIface::startUsdPublish(int32_t in_cmdId,
+	const UsdPublishConfig& in_usdPublishConfig)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		&StaIface::startUsdPublishInternal, in_usdPublishConfig);
+}
+
+::ndk::ScopedAStatus StaIface::startUsdSubscribe(int32_t in_cmdId,
+	const UsdSubscribeConfig& in_usdSubscribeConfig)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		&StaIface::startUsdSubscribeInternal, in_usdSubscribeConfig);
+}
+
+::ndk::ScopedAStatus StaIface::updateUsdPublish(int32_t in_publishId,
+	const std::vector<uint8_t>& in_serviceSpecificInfo)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		&StaIface::updateUsdPublishInternal, in_publishId, in_serviceSpecificInfo);
+}
+
+::ndk::ScopedAStatus StaIface::cancelUsdPublish(int32_t in_publishId)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		&StaIface::cancelUsdPublishInternal, in_publishId);
+}
+
+::ndk::ScopedAStatus StaIface::cancelUsdSubscribe(int32_t in_subscribeId)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		&StaIface::cancelUsdSubscribeInternal, in_subscribeId);
+}
+
+::ndk::ScopedAStatus StaIface::sendUsdMessage(const UsdMessageInfo& in_messageInfo)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		&StaIface::sendUsdMessageInternal, in_messageInfo);
 }
 
 std::pair<std::string, ndk::ScopedAStatus> StaIface::getNameInternal()
@@ -1851,32 +1890,32 @@ StaIface::getConnectionCapabilitiesInternal()
 			capa.technology = WifiTechnology::LEGACY;
 			if (wpas_freq_to_band(wpa_s->assoc_freq) == BAND_2_4_GHZ) {
 				capa.legacyMode = (wpa_s->connection_11b_only) ? LegacyMode::B_MODE
-						: LegacyMode::G_MODE; 
+						: LegacyMode::G_MODE;
 			} else {
 				capa.legacyMode = LegacyMode::A_MODE;
 			}
 		}
 		switch (wpa_s->connection_channel_bandwidth) {
 		case CHAN_WIDTH_20:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
+			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_20);
 			break;
 		case CHAN_WIDTH_40:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_40;
+			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_40);
 			break;
 		case CHAN_WIDTH_80:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_80;
+			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_80);
 			break;
 		case CHAN_WIDTH_160:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_160;
+			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_160);
 			break;
 		case CHAN_WIDTH_80P80:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_80P80;
+			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_80P80);
 			break;
 		case CHAN_WIDTH_320:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_320;
+			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_320);
 			break;
 		default:
-			capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
+			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_20);
 			break;
 		}
 		capa.maxNumberRxSpatialStreams = wpa_s->connection_max_nss_rx;
@@ -1884,7 +1923,7 @@ StaIface::getConnectionCapabilitiesInternal()
 		capa.apTidToLinkMapNegotiationSupported = wpa_s->ap_t2lm_negotiation_support;
 	} else {
 		capa.technology = WifiTechnology::UNKNOWN;
-		capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;
+		capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_20);
 		capa.maxNumberTxSpatialStreams = 1;
 		capa.maxNumberRxSpatialStreams = 1;
 		capa.legacyMode = LegacyMode::UNKNOWN;
@@ -2566,6 +2605,38 @@ StaIface::removeQosPolicyForScsInternal(const std::vector<uint8_t>& scsPolicyIds
 	wpa_printf(MSG_INFO, "MSCS remove request status: %d", status);
 
 	return ndk::ScopedAStatus::ok();
+}
+
+std::pair<UsdCapabilities, ndk::ScopedAStatus> StaIface::getUsdCapabilitiesInternal() {
+	UsdCapabilities capabilities;
+	return {capabilities, ndk::ScopedAStatus::ok()};
+}
+
+ndk::ScopedAStatus StaIface::startUsdPublishInternal(
+		const UsdPublishConfig& usdPublishConfig) {
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
+		const UsdSubscribeConfig& usdSubscribeConfig) {
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus StaIface::updateUsdPublishInternal(int32_t publishId,
+		const std::vector<uint8_t>& serviceSpecificInfo) {
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus StaIface::cancelUsdPublishInternal(int32_t publishId) {
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus StaIface::cancelUsdSubscribeInternal(int32_t subscribeId) {
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus StaIface::sendUsdMessageInternal(const UsdMessageInfo& messageInfo) {
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
 
 /**

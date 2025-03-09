@@ -1121,6 +1121,9 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 				case QCA_NL80211_VENDOR_SUBCMD_SECURE_RANGING_CONTEXT:
 					drv->secure_ranging_ctx_vendor_cmd_avail = 1;
 					break;
+				case QCA_NL80211_VENDOR_SUBCMD_CONNECT_EXT:
+					drv->connect_ext_vendor_cmd_avail = 1;
+					break;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 				}
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
@@ -1459,6 +1462,8 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
 			   "The driver supports RSN overriding in STA mode");
 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA;
 	}
+	if (check_feature(QCA_WLAN_VENDOR_FEATURE_NAN_USD_OFFLOAD, &info))
+		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_NAN_OFFLOAD;
 
 	os_free(info.flags);
 }
@@ -2743,6 +2748,135 @@ nl80211_get_hw_feature_data(void *priv, u16 *num_modes, u16 *flags,
 							     num_modes);
 		nl80211_dump_chan_list(drv, modes, *num_modes);
 		return modes;
+	}
+
+	return NULL;
+}
+
+
+static int phy_multi_hw_info_parse(struct hostapd_multi_hw_info *hw_info,
+				   struct nlattr *radio_attr)
+{
+	struct nlattr *tb_freq[NL80211_WIPHY_RADIO_FREQ_ATTR_MAX + 1];
+	int start_freq, end_freq;
+
+	switch (nla_type(radio_attr)) {
+	case NL80211_WIPHY_RADIO_ATTR_INDEX:
+		hw_info->hw_idx = nla_get_u32(radio_attr);
+		return NL_OK;
+	case NL80211_WIPHY_RADIO_ATTR_FREQ_RANGE:
+		if (nla_parse_nested(tb_freq, NL80211_WIPHY_RADIO_FREQ_ATTR_MAX,
+				     radio_attr, NULL) ||
+		    !tb_freq[NL80211_WIPHY_RADIO_FREQ_ATTR_START] ||
+		    !tb_freq[NL80211_WIPHY_RADIO_FREQ_ATTR_END])
+			return NL_STOP;
+
+		start_freq = nla_get_u32(
+			tb_freq[NL80211_WIPHY_RADIO_FREQ_ATTR_START]);
+		end_freq = nla_get_u32(
+			tb_freq[NL80211_WIPHY_RADIO_FREQ_ATTR_END]);
+
+		/* Convert to MHz and store */
+		hw_info->start_freq = start_freq / 1000;
+		hw_info->end_freq = end_freq / 1000;
+		return NL_OK;
+	default:
+		return NL_OK;
+	}
+}
+
+
+struct phy_multi_hw_info_arg {
+	bool failed;
+	unsigned int *num_multi_hws;
+	struct hostapd_multi_hw_info *multi_hws;
+};
+
+
+static int phy_multi_hw_info_handler(struct nl_msg *msg, void *arg)
+{
+	struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
+	struct phy_multi_hw_info_arg *multi_hw_info = arg;
+	struct hostapd_multi_hw_info *multi_hws, hw_info;
+	struct nlattr *tb_msg[NL80211_ATTR_MAX + 1];
+	struct nlattr *nl_hw, *radio_attr;
+	int rem_hw, rem_radio_prop, res;
+
+	nla_parse(tb_msg, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
+		  genlmsg_attrlen(gnlh, 0), NULL);
+
+	if (!tb_msg[NL80211_ATTR_WIPHY_RADIOS])
+		return NL_SKIP;
+
+	*multi_hw_info->num_multi_hws = 0;
+
+	nla_for_each_nested(nl_hw, tb_msg[NL80211_ATTR_WIPHY_RADIOS], rem_hw) {
+		os_memset(&hw_info, 0, sizeof(hw_info));
+
+		nla_for_each_nested(radio_attr, nl_hw, rem_radio_prop) {
+			res = phy_multi_hw_info_parse(&hw_info, radio_attr);
+			if (res != NL_OK)
+				goto out;
+		}
+
+		if (hw_info.start_freq == 0 || hw_info.end_freq == 0)
+			goto out;
+
+		multi_hws = os_realloc_array(multi_hw_info->multi_hws,
+					     *multi_hw_info->num_multi_hws + 1,
+					     sizeof(*multi_hws));
+		if (!multi_hws)
+			goto out;
+
+		multi_hw_info->multi_hws = multi_hws;
+		os_memcpy(&multi_hws[*(multi_hw_info->num_multi_hws)],
+			  &hw_info, sizeof(struct hostapd_multi_hw_info));
+		*(multi_hw_info->num_multi_hws) += 1;
+	}
+
+	return NL_OK;
+out:
+	multi_hw_info->failed = true;
+	return NL_STOP;
+}
+
+
+struct hostapd_multi_hw_info *
+nl80211_get_multi_hw_info(struct i802_bss *bss, unsigned int *num_multi_hws)
+{
+	u32 feat;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	int nl_flags = 0;
+	struct nl_msg *msg;
+	struct phy_multi_hw_info_arg result = {
+		.failed = false,
+		.num_multi_hws = num_multi_hws,
+		.multi_hws = NULL,
+	};
+
+	*num_multi_hws = 0;
+
+	if (!drv->has_capability || !(drv->capa.flags2 & WPA_DRIVER_FLAGS2_MLO))
+		return NULL;
+
+	feat = get_nl80211_protocol_features(drv);
+	if (feat & NL80211_PROTOCOL_FEATURE_SPLIT_WIPHY_DUMP)
+		nl_flags = NLM_F_DUMP;
+	if (!(msg = nl80211_cmd_msg(bss, nl_flags, NL80211_CMD_GET_WIPHY)) ||
+	    nla_put_flag(msg, NL80211_ATTR_SPLIT_WIPHY_DUMP)) {
+		nlmsg_free(msg);
+		return NULL;
+	}
+
+	if (send_and_recv_resp(drv, msg, phy_multi_hw_info_handler,
+			       &result) == 0) {
+		if (result.failed) {
+			os_free(result.multi_hws);
+			*num_multi_hws = 0;
+			return NULL;
+		}
+
+		return result.multi_hws;
 	}
 
 	return NULL;

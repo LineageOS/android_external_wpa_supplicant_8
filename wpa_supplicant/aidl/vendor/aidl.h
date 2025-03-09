@@ -110,8 +110,10 @@ extern "C"
 	void wpas_aidl_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
 		struct wpa_ssid *ssid, bool conn_status_requested);
 	void wpas_aidl_notify_dpp_config_sent(struct wpa_supplicant *wpa_s);
+#ifdef CONFIG_DPP
 	void wpas_aidl_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
 		enum dpp_status_error result);
+#endif /* CONFIG_DPP */
 	void wpas_aidl_notify_dpp_auth_success(struct wpa_supplicant *wpa_s);
 	void wpas_aidl_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s);
 	void wpas_aidl_notify_dpp_not_compatible(struct wpa_supplicant *wpa_s);
@@ -124,9 +126,11 @@ extern "C"
 	void wpas_aidl_notify_dpp_config_sent_wait_response(struct wpa_supplicant *wpa_s);
 	void wpas_aidl_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s);
 	void wpas_aidl_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s);
+#ifdef CONFIG_DPP
 	void wpas_aidl_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
 		enum dpp_status_error status, const char *ssid,
 		const char *channel_list, unsigned short band_list[], int size);
+#endif /* CONFIG_DPP */
 	void wpas_aidl_notify_pmk_cache_added(
 		struct wpa_supplicant *wpas, struct rsn_pmksa_cache_entry *pmksa_entry);
 	void wpas_aidl_notify_bss_tm_status(struct wpa_supplicant *wpa_s);
@@ -274,9 +278,11 @@ static void wpas_aidl_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
 {}
 static void wpas_aidl_notify_dpp_config_sent(struct wpa_supplicant *wpa_s)
 {}
+#ifdef CONFIG_DPP
 static void wpas_aidl_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
 	enum dpp_status_error result)
 {}
+#endif /* CONFIG_DPP */
 static void wpas_aidl_notify_dpp_auth_success(struct wpa_supplicant *wpa_s)
 {}
 static void wpas_aidl_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s)
@@ -301,10 +307,12 @@ static void wpas_aidl_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s)
 {}
 static void wpas_aidl_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s)
 {}
+#ifdef CONFIG_DPP
 static void wpas_aidl_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
 			enum dpp_status_error status, const char *ssid,
 			const char *channel_list, unsigned short band_list[], int size)
 {}
+#endif /* CONFIG_DPP */
 static void wpas_aidl_notify_pmk_cache_added(struct wpa_supplicant *wpas,
 						 struct rsn_pmksa_cache_entry *pmksa_entry)
 {}

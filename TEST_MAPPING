@@ -1,0 +1,7 @@
+{
+    "postsubmit": [
+        {
+            "name": "libhostapd_aidl_bp_unittest"
+        }
+    ]
+}

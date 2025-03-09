@@ -22,7 +22,11 @@ ifneq ($(BOARD_WLAN_BCMDHD_SAE),)
   CONFIG_BRCM_SAE=y
 endif
 
-include $(LOCAL_PATH)/android.config
+ifneq ($(SUPPLICANT_CUSTOM_DEF_CONFIG_FILE_PATH),)
+  include $(SUPPLICANT_CUSTOM_DEF_CONFIG_FILE_PATH)
+else
+  include $(LOCAL_PATH)/android.config
+endif
 
 # To ignore possible wrong network configurations
 L_CFLAGS = -DWPA_IGNORE_CONFIG_ERRORS
@@ -2126,21 +2130,3 @@ LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/aidl
 include $(BUILD_STATIC_LIBRARY)
 endif # WPA_SUPPLICANT_USE_AIDL == y
-
-ifeq ($(CONFIG_PASN), y)
-include $(CLEAR_VARS)
-LOCAL_MODULE = libpasn
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
-LOCAL_LICENSE_CONDITIONS := notice unencumbered
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
-LOCAL_VENDOR_MODULE := true
-LOCAL_CFLAGS = $(L_CFLAGS)
-LOCAL_SRC_FILES = $(PASNOBJS)
-LOCAL_C_INCLUDES = $(INCLUDES)
-LOCAL_SHARED_LIBRARIES := libc libcutils liblog
-ifeq ($(CONFIG_TLS), openssl)
-LOCAL_SHARED_LIBRARIES += libcrypto libssl libkeystore-wifi-hidl
-LOCAL_SHARED_LIBRARIES += libkeystore-engine-wifi-hidl
-endif
-include $(BUILD_SHARED_LIBRARY)
-endif # CONFIG_PASN == y

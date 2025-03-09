@@ -1209,7 +1209,7 @@ endif
 endif
 ifeq ($(HOSTAPD_USE_AIDL), y)
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd-V3-ndk
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.common-V1-ndk
+LOCAL_SHARED_LIBRARIES += android.hardware.wifi.common-V2-ndk
 LOCAL_SHARED_LIBRARIES += libbase libutils
 LOCAL_SHARED_LIBRARIES += libbinder_ndk
 LOCAL_STATIC_LIBRARIES += libhostapd_aidl
@@ -1264,7 +1264,7 @@ LOCAL_SRC_FILES := \
     aidl/hostapd.cpp
 LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.hostapd-V3-ndk \
-    android.hardware.wifi.common-V1-ndk \
+    android.hardware.wifi.common-V2-ndk \
     libbinder_ndk \
     libbase \
     libutils \

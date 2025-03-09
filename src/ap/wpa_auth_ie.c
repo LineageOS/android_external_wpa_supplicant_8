@@ -547,15 +547,20 @@ static int wpa_write_rsnxe_override(struct wpa_auth_config *conf, u8 *buf,
 				    size_t len)
 {
 	u8 *pos = buf;
-	u16 capab;
+	u32 capab, tmp;
 	size_t flen;
 
 	capab = rsnxe_capab(conf, conf->rsn_override_key_mgmt |
 			    conf->rsn_override_key_mgmt_2);
 
-	flen = (capab & 0xff00) ? 2 : 1;
 	if (!capab)
 		return 0; /* no supported extended RSN capabilities */
+	tmp = capab;
+	flen = 0;
+	while (tmp) {
+		flen++;
+		tmp >>= 8;
+	}
 	if (len < 2 + flen)
 		return -1;
 	capab |= flen - 1; /* bit 0-3 = Field length (n - 1) */
@@ -565,10 +570,10 @@ static int wpa_write_rsnxe_override(struct wpa_auth_config *conf, u8 *buf,
 	WPA_PUT_BE32(pos, RSNXE_OVERRIDE_IE_VENDOR_TYPE);
 	pos += 4;
 
-	*pos++ = capab & 0x00ff;
-	capab >>= 8;
-	if (capab)
-		*pos++ = capab;
+	while (capab) {
+		*pos++ = capab & 0xff;
+		capab >>= 8;
+	}
 
 	return pos - buf;
 }
@@ -627,7 +632,7 @@ static u8 * wpa_write_osen(struct wpa_auth_config *conf, u8 *eid)
 
 int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
 {
-	u8 *pos, buf[256];
+	u8 *pos, buf[1500];
 	int res;
 
 #ifdef CONFIG_TESTING_OPTIONS
@@ -653,17 +658,54 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
 		pos = wpa_write_osen(&wpa_auth->conf, pos);
 	}
 	if (wpa_auth->conf.wpa & WPA_PROTO_RSN) {
+#ifdef CONFIG_TESTING_OPTIONS
+		if (wpa_auth->conf.rsne_override_set) {
+			wpa_hexdump(MSG_DEBUG,
+				    "RSN: Forced own RSNE for testing",
+				    wpa_auth->conf.rsne_override,
+				    wpa_auth->conf.rsne_override_len);
+			if (sizeof(buf) - (pos - buf) <
+			    wpa_auth->conf.rsne_override_len)
+				return -1;
+			os_memcpy(pos, wpa_auth->conf.rsne_override,
+				  wpa_auth->conf.rsne_override_len);
+			pos += wpa_auth->conf.rsne_override_len;
+			goto rsnxe;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 		res = wpa_write_rsn_ie(&wpa_auth->conf,
 				       pos, buf + sizeof(buf) - pos, NULL);
 		if (res < 0)
 			return res;
 		pos += res;
-		res = wpa_write_rsnxe(&wpa_auth->conf, pos,
-				      buf + sizeof(buf) - pos);
+#ifdef CONFIG_TESTING_OPTIONS
+	rsnxe:
+		if (wpa_auth->conf.rsnxe_override_set) {
+			wpa_hexdump(MSG_DEBUG,
+				    "RSN: Forced own RSNXE for testing",
+				    wpa_auth->conf.rsnxe_override,
+				    wpa_auth->conf.rsnxe_override_len);
+			if (sizeof(buf) - (pos - buf) <
+			    wpa_auth->conf.rsnxe_override_len)
+				return -1;
+			os_memcpy(pos, wpa_auth->conf.rsnxe_override,
+				  wpa_auth->conf.rsnxe_override_len);
+			pos += wpa_auth->conf.rsnxe_override_len;
+			goto fte;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
+		if (wpa_auth->conf.rsn_override_omit_rsnxe)
+			res = 0;
+		else
+			res = wpa_write_rsnxe(&wpa_auth->conf, pos,
+					      buf + sizeof(buf) - pos);
 		if (res < 0)
 			return res;
 		pos += res;
 	}
+#ifdef CONFIG_TESTING_OPTIONS
+fte:
+#endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_IEEE80211R_AP
 	if (wpa_key_mgmt_ft(wpa_auth->conf.wpa_key_mgmt)) {
 		res = wpa_write_mdie(&wpa_auth->conf, pos,
@@ -682,89 +724,91 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
 	}
 	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
 	    wpa_auth->conf.rsn_override_key_mgmt) {
+#ifdef CONFIG_TESTING_OPTIONS
+		if (wpa_auth->conf.rsnoe_override_set) {
+			wpa_hexdump(MSG_DEBUG,
+				    "RSN: Forced own RSNOE for testing",
+				    wpa_auth->conf.rsnoe_override,
+				    wpa_auth->conf.rsnoe_override_len);
+			if (sizeof(buf) - (pos - buf) <
+			    wpa_auth->conf.rsnoe_override_len)
+				return -1;
+			os_memcpy(pos, wpa_auth->conf.rsnoe_override,
+				  wpa_auth->conf.rsnoe_override_len);
+			pos += wpa_auth->conf.rsnoe_override_len;
+			goto rsno2e;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 		res = wpa_write_rsne_override(&wpa_auth->conf,
 					      pos, buf + sizeof(buf) - pos);
 		if (res < 0)
 			return res;
 		pos += res;
 	}
+#ifdef CONFIG_TESTING_OPTIONS
+rsno2e:
+#endif /* CONFIG_TESTING_OPTIONS */
 	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
 	    wpa_auth->conf.rsn_override_key_mgmt_2) {
+#ifdef CONFIG_TESTING_OPTIONS
+		if (wpa_auth->conf.rsno2e_override_set) {
+			wpa_hexdump(MSG_DEBUG,
+				    "RSN: Forced own RSNO2E for testing",
+				    wpa_auth->conf.rsno2e_override,
+				    wpa_auth->conf.rsno2e_override_len);
+			if (sizeof(buf) - (pos - buf) <
+			    wpa_auth->conf.rsno2e_override_len)
+				return -1;
+			os_memcpy(pos, wpa_auth->conf.rsno2e_override,
+				  wpa_auth->conf.rsno2e_override_len);
+			pos += wpa_auth->conf.rsno2e_override_len;
+			goto rsnxoe;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 		res = wpa_write_rsne_override_2(&wpa_auth->conf, pos,
 						buf + sizeof(buf) - pos);
 		if (res < 0)
 			return res;
 		pos += res;
 	}
+#ifdef CONFIG_TESTING_OPTIONS
+rsnxoe:
+#endif /* CONFIG_TESTING_OPTIONS */
 	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
 	    (wpa_auth->conf.rsn_override_key_mgmt ||
 	     wpa_auth->conf.rsn_override_key_mgmt_2)) {
+#ifdef CONFIG_TESTING_OPTIONS
+		if (wpa_auth->conf.rsnxoe_override_set) {
+			wpa_hexdump(MSG_DEBUG,
+				    "RSN: Forced own RSNXOE for testing",
+				    wpa_auth->conf.rsnxoe_override,
+				    wpa_auth->conf.rsnxoe_override_len);
+			if (sizeof(buf) - (pos - buf) <
+			    wpa_auth->conf.rsnxoe_override_len)
+				return -1;
+			os_memcpy(pos, wpa_auth->conf.rsnxoe_override,
+				  wpa_auth->conf.rsnxoe_override_len);
+			pos += wpa_auth->conf.rsnxoe_override_len;
+			goto done;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 		res = wpa_write_rsnxe_override(&wpa_auth->conf, pos,
 					       buf + sizeof(buf) - pos);
 		if (res < 0)
 			return res;
 		pos += res;
 	}
+#ifdef CONFIG_TESTING_OPTIONS
+done:
+#endif /* CONFIG_TESTING_OPTIONS */
 
+	wpa_hexdump(MSG_DEBUG, "RSN: Own IEs", buf, pos - buf);
 	os_free(wpa_auth->wpa_ie);
 	wpa_auth->wpa_ie = os_malloc(pos - buf);
 	if (wpa_auth->wpa_ie == NULL)
 		return -1;
 	os_memcpy(wpa_auth->wpa_ie, buf, pos - buf);
 	wpa_auth->wpa_ie_len = pos - buf;
-
-	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
-	    wpa_auth->conf.rsn_override_key_mgmt) {
-		res = wpa_write_rsne_override(&wpa_auth->conf, buf,
-					      sizeof(buf));
-		if (res < 0)
-			return res;
-		os_free(wpa_auth->rsne_override);
-		wpa_auth->rsne_override = os_malloc(res - 4);
-		if (!wpa_auth->rsne_override)
-			return -1;
-		pos = wpa_auth->rsne_override;
-		*pos++ = WLAN_EID_RSN;
-		*pos++ = res - 2 - 4;
-		os_memcpy(pos, &buf[2 + 4], res - 2 - 4);
-	}
-
-	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
-	    wpa_auth->conf.rsn_override_key_mgmt_2) {
-		res = wpa_write_rsne_override_2(&wpa_auth->conf, buf,
-						sizeof(buf));
-		if (res < 0)
-			return res;
-		os_free(wpa_auth->rsne_override_2);
-		wpa_auth->rsne_override_2 = os_malloc(res - 4);
-		if (!wpa_auth->rsne_override_2)
-			return -1;
-		pos = wpa_auth->rsne_override_2;
-		*pos++ = WLAN_EID_RSN;
-		*pos++ = res - 2 - 4;
-		os_memcpy(pos, &buf[2 + 4], res - 2 - 4);
-	}
-
-	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
-	    (wpa_auth->conf.rsn_override_key_mgmt ||
-	     wpa_auth->conf.rsn_override_key_mgmt_2)) {
-		res = wpa_write_rsnxe_override(&wpa_auth->conf, buf,
-					       sizeof(buf));
-		if (res < 0)
-			return res;
-		os_free(wpa_auth->rsnxe_override);
-		if (res == 0) {
-			wpa_auth->rsnxe_override = NULL;
-			return 0;
-		}
-		wpa_auth->rsnxe_override = os_malloc(res - 4);
-		if (!wpa_auth->rsnxe_override)
-			return -1;
-		pos = wpa_auth->rsnxe_override;
-		*pos++ = WLAN_EID_RSNX;
-		*pos++ = res - 2 - 4;
-		os_memcpy(pos, &buf[2 + 4], res - 2 - 4);
-	}
 
 	return 0;
 }
@@ -970,9 +1014,13 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 		return WPA_INVALID_GROUP;
 	}
 
-	key_mgmt = data.key_mgmt & (wpa_auth->conf.wpa_key_mgmt |
-				    wpa_auth->conf.rsn_override_key_mgmt |
-				    wpa_auth->conf.rsn_override_key_mgmt_2);
+	if (sm->rsn_override_2)
+		key_mgmt = data.key_mgmt &
+			wpa_auth->conf.rsn_override_key_mgmt_2;
+	else if (sm->rsn_override)
+		key_mgmt = data.key_mgmt & wpa_auth->conf.rsn_override_key_mgmt;
+	else
+		key_mgmt = data.key_mgmt & wpa_auth->conf.wpa_key_mgmt;
 	if (!key_mgmt) {
 		wpa_printf(MSG_DEBUG, "Invalid WPA key mgmt (0x%x) from "
 			   MACSTR, data.key_mgmt, MAC2STR(sm->addr));
@@ -1041,11 +1089,14 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 	else
 		sm->wpa_key_mgmt = WPA_KEY_MGMT_PSK;
 
-	if (version == WPA_PROTO_RSN)
+	if (version == WPA_PROTO_RSN && sm->rsn_override_2)
 		ciphers = data.pairwise_cipher &
-			(wpa_auth->conf.rsn_pairwise |
-			 wpa_auth->conf.rsn_override_pairwise |
-			 wpa_auth->conf.rsn_override_pairwise_2);
+			wpa_auth->conf.rsn_override_pairwise_2;
+	else if (version == WPA_PROTO_RSN && sm->rsn_override)
+		ciphers = data.pairwise_cipher &
+			wpa_auth->conf.rsn_override_pairwise;
+	else if (version == WPA_PROTO_RSN)
+		ciphers = data.pairwise_cipher & wpa_auth->conf.rsn_pairwise;
 	else
 		ciphers = data.pairwise_cipher & wpa_auth->conf.wpa_pairwise;
 	if (!ciphers) {

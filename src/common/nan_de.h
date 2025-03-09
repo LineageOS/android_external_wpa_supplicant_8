@@ -53,9 +53,13 @@ struct nan_callbacks {
 	void (*receive)(void *ctx, int id, int peer_instance_id,
 			const u8 *ssi, size_t ssi_len,
 			const u8 *peer_addr);
+
+	void (*process_p2p_usd_elems)(void *ctx, const u8 *buf,
+				      u16 buf_len, const u8 *peer_addr,
+				      unsigned int freq);
 };
 
-struct nan_de * nan_de_init(const u8 *nmi, bool ap,
+struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
 			    const struct nan_callbacks *cb);
 void nan_de_flush(struct nan_de *de);
 void nan_de_deinit(struct nan_de *de);
@@ -68,6 +72,7 @@ void nan_de_tx_wait_ended(struct nan_de *de);
 
 void nan_de_rx_sdf(struct nan_de *de, const u8 *peer_addr, unsigned int freq,
 		   const u8 *buf, size_t len);
+const u8 * nan_de_get_service_id(struct nan_de *de, int id);
 
 struct nan_publish_params {
 	/* configuration_parameters */
@@ -105,7 +110,7 @@ struct nan_publish_params {
 int nan_de_publish(struct nan_de *de, const char *service_name,
 		   enum nan_service_protocol_type srv_proto_type,
 		   const struct wpabuf *ssi, const struct wpabuf *elems,
-		   struct nan_publish_params *params);
+		   struct nan_publish_params *params, bool p2p);
 
 void nan_de_cancel_publish(struct nan_de *de, int publish_id);
 
@@ -124,6 +129,9 @@ struct nan_subscribe_params {
 	/* Selected frequency */
 	unsigned int freq;
 
+	/* Multi-channel frequencies (publishChannelList) */
+	const int *freq_list;
+
 	/* Query period in ms; 0 = use default */
 	unsigned int query_period;
 };
@@ -132,7 +140,7 @@ struct nan_subscribe_params {
 int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		     enum nan_service_protocol_type srv_proto_type,
 		     const struct wpabuf *ssi, const struct wpabuf *elems,
-		     struct nan_subscribe_params *params);
+		     struct nan_subscribe_params *params, bool p2p);
 
 void nan_de_cancel_subscribe(struct nan_de *de, int subscribe_id);
 

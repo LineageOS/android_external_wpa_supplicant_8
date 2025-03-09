@@ -9,6 +9,7 @@
 #include "includes.h"
 
 #include "common.h"
+#include "utils/crc32.h"
 #include "eapol_supp/eapol_supp_sm.h"
 #include "rsn_supp/wpa.h"
 #include "eloop.h"
@@ -1140,30 +1141,20 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 			   const u8 **ret_ssid, size_t *ret_ssid_len)
 {
 #ifdef CONFIG_OWE
-	const u8 *owe, *pos, *end, *bssid;
-	u8 ssid_len;
+	const u8 *owe, *bssid;
 
 	owe = wpa_bss_get_vendor_ie(bss, OWE_IE_VENDOR_TYPE);
 	if (!owe || !wpa_bss_get_rsne(wpa_s, bss, NULL, false))
 		return;
 
-	pos = owe + 6;
-	end = owe + 2 + owe[1];
-
-	if (end - pos < ETH_ALEN + 1)
-		return;
-	bssid = pos;
-	pos += ETH_ALEN;
-	ssid_len = *pos++;
-	if (end - pos < ssid_len || ssid_len > SSID_MAX_LEN)
+	if (wpas_get_owe_trans_network(owe, &bssid, ret_ssid, ret_ssid_len))
 		return;
 
 	/* Match the profile SSID against the OWE transition mode SSID on the
 	 * open network. */
 	wpa_dbg(wpa_s, MSG_DEBUG, "OWE: transition mode BSSID: " MACSTR
-		" SSID: %s", MAC2STR(bssid), wpa_ssid_txt(pos, ssid_len));
-	*ret_ssid = pos;
-	*ret_ssid_len = ssid_len;
+		" SSID: %s", MAC2STR(bssid),
+		wpa_ssid_txt(*ret_ssid, *ret_ssid_len));
 
 	if (!(bss->flags & WPA_BSS_OWE_TRANSITION)) {
 		struct wpa_ssid *ssid;
@@ -1171,8 +1162,8 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 		for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
 			if (wpas_network_disabled(wpa_s, ssid))
 				continue;
-			if (ssid->ssid_len == ssid_len &&
-			    os_memcmp(ssid->ssid, pos, ssid_len) == 0) {
+			if (ssid->ssid_len == *ret_ssid_len &&
+			    os_memcmp(ssid->ssid, ret_ssid, *ret_ssid_len) == 0) {
 				/* OWE BSS in transition mode for a currently
 				 * enabled OWE network. */
 				wpa_dbg(wpa_s, MSG_DEBUG,
@@ -2411,6 +2402,78 @@ static int wpa_supplicant_need_to_roam(struct wpa_supplicant *wpa_s,
 }
 
 
+static int wpas_trigger_6ghz_scan(struct wpa_supplicant *wpa_s,
+				  union wpa_event_data *data)
+{
+	struct wpa_driver_scan_params params;
+	unsigned int j;
+
+	wpa_dbg(wpa_s, MSG_INFO, "Triggering 6GHz-only scan");
+	os_memset(&params, 0, sizeof(params));
+	params.non_coloc_6ghz = wpa_s->last_scan_non_coloc_6ghz;
+	for (j = 0; j < data->scan_info.num_ssids; j++)
+		params.ssids[j] = data->scan_info.ssids[j];
+	params.num_ssids = data->scan_info.num_ssids;
+	wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params,
+				true, false, false);
+	if (!wpa_supplicant_trigger_scan(wpa_s, &params, true, true)) {
+		wpa_s->scan_in_progress_6ghz = true;
+		wpas_notify_scan_in_progress_6ghz(wpa_s);
+		os_free(params.freqs);
+		return 1;
+	}
+	wpa_dbg(wpa_s, MSG_INFO, "Failed to trigger 6GHz-only scan");
+	os_free(params.freqs);
+	return 0;
+}
+
+
+static bool wpas_short_ssid_match(struct wpa_supplicant *wpa_s,
+				  struct wpa_scan_results *scan_res)
+{
+	size_t i;
+	struct wpa_ssid *ssid = wpa_s->current_ssid;
+	u32 current_ssid_short = ieee80211_crc32(ssid->ssid, ssid->ssid_len);
+
+	for (i = 0; i < scan_res->num; i++) {
+		struct wpa_scan_res *res = scan_res->res[i];
+		const u8 *rnr_ie, *ie_end;
+		const struct ieee80211_neighbor_ap_info *info;
+		size_t left;
+
+		rnr_ie = wpa_scan_get_ie(res, WLAN_EID_REDUCED_NEIGHBOR_REPORT);
+		if (!rnr_ie)
+			continue;
+
+		ie_end = rnr_ie + 2 + rnr_ie[1];
+		rnr_ie += 2;
+
+		left = ie_end - rnr_ie;
+		if (left < sizeof(struct ieee80211_neighbor_ap_info))
+			continue;
+
+		info = (const struct ieee80211_neighbor_ap_info *) rnr_ie;
+		if (info->tbtt_info_len < 11)
+			continue; /* short SSID not included */
+		left -= sizeof(struct ieee80211_neighbor_ap_info);
+		rnr_ie += sizeof(struct ieee80211_neighbor_ap_info);
+
+		while (left >= info->tbtt_info_len && rnr_ie + 11 <= ie_end) {
+			/* Skip TBTT offset and BSSID */
+			u32 short_ssid = WPA_GET_LE32(rnr_ie + 1 + ETH_ALEN);
+
+			if (short_ssid == current_ssid_short)
+				return true;
+
+			left -= info->tbtt_info_len;
+			rnr_ie += info->tbtt_info_len;
+		}
+	}
+
+	return false;
+}
+
+
 /*
  * Return a negative value if no scan results could be fetched or if scan
  * results should not be shared with other virtual interfaces.
@@ -2428,6 +2491,7 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	int ret = 0;
 	int ap = 0;
 	bool trigger_6ghz_scan;
+	bool short_ssid_match_found = false;
 #ifndef CONFIG_NO_RANDOM_POOL
 	size_t i, num;
 #endif /* CONFIG_NO_RANDOM_POOL */
@@ -2447,6 +2511,12 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	scan_res = wpa_supplicant_get_scan_results(wpa_s,
 						   data ? &data->scan_info :
 						   NULL, 1, NULL);
+
+	if (wpa_s->scan_in_progress_6ghz) {
+		wpa_s->scan_in_progress_6ghz = false;
+		wpas_notify_scan_in_progress_6ghz(wpa_s);
+	}
+
 	if (scan_res == NULL) {
 		if (wpa_s->conf->ap_scan == 2 || ap ||
 		    wpa_s->scan_res_handler == scan_only_handler)
@@ -2537,9 +2607,6 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 		return 0;
 	}
 
-	if (wnm_scan_process(wpa_s, false) > 0)
-		goto scan_work_done;
-
 	if (sme_proc_obss_scan(wpa_s) > 0)
 		goto scan_work_done;
 
@@ -2569,9 +2636,18 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 
 	wpas_wps_update_ap_info(wpa_s, scan_res);
 
+	if (wnm_scan_process(wpa_s, false) > 0)
+		goto scan_work_done;
+
 	if (wpa_s->wpa_state >= WPA_AUTHENTICATING &&
 	    wpa_s->wpa_state < WPA_COMPLETED)
 		goto scan_work_done;
+
+	if (wpa_s->current_ssid && trigger_6ghz_scan && own_request && data &&
+	    wpas_short_ssid_match(wpa_s, scan_res)) {
+		wpa_dbg(wpa_s, MSG_INFO, "Short SSID match in scan results");
+		short_ssid_match_found = true;
+	}
 
 	wpa_scan_results_free(scan_res);
 
@@ -2599,6 +2675,9 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	if (wpa_s->supp_pbc_active && !wpas_wps_partner_link_scan_done(wpa_s))
 		return ret;
 
+	if (short_ssid_match_found && wpas_trigger_6ghz_scan(wpa_s, data) > 0)
+		return 1;
+
 	return wpas_select_network_from_last_scan(wpa_s, 1, own_request,
 						  trigger_6ghz_scan, data);
 
@@ -2610,30 +2689,6 @@ scan_work_done:
 		radio_work_done(work);
 	}
 	return ret;
-}
-
-
-static int wpas_trigger_6ghz_scan(struct wpa_supplicant *wpa_s,
-				  union wpa_event_data *data)
-{
-	struct wpa_driver_scan_params params;
-	unsigned int j;
-
-	wpa_dbg(wpa_s, MSG_INFO, "Triggering 6GHz-only scan");
-	os_memset(&params, 0, sizeof(params));
-	params.non_coloc_6ghz = wpa_s->last_scan_non_coloc_6ghz;
-	for (j = 0; j < data->scan_info.num_ssids; j++)
-		params.ssids[j] = data->scan_info.ssids[j];
-	params.num_ssids = data->scan_info.num_ssids;
-	wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params,
-				true, !wpa_s->last_scan_non_coloc_6ghz, false);
-	if (!wpa_supplicant_trigger_scan(wpa_s, &params, true, true)) {
-		os_free(params.freqs);
-		return 1;
-	}
-	wpa_dbg(wpa_s, MSG_INFO, "Failed to trigger 6GHz-only scan");
-	os_free(params.freqs);
-	return 0;
 }
 
 
@@ -2727,7 +2782,7 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 				wpa_supplicant_rsn_preauth_scan_results(wpa_s);
 		} else if (own_request) {
 			if (wpa_s->support_6ghz && trigger_6ghz_scan && data &&
-			    wpas_trigger_6ghz_scan(wpa_s, data) < 0)
+			    wpas_trigger_6ghz_scan(wpa_s, data) > 0)
 				return 1;
 
 			/*
@@ -3375,13 +3430,17 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 					  union wpa_event_data *data)
 {
-	int l, len, found = 0, found_x = 0, wpa_found, rsn_found;
-	const u8 *p;
+	int l, len, found = 0, wpa_found, rsn_found;
+#ifndef CONFIG_NO_WPA
+	int found_x = 0;
+#endif /* CONFIG_NO_WPA */
+	const u8 *p, *ie;
 	u8 bssid[ETH_ALEN];
 	bool bssid_known;
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
-	struct wpa_ie_data ie;
+	struct wpa_ie_data wpa_ie;
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+	enum wpa_rsn_override rsn_override;
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Association info event");
 	wpa_s->ssid_verified = false;
@@ -3510,18 +3569,22 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 			wpa_find_assoc_pmkid(wpa_s,
 					     data->assoc_info.authorized);
 		}
+#ifndef CONFIG_NO_WPA
 		if (!found_x && p[0] == WLAN_EID_RSNX) {
 			if (wpa_sm_set_assoc_rsnxe(wpa_s->wpa, p, len))
 				break;
 			found_x = 1;
 		}
+#endif /* CONFIG_NO_WPA */
 		l -= len;
 		p += len;
 	}
 	if (!found && data->assoc_info.req_ies)
 		wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
+#ifndef CONFIG_NO_WPA
 	if (!found_x && data->assoc_info.req_ies)
 		wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
+#endif /* CONFIG_NO_WPA */
 
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	/* The WPA/RSN IE has been updated at this point. Since the Firmware could have roamed
@@ -3529,12 +3592,12 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 	 * and pairwise suites from the assoc IE passed by the driver.
 	 */
 	if (wpas_driver_bss_selection(wpa_s)) {
-		if (!(wpa_sm_parse_own_wpa_ie(wpa_s->wpa, &ie) < 0)) {
+		if (!(wpa_sm_parse_own_wpa_ie(wpa_s->wpa, &wpa_ie) < 0)) {
 			/* Check if firmware has roamed to a different security network */
-			if(wpa_s->key_mgmt != ie.key_mgmt) {
+			if(wpa_s->key_mgmt != wpa_ie.key_mgmt) {
 				wpa_dbg(wpa_s, MSG_DEBUG, "Update to AKM suite 0x%x from Assoc IE",
-					ie.key_mgmt);
-				wpa_s->key_mgmt = ie.key_mgmt;
+					wpa_ie.key_mgmt);
+				wpa_s->key_mgmt = wpa_ie.key_mgmt;
 				wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_KEY_MGMT, wpa_s->key_mgmt);
 
 				if (wpa_key_mgmt_wpa_psk_no_sae(wpa_s->key_mgmt)) {
@@ -3557,10 +3620,10 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 					}
 				}
 			}
-			if(wpa_s->pairwise_cipher != ie.pairwise_cipher) {
+			if(wpa_s->pairwise_cipher != wpa_ie.pairwise_cipher) {
 				wpa_dbg(wpa_s, MSG_DEBUG, "Update to pairwise cipher suite 0x%x "
-					"from Assoc IE", ie.pairwise_cipher);
-				wpa_s->pairwise_cipher = ie.pairwise_cipher;
+					"from Assoc IE", wpa_ie.pairwise_cipher);
+				wpa_s->pairwise_cipher = wpa_ie.pairwise_cipher;
 				wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_PAIRWISE,
 					wpa_s->pairwise_cipher);
 			}
@@ -3568,6 +3631,25 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 		}
 	}
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+
+	rsn_override = RSN_OVERRIDE_NOT_USED;
+	ie = get_vendor_ie(data->assoc_info.req_ies,
+			   data->assoc_info.req_ies_len,
+			   RSN_SELECTION_IE_VENDOR_TYPE);
+	if (ie && ie[1] >= 4 + 1) {
+		switch (ie[2 + 4]) {
+		case RSN_SELECTION_RSNE:
+			rsn_override = RSN_OVERRIDE_RSNE;
+			break;
+		case RSN_SELECTION_RSNE_OVERRIDE:
+			rsn_override = RSN_OVERRIDE_RSNE_OVERRIDE;
+			break;
+		case RSN_SELECTION_RSNE_OVERRIDE_2:
+			rsn_override = RSN_OVERRIDE_RSNE_OVERRIDE_2;
+			break;
+		}
+	}
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE, rsn_override);
 
 #ifdef CONFIG_FILS
 #ifdef CONFIG_SME
@@ -3764,28 +3846,20 @@ no_pfs:
 			wpa_sm_set_ap_rsn_ie(wpa_s->wpa, p, len);
 		}
 
-		if (wpas_rsn_overriding(wpa_s) &&
-		    p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 6 &&
-		    WPA_GET_BE32(&p[2]) == RSNE_OVERRIDE_2_IE_VENDOR_TYPE) {
-			rsn_found = 1;
-			wpa_sm_set_ap_rsn_ie(wpa_s->wpa, p, len);
-		}
+		if (p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 6 &&
+		    WPA_GET_BE32(&p[2]) == RSNE_OVERRIDE_2_IE_VENDOR_TYPE)
+			wpa_sm_set_ap_rsne_override_2(wpa_s->wpa, p, len);
 
-		if (!rsn_found &&
-		    wpas_rsn_overriding(wpa_s) &&
-		    p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 6 &&
-		    WPA_GET_BE32(&p[2]) == RSNE_OVERRIDE_IE_VENDOR_TYPE) {
-			rsn_found = 1;
-			wpa_sm_set_ap_rsn_ie(wpa_s->wpa, p, len);
-		}
+		if (p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 6 &&
+		    WPA_GET_BE32(&p[2]) == RSNE_OVERRIDE_IE_VENDOR_TYPE)
+			wpa_sm_set_ap_rsne_override(wpa_s->wpa, p, len);
 
 		if (p[0] == WLAN_EID_RSNX && p[1] >= 1)
 			wpa_sm_set_ap_rsnxe(wpa_s->wpa, p, len);
 
-		if (wpas_rsn_overriding(wpa_s) &&
-		    p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 6 &&
+		if (p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 6 &&
 		    WPA_GET_BE32(&p[2]) == RSNXE_OVERRIDE_IE_VENDOR_TYPE)
-			wpa_sm_set_ap_rsnxe(wpa_s->wpa, p, len);
+			wpa_sm_set_ap_rsnxe_override(wpa_s->wpa, p, len);
 
 		l -= len;
 		p += len;
@@ -3796,6 +3870,9 @@ no_pfs:
 	if (!rsn_found && data->assoc_info.beacon_ies) {
 		wpa_sm_set_ap_rsn_ie(wpa_s->wpa, NULL, 0);
 		wpa_sm_set_ap_rsnxe(wpa_s->wpa, NULL, 0);
+		wpa_sm_set_ap_rsne_override(wpa_s->wpa, NULL, 0);
+		wpa_sm_set_ap_rsne_override_2(wpa_s->wpa, NULL, 0);
+		wpa_sm_set_ap_rsnxe_override(wpa_s->wpa, NULL, 0);
 	}
 	if (wpa_found || rsn_found)
 		wpa_s->ap_ies_from_associnfo = 1;
@@ -3831,6 +3908,7 @@ no_pfs:
 static int wpa_supplicant_assoc_update_ie(struct wpa_supplicant *wpa_s)
 {
 	const u8 *bss_wpa = NULL, *bss_rsn = NULL, *bss_rsnx = NULL;
+	const u8 *rsnoe, *rsno2e, *rsnxoe;
 
 	if (!wpa_s->current_bss || !wpa_s->current_ssid)
 		return -1;
@@ -3840,17 +3918,27 @@ static int wpa_supplicant_assoc_update_ie(struct wpa_supplicant *wpa_s)
 
 	bss_wpa = wpa_bss_get_vendor_ie(wpa_s->current_bss,
 					WPA_IE_VENDOR_TYPE);
-	bss_rsn = wpa_bss_get_rsne(wpa_s, wpa_s->current_bss, NULL,
-				   wpa_s->valid_links);
-	bss_rsnx = wpa_bss_get_rsnxe(wpa_s, wpa_s->current_bss, NULL,
-				     wpa_s->valid_links);
+	bss_rsn = wpa_bss_get_ie(wpa_s->current_bss, WLAN_EID_RSN);
+	bss_rsnx = wpa_bss_get_ie(wpa_s->current_bss, WLAN_EID_RSNX);
+	rsnoe = wpa_bss_get_vendor_ie(wpa_s->current_bss,
+				      RSNE_OVERRIDE_IE_VENDOR_TYPE);
+	rsno2e = wpa_bss_get_vendor_ie(wpa_s->current_bss,
+				       RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
+	rsnxoe = wpa_bss_get_vendor_ie(wpa_s->current_bss,
+				       RSNXE_OVERRIDE_IE_VENDOR_TYPE);
 
 	if (wpa_sm_set_ap_wpa_ie(wpa_s->wpa, bss_wpa,
 				 bss_wpa ? 2 + bss_wpa[1] : 0) ||
 	    wpa_sm_set_ap_rsn_ie(wpa_s->wpa, bss_rsn,
 				 bss_rsn ? 2 + bss_rsn[1] : 0) ||
 	    wpa_sm_set_ap_rsnxe(wpa_s->wpa, bss_rsnx,
-				 bss_rsnx ? 2 + bss_rsnx[1] : 0))
+				 bss_rsnx ? 2 + bss_rsnx[1] : 0) ||
+	    wpa_sm_set_ap_rsne_override(wpa_s->wpa, rsnoe,
+					rsnoe ? 2 + rsnoe[1] : 0) ||
+	    wpa_sm_set_ap_rsne_override_2(wpa_s->wpa, rsno2e,
+					  rsno2e ? 2 + rsno2e[1] : 0) ||
+	    wpa_sm_set_ap_rsnxe_override(wpa_s->wpa, rsnxoe,
+					 rsnxoe ? 2 + rsnxoe[1] : 0))
 		return -1;
 
 	return 0;
@@ -4203,7 +4291,6 @@ static int wpa_sm_set_ml_info(struct wpa_supplicant *wpa_s)
 {
 	struct driver_sta_mlo_info drv_mlo;
 	struct wpa_sm_mlo wpa_mlo;
-	const u8 *bss_rsn = NULL, *bss_rsnx = NULL;
 	int i;
 
 	os_memset(&drv_mlo, 0, sizeof(drv_mlo));
@@ -4223,6 +4310,7 @@ static int wpa_sm_set_ml_info(struct wpa_supplicant *wpa_s)
 
 	for_each_link(drv_mlo.req_links, i) {
 		struct wpa_bss *bss;
+		const u8 *rsne, *rsnxe, *rsnoe, *rsno2e, *rsnxoe;
 
 		bss = wpa_supplicant_get_new_bss(wpa_s, drv_mlo.links[i].bssid);
 		if (!bss) {
@@ -4231,13 +4319,25 @@ static int wpa_sm_set_ml_info(struct wpa_supplicant *wpa_s)
 			return -1;
 		}
 
-		bss_rsn = wpa_bss_get_rsne(wpa_s, bss, NULL, true);
-		bss_rsnx = wpa_bss_get_rsnxe(wpa_s, bss, NULL, true);
+		rsne = wpa_bss_get_ie(bss, WLAN_EID_RSN);
+		rsnxe = wpa_bss_get_ie(bss, WLAN_EID_RSNX);
+		rsnoe = wpa_bss_get_vendor_ie(bss,
+					      RSNE_OVERRIDE_IE_VENDOR_TYPE);
+		rsno2e = wpa_bss_get_vendor_ie(bss,
+					       RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
+		rsnxoe = wpa_bss_get_vendor_ie(bss,
+					       RSNXE_OVERRIDE_IE_VENDOR_TYPE);
 
-		wpa_mlo.links[i].ap_rsne = bss_rsn ? (u8 *) bss_rsn : NULL;
-		wpa_mlo.links[i].ap_rsne_len = bss_rsn ? 2 + bss_rsn[1] : 0;
-		wpa_mlo.links[i].ap_rsnxe = bss_rsnx ? (u8 *) bss_rsnx : NULL;
-		wpa_mlo.links[i].ap_rsnxe_len = bss_rsnx ? 2 + bss_rsnx[1] : 0;
+		wpa_mlo.links[i].ap_rsne = rsne ? (u8 *) rsne : NULL;
+		wpa_mlo.links[i].ap_rsne_len = rsne ? 2 + rsne[1] : 0;
+		wpa_mlo.links[i].ap_rsnxe = rsnxe ? (u8 *) rsnxe : NULL;
+		wpa_mlo.links[i].ap_rsnxe_len = rsnxe ? 2 + rsnxe[1] : 0;
+		wpa_mlo.links[i].ap_rsnoe = rsnoe ? (u8 *) rsnoe : NULL;
+		wpa_mlo.links[i].ap_rsnoe_len = rsnoe ? 2 + rsnoe[1] : 0;
+		wpa_mlo.links[i].ap_rsno2e = rsno2e ? (u8 *) rsno2e : NULL;
+		wpa_mlo.links[i].ap_rsno2e_len = rsno2e ? 2 + rsno2e[1] : 0;
+		wpa_mlo.links[i].ap_rsnxoe = rsnxoe ? (u8 *) rsnxoe : NULL;
+		wpa_mlo.links[i].ap_rsnxoe_len = rsnxoe ? 2 + rsnxoe[1] : 0;
 
 		os_memcpy(wpa_mlo.links[i].bssid, drv_mlo.links[i].bssid,
 			  ETH_ALEN);
@@ -6159,6 +6259,17 @@ static void wpas_link_reconfig(struct wpa_supplicant *wpa_s)
 		wpa_s->valid_links);
 }
 
+#ifdef MAINLINE_SUPPLICANT
+static bool is_event_allowlisted(enum wpa_event_type event) {
+	return event == EVENT_SCAN_STARTED ||
+	       event == EVENT_SCAN_RESULTS ||
+	       event == EVENT_RX_MGMT ||
+	       event == EVENT_REMAIN_ON_CHANNEL ||
+	       event == EVENT_CANCEL_REMAIN_ON_CHANNEL ||
+	       event == EVENT_TX_WAIT_EXPIRE;
+}
+#endif /* MAINLINE_SUPPLICANT */
+
 
 void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
@@ -6169,6 +6280,15 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 #endif /* CONFIG_NO_STDOUT_DEBUG */
+
+#ifdef MAINLINE_SUPPLICANT
+	if (!is_event_allowlisted(event)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Ignore event %s (%d) which is not allowlisted",
+			event_to_string(event), event);
+		return;
+	}
+#endif /* MAINLINE_SUPPLICANT */
 
 	if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED &&
 	    event != EVENT_INTERFACE_ENABLED &&

@@ -1,0 +1,9 @@
+service wpa_supplicant_mainline /apex/com.android.wifi/bin/wpa_supplicant_mainline \
+    -O/data/misc/wifi/mainline_supplicant/sockets -dd \
+    -g@android:wpa_wlan0
+    interface aidl wifi_mainline_supplicant
+    class main
+    user root
+    socket wpa_wlan0 dgram 660 wifi wifi
+    disabled
+    oneshot

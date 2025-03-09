@@ -158,7 +158,7 @@ int hostapd_nan_usd_init(struct hostapd_data *hapd)
 	cb.subscribe_terminated = hostapd_nan_de_subscribe_terminated;
 	cb.receive = hostapd_nan_de_receive;
 
-	hapd->nan_de = nan_de_init(hapd->own_addr, true, &cb);
+	hapd->nan_de = nan_de_init(hapd->own_addr, false, true, &cb);
 	if (!hapd->nan_de)
 		return -1;
 	return 0;
@@ -192,7 +192,7 @@ void hostapd_nan_usd_flush(struct hostapd_data *hapd)
 int hostapd_nan_usd_publish(struct hostapd_data *hapd, const char *service_name,
 			    enum nan_service_protocol_type srv_proto_type,
 			    const struct wpabuf *ssi,
-			    struct nan_publish_params *params)
+			    struct nan_publish_params *params, bool p2p)
 {
 	int publish_id;
 	struct wpabuf *elems = NULL;
@@ -201,7 +201,7 @@ int hostapd_nan_usd_publish(struct hostapd_data *hapd, const char *service_name,
 		return -1;
 
 	publish_id = nan_de_publish(hapd->nan_de, service_name, srv_proto_type,
-				    ssi, elems, params);
+				    ssi, elems, params, p2p);
 	wpabuf_free(elems);
 	return publish_id;
 }
@@ -231,7 +231,7 @@ int hostapd_nan_usd_subscribe(struct hostapd_data *hapd,
 			      const char *service_name,
 			      enum nan_service_protocol_type srv_proto_type,
 			      const struct wpabuf *ssi,
-			      struct nan_subscribe_params *params)
+			      struct nan_subscribe_params *params, bool p2p)
 {
 	int subscribe_id;
 	struct wpabuf *elems = NULL;
@@ -240,7 +240,7 @@ int hostapd_nan_usd_subscribe(struct hostapd_data *hapd,
 		return -1;
 
 	subscribe_id = nan_de_subscribe(hapd->nan_de, service_name,
-					srv_proto_type, ssi, elems, params);
+					srv_proto_type, ssi, elems, params, p2p);
 	wpabuf_free(elems);
 	return subscribe_id;
 }

@@ -17,7 +17,7 @@
 struct vlan_description;
 struct mld_info;
 
-#define MAX_OWN_IE_OVERRIDE 256
+#define MAX_OWN_IE_OVERRIDE 257
 
 #ifdef _MSC_VER
 #pragma pack(push, 1)
@@ -230,6 +230,21 @@ struct wpa_auth_config {
 	double corrupt_gtk_rekey_mic_probability;
 	u8 own_ie_override[MAX_OWN_IE_OVERRIDE];
 	size_t own_ie_override_len;
+	bool rsne_override_set;
+	u8 rsne_override[MAX_OWN_IE_OVERRIDE];
+	size_t rsne_override_len;
+	bool rsnoe_override_set;
+	u8 rsnoe_override[MAX_OWN_IE_OVERRIDE];
+	size_t rsnoe_override_len;
+	bool rsno2e_override_set;
+	u8 rsno2e_override[MAX_OWN_IE_OVERRIDE];
+	size_t rsno2e_override_len;
+	bool rsnxe_override_set;
+	u8 rsnxe_override[MAX_OWN_IE_OVERRIDE];
+	size_t rsnxe_override_len;
+	bool rsnxoe_override_set;
+	u8 rsnxoe_override[MAX_OWN_IE_OVERRIDE];
+	size_t rsnxoe_override_len;
 	u8 rsne_override_eapol[MAX_OWN_IE_OVERRIDE];
 	size_t rsne_override_eapol_len;
 	u8 rsnxe_override_eapol[MAX_OWN_IE_OVERRIDE];
@@ -253,6 +268,7 @@ struct wpa_auth_config {
 	struct wpabuf *eapol_m1_elements;
 	struct wpabuf *eapol_m3_elements;
 	bool eapol_m3_no_encrypt;
+	bool eapol_key_reserved_random;
 #endif /* CONFIG_TESTING_OPTIONS */
 	unsigned int oci_freq_override_eapol_m3;
 	unsigned int oci_freq_override_eapol_g1;
@@ -303,6 +319,8 @@ struct wpa_auth_config {
 #endif /* CONFIG_IEEE80211BE */
 
 	bool ssid_protection;
+
+	int rsn_override_omit_rsnxe;
 };
 
 typedef enum {
@@ -408,7 +426,8 @@ struct wpa_auth_callbacks {
 			       size_t ltf_keyseed_len);
 #endif /* CONFIG_PASN */
 #ifdef CONFIG_IEEE80211BE
-	int (*get_ml_key_info)(void *ctx, struct wpa_auth_ml_key_info *info);
+	int (*get_ml_key_info)(void *ctx, struct wpa_auth_ml_key_info *info,
+			       bool rekey);
 #endif /* CONFIG_IEEE80211BE */
 	int (*get_drv_flags)(void *ctx, u64 *drv_flags, u64 *drv_flags2);
 };
@@ -613,8 +632,8 @@ u8 * wpa_auth_write_assoc_resp_fils(struct wpa_state_machine *sm,
 bool wpa_auth_write_fd_rsn_info(struct wpa_authenticator *wpa_auth,
 				u8 *fd_rsn_info);
 void wpa_auth_set_auth_alg(struct wpa_state_machine *sm, u16 auth_alg);
-void wpa_auth_set_rsn_override(struct wpa_state_machine *sm, bool val);
-void wpa_auth_set_rsn_override_2(struct wpa_state_machine *sm, bool val);
+void wpa_auth_set_rsn_selection(struct wpa_state_machine *sm, const u8 *ie,
+				size_t len);
 void wpa_auth_set_dpp_z(struct wpa_state_machine *sm, const struct wpabuf *z);
 void wpa_auth_set_ssid_protection(struct wpa_state_machine *sm, bool val);
 void wpa_auth_set_transition_disable(struct wpa_authenticator *wpa_auth,
@@ -658,7 +677,8 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
 			  u8 mld_assoc_link_id, struct mld_info *info);
 void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 			      struct wpa_auth_ml_link_key_info *info,
-			      bool mgmt_frame_prot, bool beacon_prot);
+			      bool mgmt_frame_prot, bool beacon_prot,
+			      bool rekey);
 
 void wpa_release_link_auth_ref(struct wpa_state_machine *sm,
 			       int release_link_id);

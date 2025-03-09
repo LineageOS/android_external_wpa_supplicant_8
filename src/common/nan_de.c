@@ -58,10 +58,12 @@ struct nan_de_service {
 	struct os_reltime next_publish_state;
 	struct os_reltime next_publish_chan;
 	unsigned int next_publish_duration;
+	bool is_p2p;
 };
 
 struct nan_de {
 	u8 nmi[ETH_ALEN];
+	bool offload;
 	bool ap;
 	struct nan_callbacks cb;
 
@@ -77,7 +79,7 @@ struct nan_de {
 };
 
 
-struct nan_de * nan_de_init(const u8 *nmi, bool ap,
+struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
 			    const struct nan_callbacks *cb)
 {
 	struct nan_de *de;
@@ -87,6 +89,7 @@ struct nan_de * nan_de_init(const u8 *nmi, bool ap,
 		return NULL;
 
 	os_memcpy(de->nmi, nmi, ETH_ALEN);
+	de->offload = offload;
 	de->ap = ap;
 	os_memcpy(&de->cb, cb, sizeof(*cb));
 
@@ -590,7 +593,7 @@ static void nan_de_timer(void *eloop_ctx, void *timeout_ctx)
 		if (srv_next >= 0 && (next == -1 || srv_next < next))
 			next = srv_next;
 
-		if (srv_next == 0 && !started &&
+		if (srv_next == 0 && !started && !de->offload &&
 		    de->listen_freq == 0 && de->ext_listen_freq == 0 &&
 		    de->tx_wait_end_freq == 0 &&
 		    nan_de_next_multicast(de, srv, &now) == 0) {
@@ -598,7 +601,7 @@ static void nan_de_timer(void *eloop_ctx, void *timeout_ctx)
 			nan_de_tx_multicast(de, srv, 0);
 		}
 
-		if (!started && de->cb.listen &&
+		if (!started && !de->offload && de->cb.listen &&
 		    de->listen_freq == 0 && de->ext_listen_freq == 0 &&
 		    de->tx_wait_end_freq == 0 &&
 		    ((srv->type == NAN_DE_PUBLISH &&
@@ -774,6 +777,34 @@ static void nan_de_get_sdea(const u8 *buf, size_t len, u8 instance_id,
 }
 
 
+static void nan_de_process_elem_container(struct nan_de *de, const u8 *buf,
+					  size_t len, const u8 *peer_addr,
+					  unsigned int freq, bool p2p)
+{
+	const u8 *elem;
+	u16 elem_len;
+
+	elem = nan_de_get_attr(buf, len, NAN_ATTR_ELEM_CONTAINER, 0);
+	if (!elem)
+		return;
+
+	elem++;
+	elem_len = WPA_GET_LE16(elem);
+	elem += 2;
+	/* Skip the attribute if there is not enough froom for an element. */
+	if (elem_len < 1 + 2)
+		return;
+
+	/* Skip Map ID */
+	elem++;
+	elem_len--;
+
+	if (p2p && de->cb.process_p2p_usd_elems)
+		de->cb.process_p2p_usd_elems(de->cb.ctx, elem, elem_len,
+					     peer_addr, freq);
+}
+
+
 static void nan_de_rx_publish(struct nan_de *de, struct nan_de_service *srv,
 			      const u8 *peer_addr, u8 instance_id,
 			      u8 req_instance_id, u16 sdea_control,
@@ -787,13 +818,13 @@ static void nan_de_rx_publish(struct nan_de *de, struct nan_de_service *srv,
 		nan_de_run_timer(de);
 	}
 
-	if (srv->subscribe.active && req_instance_id == 0) {
+	if (!de->offload && srv->subscribe.active && req_instance_id == 0) {
 		/* Active subscriber replies with a Subscribe message if it
 		 * received a matching unsolicited Publish message. */
 		nan_de_tx_multicast(de, srv, instance_id);
 	}
 
-	if (!srv->subscribe.active && req_instance_id == 0) {
+	if (!de->offload && !srv->subscribe.active && req_instance_id == 0) {
 		/* Passive subscriber replies with a Follow-up message without
 		 * Service Specific Info field if it received a matching
 		 * unsolicited Publish message. */
@@ -873,6 +904,9 @@ static void nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
 		return;
 	}
 
+	if (de->offload)
+		goto offload;
+
 	/* Reply with a solicited Publish message */
 	/* Service Descriptor attribute */
 	sda_len = NAN_SERVICE_ID_LEN + 1 + 1 + 1;
@@ -939,6 +973,7 @@ static void nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
 
 	nan_de_pause_state(srv, peer_addr, instance_id);
 
+offload:
 	if (!srv->publish.disable_events && de->cb.replied)
 		de->cb.replied(de->cb.ctx, srv->id, peer_addr, instance_id,
 			       srv_proto_type, ssi, ssi_len);
@@ -1094,6 +1129,8 @@ static void nan_de_rx_sda(struct nan_de *de, const u8 *peer_addr,
 				wpa_hexdump(MSG_MSGDUMP, "NAN: ssi",
 					    ssi, ssi_len);
 			}
+			nan_de_process_elem_container(de, buf, len, peer_addr,
+						      freq, srv->is_p2p);
 		}
 
 		switch (type) {
@@ -1196,10 +1233,23 @@ static int nan_de_derive_service_id(struct nan_de_service *srv)
 }
 
 
+const u8 * nan_de_get_service_id(struct nan_de *de, int id)
+{
+	struct nan_de_service *srv;
+
+	if (id < 1 || id > NAN_DE_MAX_SERVICE)
+		return NULL;
+	srv = de->service[id - 1];
+	if (!srv)
+		return NULL;
+	return srv->service_id;
+}
+
+
 int nan_de_publish(struct nan_de *de, const char *service_name,
 		   enum nan_service_protocol_type srv_proto_type,
 		   const struct wpabuf *ssi, const struct wpabuf *elems,
-		   struct nan_publish_params *params)
+		   struct nan_publish_params *params, bool p2p)
 {
 	int publish_id;
 	struct nan_de_service *srv;
@@ -1261,6 +1311,7 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
 	wpa_printf(MSG_DEBUG, "NAN: Assigned new publish handle %d for %s",
 		   publish_id, service_name);
 	srv->id = publish_id;
+	srv->is_p2p = p2p;
 	nan_de_add_srv(de, srv);
 	nan_de_run_timer(de);
 	return publish_id;
@@ -1312,7 +1363,7 @@ int nan_de_update_publish(struct nan_de *de, int publish_id,
 int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		     enum nan_service_protocol_type srv_proto_type,
 		     const struct wpabuf *ssi, const struct wpabuf *elems,
-		     struct nan_subscribe_params *params)
+		     struct nan_subscribe_params *params, bool p2p)
 {
 	int subscribe_id;
 	struct nan_de_service *srv;
@@ -1337,6 +1388,17 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 	if (nan_de_derive_service_id(srv) < 0)
 		goto fail;
 	os_memcpy(&srv->subscribe, params, sizeof(*params));
+
+	if (params->freq_list) {
+		size_t len;
+
+		len = (int_array_len(params->freq_list) + 1) * sizeof(int);
+		srv->freq_list = os_memdup(params->freq_list, len);
+		if (!srv->freq_list)
+			goto fail;
+	}
+	srv->subscribe.freq_list = NULL;
+
 	srv->srv_proto_type = srv_proto_type;
 	if (ssi) {
 		srv->ssi = wpabuf_dup(ssi);
@@ -1352,6 +1414,7 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 	wpa_printf(MSG_DEBUG, "NAN: Assigned new subscribe handle %d for %s",
 		   subscribe_id, service_name);
 	srv->id = subscribe_id;
+	srv->is_p2p = p2p;
 	nan_de_add_srv(de, srv);
 	nan_de_run_timer(de);
 	return subscribe_id;

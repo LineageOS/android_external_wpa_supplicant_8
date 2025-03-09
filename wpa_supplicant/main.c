@@ -178,7 +178,9 @@ static int wpa_supplicant_init_match(struct wpa_global *global)
 }
 #endif /* CONFIG_MATCH_IFACE */
 
-
+// Temporarily allow the fuzzer library to redefine main()
+// TODO: Remove this flag once mainline supplicant does not include this file
+#ifndef SUPPLICANT_SERVICE_FUZZER
 int main(int argc, char *argv[])
 {
 	int c, i;
@@ -409,3 +411,4 @@ out:
 
 	return exitcode;
 }
+#endif /* SUPPLICANT_SERVICE_FUZZER */

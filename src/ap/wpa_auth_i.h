@@ -111,6 +111,8 @@ struct wpa_state_machine {
 	size_t wpa_ie_len;
 	u8 *rsnxe;
 	size_t rsnxe_len;
+	u8 *rsn_selection;
+	size_t rsn_selection_len;
 
 	enum {
 		WPA_VERSION_NO_WPA = 0 /* WPA not used */,
@@ -251,9 +253,6 @@ struct wpa_authenticator {
 
 	u8 *wpa_ie;
 	size_t wpa_ie_len;
-	u8 *rsne_override; /* RSNE with overridden payload */
-	u8 *rsne_override_2; /* RSNE with overridden (2) payload */
-	u8 *rsnxe_override; /* RSNXE with overridden payload */
 
 	u8 addr[ETH_ALEN];
 

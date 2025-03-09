@@ -184,6 +184,22 @@ public:
 		const P2pAddGroupConfigurationParams& in_groupConfigurationParams) override;
 	::ndk::ScopedAStatus createGroupOwner(
 		const P2pCreateGroupOwnerInfo& in_groupOwnerInfo) override;
+	::ndk::ScopedAStatus getFeatureSet(int64_t* _aidl_return) override;
+	::ndk::ScopedAStatus startUsdBasedServiceDiscovery(
+		const P2pUsdBasedServiceDiscoveryConfig& in_serviceDiscoveryConfig,
+		int32_t* _aidl_return) override;
+	::ndk::ScopedAStatus stopUsdBasedServiceDiscovery(int32_t in_sessionId) override;
+	::ndk::ScopedAStatus startUsdBasedServiceAdvertisement(
+		const P2pUsdBasedServiceAdvertisementConfig& in_serviceAdvertisementConfig,
+		int32_t* _aidl_return) override;
+	::ndk::ScopedAStatus stopUsdBasedServiceAdvertisement(int32_t in_sessionId) override;
+	::ndk::ScopedAStatus provisionDiscoveryWithParams(
+		const P2pProvisionDiscoveryParams& in_params) override;
+	::ndk::ScopedAStatus getDirInfo(P2pDirInfo* _aidl_return) override;
+	::ndk::ScopedAStatus validateDirInfo(const P2pDirInfo &in_dirInfo,
+		int32_t* _aidl_return) override;
+	::ndk::ScopedAStatus reinvokePersistentGroup(
+		const P2pReinvokePersistentGroupParams& in_reinvokeGroupParams) override;
 
 
 private:
@@ -316,6 +332,20 @@ private:
 		const P2pAddGroupConfigurationParams& groupConfigurationParams);
 	ndk::ScopedAStatus createGroupOwnerInternal(
 		const P2pCreateGroupOwnerInfo& groupOwnerInfo);
+	std::pair<int64_t, ndk::ScopedAStatus> getFeatureSetInternal();
+	std::pair<uint32_t, ndk::ScopedAStatus> startUsdBasedServiceDiscoveryInternal(
+		const P2pUsdBasedServiceDiscoveryConfig& serviceDiscoveryConfig);
+	::ndk::ScopedAStatus stopUsdBasedServiceDiscoveryInternal(uint32_t sessionId);
+	std::pair<uint32_t, ndk::ScopedAStatus> startUsdBasedServiceAdvertisementInternal(
+		const P2pUsdBasedServiceAdvertisementConfig& serviceAdvertisementConfig);
+	::ndk::ScopedAStatus stopUsdBasedServiceAdvertisementInternal(uint32_t sessionId);
+	::ndk::ScopedAStatus provisionDiscoveryWithParamsInternal(
+		const P2pProvisionDiscoveryParams& params);
+	std::pair<P2pDirInfo, ndk::ScopedAStatus> getDirInfoInternal();
+	std::pair<int32_t, ndk::ScopedAStatus> validateDirInfoInternal(
+		const P2pDirInfo& dirInfo);
+	::ndk::ScopedAStatus reinvokePersistentGroupInternal(
+		const P2pReinvokePersistentGroupParams& reinvokeGroupParams);
 
 	struct wpa_supplicant* retrieveIfacePtr();
 	struct wpa_supplicant* retrieveGroupIfacePtr(
