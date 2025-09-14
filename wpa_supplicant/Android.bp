@@ -1544,3 +1544,18 @@ prebuilt_etc {
     src: ":com.android.hardware.wpa_supplicant.rc-gen",
     installable: false,
 }
+
+genrule {
+    name: "wpa_supplicant_conf_gen",
+    tool_files: ["wpa_supplicant_conf.sh"],
+    srcs: [":wpa_supplicant_template_file"],
+    cmd: "bash $(location wpa_supplicant_conf.sh) $(location :wpa_supplicant_template_file) > $(out)",
+    out: ["wpa_supplicant.conf"],
+}
+
+prebuilt_etc {
+    name: "wpa_supplicant.conf",
+    srcs: [":wpa_supplicant_conf_gen"],
+    vendor: true,
+    relative_install_path: "wifi",
+}
