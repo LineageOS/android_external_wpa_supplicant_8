@@ -191,9 +191,10 @@ void ap_free_sta_pasn(struct hostapd_data *hapd, struct sta_info *sta)
 static void __ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 {
 #ifdef CONFIG_IEEE80211BE
-	if (hostapd_sta_is_link_sta(hapd, sta) &&
-	    !hostapd_drv_link_sta_remove(hapd, sta->addr))
+	if (hostapd_sta_is_link_sta(hapd, sta)) {
+		hostapd_drv_link_sta_remove(hapd, sta->addr);
 		return;
+	}
 #endif /* CONFIG_IEEE80211BE */
 
 	hostapd_drv_sta_remove(hapd, sta->addr);
@@ -201,8 +202,8 @@ static void __ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 
 
 #ifdef CONFIG_IEEE80211BE
-static void clear_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
-					       struct sta_info *psta)
+void clear_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
+					struct sta_info *psta)
 {
 	struct sta_info *lsta;
 	struct hostapd_data *lhapd;
@@ -350,7 +351,8 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 	/* Release group references in case non-association link STA is removed
 	 * before association link STA */
 	if (hostapd_sta_is_link_sta(hapd, sta))
-		wpa_release_link_auth_ref(sta->wpa_sm, hapd->mld_link_id);
+		wpa_release_link_auth_ref(sta->wpa_sm, hapd->mld_link_id,
+					  false);
 #else /* CONFIG_IEEE80211BE */
 	wpa_auth_sta_deinit(sta->wpa_sm);
 #endif /* CONFIG_IEEE80211BE */
@@ -392,7 +394,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 	p2p_group_notif_disassoc(hapd->p2p_group, sta->addr);
 #endif /* CONFIG_P2P */
 
-#ifdef CONFIG_INTERWORKING
+#if defined(CONFIG_INTERWORKING) || defined(CONFIG_DPP)
 	if (sta->gas_dialog) {
 		int i;
 
@@ -400,7 +402,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 			gas_serv_dialog_clear(&sta->gas_dialog[i]);
 		os_free(sta->gas_dialog);
 	}
-#endif /* CONFIG_INTERWORKING */
+#endif /* CONFIG_INTERWORKING || CONFIG_DPP */
 
 	wpabuf_free(sta->wps_ie);
 	wpabuf_free(sta->p2p_ie);

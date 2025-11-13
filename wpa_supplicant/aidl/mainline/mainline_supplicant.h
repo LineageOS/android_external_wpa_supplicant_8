@@ -37,6 +37,7 @@ class MainlineSupplicant : public BnMainlineSupplicant {
             std::shared_ptr<IStaInterface>* _aidl_return);
         ndk::ScopedAStatus removeStaInterface(const std::string& ifaceName);
         ndk::ScopedAStatus terminate();
+        ndk::ScopedAStatus setDebugParams(IMainlineSupplicant::DebugLevel level, bool showKeys);
 
     private:
         // Raw pointer to the global structure maintained by the core

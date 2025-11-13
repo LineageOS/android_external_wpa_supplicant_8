@@ -1388,6 +1388,7 @@ void AidlManager::notifyP2pDeviceFound(
 
 	if (areAidlServiceAndClientAtLeastVersion(3)) {
 		P2pDeviceFoundEventParams params;
+		P2pDirInfo dirInfo;
 		params.srcAddress = macAddrToArray(addr);
 		params.p2pDeviceAddress = macAddrToArray(info->p2p_device_addr);
 		params.primaryDeviceType = byteArrToVec(info->pri_dev_type, 8);
@@ -1402,11 +1403,12 @@ void AidlManager::notifyP2pDeviceFound(
 			params.pairingBootstrappingMethods = convertP2pPairingBootstrappingMethodsToAidl(
 				info->pairing_config.bootstrap_methods);
 			if (info->nonce_tag_valid) {
-				params.dirInfo->cipherVersion =
+				dirInfo.cipherVersion =
 					P2pDirInfo::CipherVersion::DIRA_CIPHER_VERSION_128_BIT;
-				params.dirInfo->deviceInterfaceMacAddress = macAddrToArray(info->p2p_device_addr);
-				params.dirInfo->nonce = byteArrToVec(info->nonce, DEVICE_IDENTITY_NONCE_LEN);
-				params.dirInfo->dirTag = byteArrToVec(info->tag, DEVICE_IDENTITY_TAG_LEN);
+				dirInfo.deviceInterfaceMacAddress = macAddrToArray(info->p2p_device_addr);
+				dirInfo.nonce = byteArrToVec(info->nonce, DEVICE_IDENTITY_NONCE_LEN);
+				dirInfo.dirTag = byteArrToVec(info->tag, DEVICE_IDENTITY_TAG_LEN);
+				params.dirInfo = dirInfo;
 			}
 		}
 		callWithEachP2pIfaceCallback(
@@ -3170,6 +3172,32 @@ void AidlManager::notifyUsdSubscribeTerminated(struct wpa_supplicant *wpa_s,
 			misc_utils::charBufToString(wpa_s->ifname), std::bind(
 			&ISupplicantStaIfaceCallback::onUsdSubscribeTerminated,
 			std::placeholders::_1, subscribe_id, aidlReasonCode));
+	}
+}
+
+void AidlManager::notifyAuthStatusCode(struct wpa_supplicant *wpa_s,
+		u16 auth_type, u16 auth_transaction, u16 status_code)
+{
+	if (!wpa_s) return;
+	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
+	AssociationRejectionData aidl_assoc_reject_data{};
+
+	// TODO If needed, expand for other authentication failures.
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME && auth_type == WLAN_AUTH_SAE
+			&& auth_transaction == 2 && status_code != WLAN_STATUS_SUCCESS) {
+		if (wpa_s->current_ssid) {
+			aidl_assoc_reject_data.ssid = std::vector<uint8_t>(
+				wpa_s->current_ssid->ssid,
+				wpa_s->current_ssid->ssid + wpa_s->current_ssid->ssid_len);
+		}
+		aidl_assoc_reject_data.bssid = macAddrToVec(wpa_s->pending_bssid);
+		aidl_assoc_reject_data.statusCode = static_cast<StaIfaceStatusCode>(status_code);
+		const std::function<
+			ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+			func = std::bind(
+			&ISupplicantStaIfaceCallback::onAssociationRejected,
+			std::placeholders::_1, aidl_assoc_reject_data);
+			callWithEachStaIfaceCallback(aidl_ifname, func);
 	}
 }
 

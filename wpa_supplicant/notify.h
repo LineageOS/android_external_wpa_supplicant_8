@@ -31,7 +31,8 @@ void wpas_notify_state_changed(struct wpa_supplicant *wpa_s,
 			       enum wpa_states new_state,
 			       enum wpa_states old_state);
 void wpas_notify_disconnect_reason(struct wpa_supplicant *wpa_s);
-void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s);
+void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s, u16 auth_type,
+				   u16 auth_transaction, u16 status_code);
 void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s, const u8 *bssid, u8 timed_out,
 				   const u8 *assoc_resp_ie, size_t assoc_resp_ie_len);
 void wpas_notify_auth_timeout(struct wpa_supplicant *wpa_s);

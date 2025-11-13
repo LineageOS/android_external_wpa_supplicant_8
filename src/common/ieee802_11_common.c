@@ -1024,14 +1024,25 @@ ParseRes ieee802_11_parse_link_assoc_req(struct ieee802_11_elems *elems,
 	pos += sizeof(*ml) + pos[sizeof(*ml)];
 
 	while (len > 2) {
-		size_t sub_elem_len = *(pos + 1);
-		size_t sta_info_len;
+		size_t sub_elem_len, sta_info_len;
 		u16 link_info_control;
 		const u8 *non_inherit;
+		int num_frag_subelems;
+
+		num_frag_subelems =
+			ieee802_11_defrag_mle_subelem(mlbuf, pos,
+						      &sub_elem_len);
+		if (num_frag_subelems < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "MLD: Failed to parse MLE subelem");
+			goto out;
+		}
+
+		len -= num_frag_subelems * 2;
 
 		wpa_printf(MSG_DEBUG,
-			   "MLD: sub element: len=%zu, sub_elem_len=%zu",
-			   len, sub_elem_len);
+			   "MLD: sub element: len=%zu, sub_elem_len=%zu, Fragment subelems=%u",
+			   len, sub_elem_len, num_frag_subelems);
 
 		if (2 + sub_elem_len > len) {
 			if (show_errors)
@@ -2927,6 +2938,18 @@ int oper_class_bw_to_int(const struct oper_class_map *map)
 }
 
 
+bool is_24ghz_freq(int freq)
+{
+	return freq >= 2400 && freq <= 2484;
+}
+
+
+bool is_5ghz_freq(int freq)
+{
+	return freq >= 5150 && freq <= 5885;
+}
+
+
 int center_idx_to_bw_6ghz(u8 idx)
 {
 	/* Channel: 2 */
@@ -3444,6 +3467,70 @@ struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem)
 	}
 
 	return buf;
+}
+
+
+/**
+ * ieee802_11_defrag_mle_subelem - Defragment Multi-Link element subelements
+ * @mlbuf: Defragmented mlbuf (defragmented using ieee802_11_defrag())
+ * @parent_subelem: Pointer to the subelement which may be fragmented
+ * @defrag_len: Defragmented length of the subelement
+ * Returns: Number of Fragment subelements parsed on success, -1 otherwise
+ *
+ * This function defragments a subelement present inside an Multi-Link element.
+ * It should be called individually for each subelement.
+ *
+ * Subelements can use the Fragment subelement if they pack more than 255 bytes
+ * of data, see IEEE P802.11be/D7.0 Figure 35-4 - Per-STA Profile subelement
+ * fragmentation within a fragmented Multi-Link element.
+ */
+size_t ieee802_11_defrag_mle_subelem(struct wpabuf *mlbuf,
+				     const u8 *parent_subelem,
+				     size_t *defrag_len)
+{
+	u8 *buf, *pos, *end;
+	size_t len, subelem_len;
+	const size_t min_defrag_len = 255;
+	int num_frag_subelems = 0;
+
+	if (!mlbuf || !parent_subelem)
+		return -1;
+
+	buf = wpabuf_mhead_u8(mlbuf);
+	len = wpabuf_len(mlbuf);
+	end = buf + len;
+
+	*defrag_len = parent_subelem[1];
+	if (parent_subelem[1] < min_defrag_len)
+		return 0;
+
+	pos = (u8 *) parent_subelem;
+	if (2 + parent_subelem[1] > end - pos)
+		return -1;
+	pos += 2 + parent_subelem[1];
+	subelem_len = parent_subelem[1];
+
+	while (end - pos > 2 &&
+	       pos[0] == MULTI_LINK_SUB_ELEM_ID_FRAGMENT && pos[1]) {
+		size_t elen = 2 + pos[1];
+
+		/* This Multi-Link parent subelement has more data and is
+		 * fragmented. */
+		num_frag_subelems++;
+
+		if (elen > (size_t) (end - pos))
+			return -1;
+
+		os_memmove(pos, pos + 2, end - (pos + 2));
+		pos += elen - 2;
+		subelem_len += elen - 2;
+
+		/* Deduct Fragment subelement header */
+		len -= 2;
+	}
+
+	*defrag_len = subelem_len;
+	return num_frag_subelems;
 }
 
 

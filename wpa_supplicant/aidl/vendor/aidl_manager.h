@@ -193,6 +193,8 @@ public:
 			int publish_id, enum nan_de_reason reason);
 	void notifyUsdSubscribeTerminated(struct wpa_supplicant *wpa_s,
 			int subscribe_id, enum nan_de_reason reason);
+	void notifyAuthStatusCode(struct wpa_supplicant *wpa_s,
+			u16 auth_type, u16 auth_transaction, u16 status_code);
 
 	// Methods called from aidl objects.
 	int32_t isAidlServiceVersionAtLeast(int32_t expected_version);

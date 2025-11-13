@@ -345,12 +345,16 @@ void wpa_supplicant_stop_countermeasures(void *eloop_ctx, void *sock_ctx)
 
 void wpas_reset_mlo_info(struct wpa_supplicant *wpa_s)
 {
+	int i;
+
 	if (!wpa_s->valid_links)
 		return;
 
 	wpa_s->valid_links = 0;
 	wpa_s->mlo_assoc_link_id = 0;
 	os_memset(wpa_s->ap_mld_addr, 0, ETH_ALEN);
+	for (i = 0; i < MAX_NUM_MLD_LINKS; i++)
+		wpabuf_free(wpa_s->links[i].ies);
 	os_memset(wpa_s->links, 0, sizeof(wpa_s->links));
 }
 
@@ -2871,6 +2875,20 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 }
 
 
+static bool equal_scan_freq_list(struct wpa_supplicant *self,
+				 struct wpa_supplicant *other)
+{
+	const int *list1, *list2;
+
+	list1 = self->conf->freq_list ? self->conf->freq_list :
+		self->last_scan_freqs;
+	list2 = other->conf->freq_list ? other->conf->freq_list :
+		other->last_scan_freqs;
+
+	return int_array_equal(list1, list2);
+}
+
+
 static int wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 					     union wpa_event_data *data)
 {
@@ -2898,12 +2916,19 @@ static int wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	}
 
 	/*
-	 * Check other interfaces to see if they share the same radio. If
-	 * so, they get updated with this same scan info.
+	 * Manual scan requests are more specific to a use case than the
+	 * normal scan requests; hence, skip updating sibling radios.
+	 */
+	if (wpa_s->last_scan_req == MANUAL_SCAN_REQ)
+		return 0;
+
+	/*
+	 * Check other interfaces to see if they share the same radio and
+	 * frequency list. If so, they get updated with this same scan info.
 	 */
 	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
 			 radio_list) {
-		if (ifs != wpa_s) {
+		if (ifs != wpa_s && equal_scan_freq_list(wpa_s, ifs)) {
 			wpa_printf(MSG_DEBUG, "%s: Updating scan results from "
 				   "sibling", ifs->ifname);
 			res = _wpa_supplicant_event_scan_results(ifs, data, 0,
@@ -4097,17 +4122,28 @@ static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
 	pos = ((u8 *) common_info) + common_info->len;
 	ml_len -= sizeof(*ml) + common_info->len;
 	while (ml_len > 2 && i < MAX_NUM_MLD_LINKS) {
-		u8 sub_elem_len = pos[1];
-		u8 sta_info_len, sta_info_len_min;
+		size_t sub_elem_len, sta_info_len, sta_info_len_min;
 		u8 nstr_bitmap_len = 0;
 		u16 ctrl;
 		const u8 *end;
+		int num_frag_subelems;
 
-		wpa_printf(MSG_DEBUG, "MLD: Subelement len=%u", sub_elem_len);
+		num_frag_subelems =
+			ieee802_11_defrag_mle_subelem(mlbuf, pos,
+						      &sub_elem_len);
+		if (num_frag_subelems < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "MLD: Failed to parse MLE subelem");
+			goto out;
+		}
+
+		ml_len -= num_frag_subelems * 2;
+
+		wpa_printf(MSG_DEBUG, "MLD: Subelement len=%zu", sub_elem_len);
 
 		if (sub_elem_len > ml_len - 2) {
 			wpa_printf(MSG_DEBUG,
-				   "MLD: Invalid link info len: %u > %zu",
+				   "MLD: Invalid link info len: %zu > %zu",
 				   2 + sub_elem_len, ml_len);
 			goto out;
 		}
@@ -4118,7 +4154,7 @@ static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
 		case EHT_ML_SUB_ELEM_FRAGMENT:
 		case EHT_ML_SUB_ELEM_VENDOR:
 			wpa_printf(MSG_DEBUG,
-				   "MLD: Skip subelement id=%u, len=%u",
+				   "MLD: Skip subelement id=%u, len=%zu",
 				   *pos, sub_elem_len);
 			pos += 2 + sub_elem_len;
 			ml_len -= 2 + sub_elem_len;
@@ -4189,11 +4225,12 @@ static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
 
 		sta_info_len_min = 1 + ETH_ALEN + 8 + 2 + 2 + 1 +
 			nstr_bitmap_len;
-		if (sta_info_len_min > ml_len || sta_info_len_min > end - pos ||
+		if (sta_info_len_min > ml_len ||
+		    sta_info_len_min > (size_t) (end - pos) ||
 		    sta_info_len_min + 2 > sub_elem_len ||
 		    sta_info_len_min > *pos) {
 			wpa_printf(MSG_DEBUG,
-				   "MLD: Invalid STA info min len=%u, len=%u",
+				   "MLD: Invalid STA info min len=%zu, len=%u",
 				   sta_info_len_min, *pos);
 			goto out;
 		}
@@ -4214,7 +4251,7 @@ static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
 		pos += sta_info_len;
 		ml_len -= sta_info_len;
 
-		wpa_printf(MSG_DEBUG, "MLD: sub_elem_len=%u, sta_info_len=%u",
+		wpa_printf(MSG_DEBUG, "MLD: sub_elem_len=%zu, sta_info_len=%zu",
 			   sub_elem_len, sta_info_len);
 
 		sub_elem_len -= sta_info_len + 2;
@@ -6356,9 +6393,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			wpa_printf(MSG_DEBUG,
 				   "FST: MB IEs updated from auth IE");
 #endif /* CONFIG_FST */
-		sme_event_auth(wpa_s, data);
 		wpa_s->auth_status_code = data->auth.status_code;
-		wpas_notify_auth_status_code(wpa_s);
+		wpas_notify_auth_status_code(wpa_s, data->auth.auth_type,
+			data->auth.auth_transaction, data->auth.status_code);
+		sme_event_auth(wpa_s, data);
 		break;
 	case EVENT_ASSOC:
 #ifdef CONFIG_TESTING_OPTIONS

@@ -707,7 +707,7 @@
 #define WLAN_PA_FILS_DISCOVERY 34
 #define WLAN_PA_LOCATION_MEASUREMENT_REPORT 47
 
-/* HT Action field values (IEEE P802.11-REVme/D4.0, 9.6.11.1, Table 9-491) */
+/* HT Action field values (IEEE Std 802.11-2024, 9.6.11.1, Table 9-517) */
 #define WLAN_HT_ACTION_NOTIFY_CHANWIDTH 0
 #define WLAN_HT_ACTION_SMPS 1
 #define WLAN_HT_ACTION_CSI 4
@@ -715,7 +715,7 @@
 #define WLAN_HT_ACTION_COMPRESSED_BF 6
 #define WLAN_HT_ACTION_ASEL_IDX_FEEDBACK 7
 
-/* VHT Action field values (IEEE P802.11-REVme/D4.0, 9.6.22.1, Table 9-579) */
+/* VHT Action field values (IEEE Std 802.11-2024, 9.6.22.1, Table 9-605) */
 #define WLAN_VHT_ACTION_COMPRESSED_BF 0
 #define WLAN_VHT_ACTION_GROUP_ID_MGMT 1
 #define WLAN_VHT_ACTION_OPMODE_NOTIF 2
@@ -808,6 +808,7 @@
 #define WLAN_RRM_CAPS_LCI_MEASUREMENT BIT(4)
 /* byte 5 (out of 5) */
 #define WLAN_RRM_CAPS_FTM_RANGE_REPORT BIT(2)
+#define WLAN_RRM_CAPS_CIVIC_LOCATION_MEASUREMENT BIT(3)
 
 /*
  * IEEE Std 802.11-2020, 9.4.2.20.19 (Fine Timing Measurement Range
@@ -2574,7 +2575,8 @@ struct ieee80211_6ghz_operation_info {
 /**
  * enum he_reg_info_6ghz_ap_type - Allowed Access Point types for 6 GHz Band
  *
- * IEEE P802.11-REVme/D4.0, Table E-12 (Regulatory Info subfield encoding)
+ * IEEE Std 802.11-2024, Table E-12 (Regulatory Info subfield interpretation by
+ * non-AP STAs with dot11ExtendedRegInfoSupport not set to true)
  */
 enum he_reg_info_6ghz_ap_type {
 	HE_REG_INFO_6GHZ_AP_TYPE_INDOOR         = 0,
@@ -2713,6 +2715,8 @@ struct ieee80211_eht_operation {
 	u8 basic_eht_mcs_nss_set[4];
 	struct ieee80211_eht_oper_info oper_info; /* 0 or 3 or 5 octets */
 } STRUCT_PACKED;
+
+#define IEEE80211_EHT_OP_MIN_LEN (1 + 4)
 
 /* IEEE P802.11be/D1.5, 9.4.2.313 - EHT Capabilities element */
 
@@ -2890,17 +2894,6 @@ struct eht_ml_basic_common_info {
 #define EHT_PER_STA_CTRL_NSTR_LINK_PAIR_PRESENT_MSK   0x0200
 #define EHT_PER_STA_CTRL_NSTR_BM_SIZE_MSK             0x0400
 #define EHT_PER_STA_CTRL_BSS_PARAM_CNT_PRESENT_MSK    0x0800
-
-/* IEEE P802.11be/D4.1, Figure 9-1001x - STA Control field format for the
- * Reconfiguration Multi-Link element */
-#define EHT_PER_STA_RECONF_CTRL_LINK_ID_MSK        0x000f
-#define EHT_PER_STA_RECONF_CTRL_COMPLETE_PROFILE   0x0010
-#define EHT_PER_STA_RECONF_CTRL_MAC_ADDR           0x0020
-#define EHT_PER_STA_RECONF_CTRL_AP_REMOVAL_TIMER   0x0040
-#define EHT_PER_STA_RECONF_CTRL_OP_UPDATE_TYPE_MSK 0x0780
-#define EHT_PER_STA_RECONF_CTRL_OP_PARAMS          0x0800
-#define EHT_PER_STA_RECONF_CTRL_NSTR_BITMAP_SIZE   0x1000
-#define EHT_PER_STA_RECONF_CTRL_NSTR_INDIC_BITMAP  0x2000
 
 /* IEEE P802.11be/D2.0, 9.4.2.312.2.4 - Per-STA Profile subelement format */
 struct ieee80211_eht_per_sta_profile {

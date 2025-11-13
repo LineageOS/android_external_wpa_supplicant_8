@@ -21,6 +21,7 @@
 #include "p2p_hostapd.h"
 #include "hs20.h"
 #include "wpa_auth.h"
+#include "hw_features.h"
 #include "ap_drv_ops.h"
 
 
@@ -788,6 +789,31 @@ int hostapd_driver_scan(struct hostapd_data *hapd,
 #ifdef CONFIG_IEEE80211BE
 	if (hapd->conf->mld_ap)
 		params->link_id = hapd->mld_link_id;
+
+	if (!hapd->iface->scan_cb && hapd->conf->mld_ap &&
+	    hapd->iface->interfaces) {
+		/* Other links may be waiting for scan results */
+		unsigned int i;
+
+		for (i = 0; i < hapd->iface->interfaces->count; i++) {
+			struct hostapd_iface *h_iface =
+				hapd->iface->interfaces->iface[i];
+			struct hostapd_data *h_hapd;
+
+			if (!h_iface || h_iface == hapd->iface ||
+			    h_iface->num_bss == 0)
+				continue;
+
+			h_hapd = h_iface->bss[0];
+
+			if (hostapd_is_ml_partner(hapd, h_hapd) &&
+			    h_hapd->iface->state == HAPD_IFACE_ACS) {
+				wpa_printf(MSG_INFO,
+					   "ACS in progress in a partner link - try to scan later");
+				return -EBUSY;
+			}
+		}
+	}
 #endif /* CONFIG_IEEE80211BE */
 
 	if (hapd->driver && hapd->driver->scan2)
@@ -1125,6 +1151,9 @@ void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 {
 	int i;
 	bool is_no_ir = false;
+	bool allow_6g_acs = hostapd_config_check_bss_6g(hapd->conf) &&
+		(hapd->iface->conf->ieee80211ax ||
+		 hapd->iface->conf->ieee80211be);
 
 	for (i = 0; i < mode->num_channels; i++) {
 		struct hostapd_channel_data *chan = &mode->channels[i];
@@ -1145,8 +1174,7 @@ void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 		if (is_6ghz_freq(chan->freq) &&
 		    ((hapd->iface->conf->acs_exclude_6ghz_non_psc &&
 		      !is_6ghz_psc_frequency(chan->freq)) ||
-		     (!hapd->iface->conf->ieee80211ax &&
-		      !hapd->iface->conf->ieee80211be)))
+		     !allow_6g_acs))
 			continue;
 		if ((!(chan->flag & HOSTAPD_CHAN_DISABLED) || allow_disabled) &&
 		    !(hapd->iface->conf->acs_exclude_dfs &&

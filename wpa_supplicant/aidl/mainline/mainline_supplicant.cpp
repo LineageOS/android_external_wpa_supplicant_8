@@ -96,3 +96,13 @@ ndk::ScopedAStatus MainlineSupplicant::terminate() {
     wpa_supplicant_terminate_proc(wpa_global_);
     return ndk::ScopedAStatus::ok();
 }
+
+ndk::ScopedAStatus MainlineSupplicant::setDebugParams(
+        IMainlineSupplicant::DebugLevel level, bool showKeys) {
+    if (wpa_supplicant_set_debug_params(
+            wpa_global_, static_cast<uint32_t>(level),
+            false /* showTimestamp */, showKeys)) {
+        return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+    }
+    return ndk::ScopedAStatus::ok();
+}

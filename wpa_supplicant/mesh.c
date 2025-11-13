@@ -389,6 +389,8 @@ static int wpa_supplicant_mesh_init(struct wpa_supplicant *wpa_s,
 	int basic_rates_erp[] = { 10, 20, 55, 60, 110, 120, 240, -1 };
 	int rate_len;
 	int frequency;
+	bool is_dfs;
+	u8 chan;
 
 	if (!wpa_s->conf->user_mpm) {
 		/* not much for us to do here */
@@ -479,8 +481,35 @@ static int wpa_supplicant_mesh_init(struct wpa_supplicant *wpa_s,
 	bss->conf->ap_max_inactivity = wpa_s->conf->mesh_max_inactivity;
 	bss->conf->mesh_fwding = wpa_s->conf->mesh_fwding;
 
-	if (ieee80211_is_dfs(ssid->frequency, wpa_s->hw.modes,
-			     wpa_s->hw.num_modes) && wpa_s->conf->country[0]) {
+	ieee80211_freq_to_chan(freq->center_freq1, &chan);
+	if (wpa_s->mesh_vht_enabled) {
+		if (freq->bandwidth == 80)
+			conf->vht_oper_chwidth = CONF_OPER_CHWIDTH_80MHZ;
+		else if (freq->bandwidth == 160)
+			conf->vht_oper_chwidth = CONF_OPER_CHWIDTH_160MHZ;
+		conf->vht_oper_centr_freq_seg0_idx = chan;
+	}
+
+#ifdef CONFIG_IEEE80211AX
+	if (wpa_s->mesh_he_enabled) {
+		if (freq->bandwidth == 80)
+			conf->he_oper_chwidth = CONF_OPER_CHWIDTH_80MHZ;
+		else if (freq->bandwidth == 160)
+			conf->he_oper_chwidth = CONF_OPER_CHWIDTH_160MHZ;
+		conf->he_oper_centr_freq_seg0_idx = chan;
+	}
+#endif /* CONFIG_IEEE80211AX */
+
+	is_dfs = ieee80211_is_dfs(ssid->frequency, wpa_s->hw.modes,
+				  wpa_s->hw.num_modes);
+
+	/* Check if secondary 80 MHz of 160 MHz has DFS channels */
+	if (!is_dfs && freq->bandwidth == 160)
+		is_dfs = ieee80211_is_dfs(ssid->frequency + 80,
+					  wpa_s->hw.modes,
+					  wpa_s->hw.num_modes);
+
+	if (is_dfs && wpa_s->conf->country[0]) {
 		conf->ieee80211h = 1;
 		conf->ieee80211d = 1;
 		conf->country[0] = wpa_s->conf->country[0];

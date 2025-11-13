@@ -660,6 +660,10 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 	wpabuf_free(wpa_s->rsnxe_override_eapol);
 	wpa_s->rsnxe_override_eapol = NULL;
 	wpas_clear_driver_signal_override(wpa_s);
+	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+		wpabuf_free(wpa_s->link_ies[i]);
+		wpa_s->link_ies[i] = NULL;
+	}
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	if (wpa_s->conf != NULL) {
@@ -796,6 +800,11 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 	os_free(wpa_s->last_scan_res);
 	wpa_s->last_scan_res = NULL;
 
+#ifdef CONFIG_P2P
+	os_free(wpa_s->p2p_pmksa_entry);
+	wpa_s->p2p_pmksa_entry = NULL;
+#endif /* CONFIG_P2P */
+
 #ifdef CONFIG_HS20
 	if (wpa_s->drv_priv)
 		wpa_drv_configure_frame_filters(wpa_s, 0);
@@ -871,6 +880,11 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 	os_free(wpa_s->owe_trans_scan_freq);
 	wpa_s->owe_trans_scan_freq = NULL;
 #endif /* CONFIG_OWE */
+
+	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+		wpabuf_free(wpa_s->links[i].ies);
+		wpa_s->links[i].ies = NULL;
+	}
 }
 
 
@@ -3112,18 +3126,25 @@ static void ibss_mesh_select_40mhz(struct wpa_supplicant *wpa_s,
 				   const struct wpa_ssid *ssid,
 				   struct hostapd_hw_modes *mode,
 				   struct hostapd_freq_params *freq,
-				   int obss_scan) {
+				   int obss_scan, bool is_6ghz)
+{
 	int chan_idx;
 	struct hostapd_channel_data *pri_chan = NULL, *sec_chan = NULL;
 	int i, res;
 	unsigned int j;
-	static const int ht40plus[] = {
+	static const int ht40plus_5ghz[] = {
 		36, 44, 52, 60, 100, 108, 116, 124, 132, 140,
 		149, 157, 165, 173, 184, 192
 	};
+	static const int ht40plus_6ghz[] = {
+		1, 9, 17, 25, 33, 41, 49, 57, 65, 73,
+		81, 89, 97, 105, 113, 121, 129, 137, 145, 153,
+		161, 169, 177, 185, 193, 201, 209, 217, 225
+	};
+
 	int ht40 = -1;
 
-	if (!freq->ht_enabled)
+	if (!freq->ht_enabled && !is_6ghz)
 		return;
 
 	for (chan_idx = 0; chan_idx < mode->num_channels; chan_idx++) {
@@ -3145,10 +3166,19 @@ static void ibss_mesh_select_40mhz(struct wpa_supplicant *wpa_s,
 #endif
 
 	/* Check/setup HT40+/HT40- */
-	for (j = 0; j < ARRAY_SIZE(ht40plus); j++) {
-		if (ht40plus[j] == freq->channel) {
-			ht40 = 1;
-			break;
+	if (is_6ghz) {
+		for (j = 0; j < ARRAY_SIZE(ht40plus_6ghz); j++) {
+			if (ht40plus_6ghz[j] == freq->channel) {
+				ht40 = 1;
+				break;
+			}
+		}
+	} else {
+		for (j = 0; j < ARRAY_SIZE(ht40plus_5ghz); j++) {
+			if (ht40plus_5ghz[j] == freq->channel) {
+				ht40 = 1;
+				break;
+			}
 		}
 	}
 
@@ -3166,12 +3196,14 @@ static void ibss_mesh_select_40mhz(struct wpa_supplicant *wpa_s,
 	if (sec_chan->flag & (HOSTAPD_CHAN_DISABLED | HOSTAPD_CHAN_NO_IR))
 		return;
 
-	if (ht40 == -1) {
-		if (!(pri_chan->flag & HOSTAPD_CHAN_HT40MINUS))
-			return;
-	} else {
-		if (!(pri_chan->flag & HOSTAPD_CHAN_HT40PLUS))
-			return;
+	if (freq->ht_enabled) {
+		if (ht40 == -1) {
+			if (!(pri_chan->flag & HOSTAPD_CHAN_HT40MINUS))
+				return;
+		} else {
+			if (!(pri_chan->flag & HOSTAPD_CHAN_HT40PLUS))
+				return;
+		}
 	}
 	freq->sec_channel_offset = ht40;
 
@@ -3247,7 +3279,8 @@ static bool ibss_mesh_select_80_160mhz(struct wpa_supplicant *wpa_s,
 		6515, 6595, 6675, 6755, 6835, 6915, 6995
 	};
 	static const int bw160[] = {
-		5955, 6115, 6275, 6435, 6595, 6755, 6915
+		5180, 5500, 5745, 5955, 6115, 6275, 6435,
+		6595, 6755, 6915
 	};
 	static const int bw320[]= {
 		5955, 6255, 6115, 6415, 6275, 6575, 6435,
@@ -3258,6 +3291,8 @@ static bool ibss_mesh_select_80_160mhz(struct wpa_supplicant *wpa_s,
 	int i;
 	unsigned int j, k;
 	int chwidth, seg0, seg1;
+	int offset_in_160 = 1;
+	int offset_in_320 = 0;
 	u32 vht_caps = 0;
 	u8 channel = freq->channel;
 
@@ -3297,18 +3332,50 @@ static bool ibss_mesh_select_80_160mhz(struct wpa_supplicant *wpa_s,
 	seg0 = channel + 6;
 	seg1 = 0;
 
+	for (k = 0; k < ARRAY_SIZE(bw160); k++) {
+		if (bw80[j] >= bw160[k] &&
+		    bw80[j] < bw160[k] + 160) {
+			if (bw80[j] == bw160[k])
+				offset_in_160 = 1;
+			else
+				offset_in_160 = -1;
+			break;
+		}
+	}
+
+	for (k = 0; k < ARRAY_SIZE(bw320); k++) {
+		if (bw80[j] >= bw320[k] &&
+		    bw80[j] < bw320[k] + 320) {
+			if (bw80[j] == bw320[k])
+				offset_in_320 = 0;
+			else if (bw80[j] == bw320[k] + 80)
+				offset_in_320 = 1;
+			else if (bw80[j] == bw320[k] + 160)
+				offset_in_320 = 2;
+			else
+				offset_in_320 = 3;
+			break;
+		}
+	}
+
 	/* In 160 MHz, the initial four 20 MHz channels were validated
 	 * above. If 160 MHz is supported, check the remaining four 20 MHz
-	 * channels for the total of 160 MHz bandwidth for 6 GHz.
+	 * channels for the total of 160 MHz bandwidth.
 	 */
 	if ((mode->he_capab[ieee80211_mode].phy_cap[
 		     HE_PHYCAP_CHANNEL_WIDTH_SET_IDX] &
-	     HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G) && is_6ghz &&
-	    ibss_mesh_is_80mhz_avail(channel + 16, mode)) {
+	     HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G) &&
+	    (ssid->max_oper_chwidth == CONF_OPER_CHWIDTH_160MHZ ||
+	     ssid->max_oper_chwidth == CONF_OPER_CHWIDTH_320MHZ) &&
+	    ibss_mesh_is_80mhz_avail(channel + 16 * offset_in_160, mode)) {
 		for (j = 0; j < ARRAY_SIZE(bw160); j++) {
-			if (freq->freq == bw160[j]) {
+			u8 start_chan;
+
+			if (freq->freq >= bw160[j] &&
+			    freq->freq < bw160[j] + 160) {
 				chwidth = CONF_OPER_CHWIDTH_160MHZ;
-				seg0 = channel + 14;
+				ieee80211_freq_to_chan(bw160[j], &start_chan);
+				seg0 = start_chan + 14;
 				break;
 			}
 		}
@@ -3321,9 +3388,13 @@ static bool ibss_mesh_select_80_160mhz(struct wpa_supplicant *wpa_s,
 	if ((mode->eht_capab[ieee80211_mode].phy_cap[
 		     EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &
 	     EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK) && is_6ghz &&
-	    ibss_mesh_is_80mhz_avail(channel + 16, mode) &&
-	    ibss_mesh_is_80mhz_avail(channel + 32, mode) &&
-	    ibss_mesh_is_80mhz_avail(channel + 48, mode)) {
+	    ssid->max_oper_chwidth == CONF_OPER_CHWIDTH_320MHZ &&
+	    ibss_mesh_is_80mhz_avail(channel + 16 -
+				     64 * ((offset_in_320 + 1) / 4), mode) &&
+	    ibss_mesh_is_80mhz_avail(channel + 32 -
+				     64 * ((offset_in_320 + 2) / 4), mode) &&
+	    ibss_mesh_is_80mhz_avail(channel + 48 -
+				     64 * ((offset_in_320 + 3) / 4), mode)) {
 		for (j = 0; j < ARRAY_SIZE(bw320); j += 2) {
 			if (freq->freq >= bw320[j] &&
 			    freq->freq <= bw320[j + 1]) {
@@ -3450,9 +3521,10 @@ void ibss_mesh_setup_freq(struct wpa_supplicant *wpa_s,
 		freq->he_enabled = ibss_mesh_can_use_he(wpa_s, ssid, mode,
 							ieee80211_mode);
 	freq->channel = channel;
-	/* Setup higher BW only for 5 GHz */
+	/* Setup higher BW only for 5 and 6 GHz */
 	if (mode->mode == HOSTAPD_MODE_IEEE80211A) {
-		ibss_mesh_select_40mhz(wpa_s, ssid, mode, freq, obss_scan);
+		ibss_mesh_select_40mhz(wpa_s, ssid, mode, freq, obss_scan,
+				       is_6ghz);
 		if (!ibss_mesh_select_80_160mhz(wpa_s, ssid, mode, freq,
 						ieee80211_mode, is_6ghz))
 			freq->he_enabled = freq->vht_enabled = false;
@@ -4598,6 +4670,9 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 		params.pbss = (ssid->pbss != 2) ? ssid->pbss : 0;
 	}
 
+	params.bssid_filter = wpa_s->bssid_filter;
+	params.bssid_filter_count = wpa_s->bssid_filter_count;
+
 	if (ssid->mode == WPAS_MODE_IBSS && ssid->bssid_set &&
 	    wpa_s->conf->ap_scan == 2) {
 		params.bssid = ssid->bssid;
@@ -4908,6 +4983,15 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 		}
 		wpa_supplicant_req_auth_timeout(wpa_s, timeout, 0);
 	}
+
+#ifdef CONFIG_P2P
+	if (ssid->pmk_valid && wpa_s->p2p_pmksa_entry &&
+	    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME)) {
+		wpa_sm_pmksa_cache_add_entry(wpa_s->wpa,
+					     wpa_s->p2p_pmksa_entry);
+		wpa_s->p2p_pmksa_entry = NULL;
+	}
+#endif /* CONFIG_P2P */
 
 #ifdef CONFIG_WEP
 	if (wep_keys_set &&

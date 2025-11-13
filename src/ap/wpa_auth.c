@@ -125,17 +125,24 @@ static void wpa_gkeydone_sta(struct wpa_state_machine *sm)
 
 #ifdef CONFIG_IEEE80211BE
 
-void wpa_release_link_auth_ref(struct wpa_state_machine *sm,
-			       int release_link_id)
+void wpa_release_link_auth_ref(struct wpa_state_machine *sm, u8 link_id,
+			       bool rejected)
 {
-	int link_id;
+	struct wpa_authenticator *wpa_auth;
+	struct mld_link *link;
 
-	if (!sm || release_link_id >= MAX_NUM_MLD_LINKS)
+	if (!sm || link_id >= MAX_NUM_MLD_LINKS)
 		return;
 
-	for_each_sm_auth(sm, link_id) {
-		if (link_id == release_link_id)
-			sm->mld_links[link_id].wpa_auth = NULL;
+	link = &sm->mld_links[link_id];
+	if (link->valid) {
+		link->valid = false;
+		link->rejected = rejected;
+		wpa_auth = link->wpa_auth;
+		if (wpa_auth) {
+			link->wpa_auth = NULL;
+			wpa_group_put(wpa_auth, wpa_auth->group);
+		}
 	}
 }
 
@@ -634,7 +641,7 @@ void wpa_auth_set_ptk_rekey_timer(struct wpa_state_machine *sm)
 			   MACSTR " (%d seconds)",
 			   MAC2STR(wpa_auth_get_spa(sm)),
 			   sm->wpa_auth->conf.wpa_ptk_rekey);
-		eloop_cancel_timeout(wpa_rekey_ptk, sm->wpa_auth, sm);
+		eloop_cancel_timeout(wpa_rekey_ptk, ELOOP_ALL_CTX, sm);
 		eloop_register_timeout(sm->wpa_auth->conf.wpa_ptk_rekey, 0,
 				       wpa_rekey_ptk, sm->wpa_auth, sm);
 	}
@@ -1119,8 +1126,14 @@ static void wpa_free_sta_sm(struct wpa_state_machine *sm)
 	os_free(sm->rsnxe);
 	os_free(sm->rsn_selection);
 #ifdef CONFIG_IEEE80211BE
-	for_each_sm_auth(sm, link_id)
+	for_each_sm_auth(sm, link_id) {
+		struct wpa_authenticator *wpa_auth;
+
+		wpa_auth = sm->mld_links[link_id].wpa_auth;
 		sm->mld_links[link_id].wpa_auth = NULL;
+		sm->mld_links[link_id].valid = false;
+		wpa_group_put(wpa_auth, wpa_auth->group);
+	}
 #endif /* CONFIG_IEEE80211BE */
 	wpa_group_put(sm->wpa_auth, sm->group);
 #ifdef CONFIG_DPP2
@@ -1155,10 +1168,10 @@ void wpa_auth_sta_deinit(struct wpa_state_machine *sm)
 					       primary_auth, NULL);
 	}
 
-	eloop_cancel_timeout(wpa_send_eapol_timeout, wpa_auth, sm);
+	eloop_cancel_timeout(wpa_send_eapol_timeout, ELOOP_ALL_CTX, sm);
 	sm->pending_1_of_4_timeout = 0;
 	eloop_cancel_timeout(wpa_sm_call_step, sm, NULL);
-	eloop_cancel_timeout(wpa_rekey_ptk, wpa_auth, sm);
+	eloop_cancel_timeout(wpa_rekey_ptk, ELOOP_ALL_CTX, sm);
 #ifdef CONFIG_IEEE80211R_AP
 	wpa_ft_sta_deinit(sm);
 #endif /* CONFIG_IEEE80211R_AP */
@@ -1871,7 +1884,7 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
 	continue_fuzz:
 #endif /* TEST_FUZZ */
 		sm->MICVerified = true;
-		eloop_cancel_timeout(wpa_send_eapol_timeout, wpa_auth, sm);
+		eloop_cancel_timeout(wpa_send_eapol_timeout, ELOOP_ALL_CTX, sm);
 		sm->pending_1_of_4_timeout = 0;
 	}
 
@@ -2374,7 +2387,7 @@ void wpa_remove_ptk(struct wpa_state_machine *sm)
 		wpa_printf(MSG_DEBUG,
 			   "RSN: PTK Key ID 1 removal from the driver failed");
 	sm->pairwise_set = false;
-	eloop_cancel_timeout(wpa_rekey_ptk, sm->wpa_auth, sm);
+	eloop_cancel_timeout(wpa_rekey_ptk, ELOOP_ALL_CTX, sm);
 }
 
 
@@ -3676,6 +3689,12 @@ static int wpa_auth_validate_ml_kdes_m2(struct wpa_state_machine *sm,
 			return -1;
 		}
 
+		/* Skip rejected links although the non-AP MLD will send them in
+		 * M2 of the initial 4-way handshake. */
+		if (sm->mld_links[i].rejected) {
+			n_links++;
+			continue;
+		}
 		if (!sm->mld_links[i].valid || i == sm->mld_assoc_link_id) {
 			wpa_printf(MSG_DEBUG,
 				   "RSN: MLD: Invalid link ID=%u", i);
@@ -4078,7 +4097,7 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 	}
 
 	sm->pending_1_of_4_timeout = 0;
-	eloop_cancel_timeout(wpa_send_eapol_timeout, sm->wpa_auth, sm);
+	eloop_cancel_timeout(wpa_send_eapol_timeout, ELOOP_ALL_CTX, sm);
 
 	if (wpa_key_mgmt_wpa_psk(sm->wpa_key_mgmt) && sm->PMK != pmk) {
 		/* PSK may have changed from the previous choice, so update
@@ -7011,7 +7030,7 @@ void wpa_auth_eapol_key_tx_status(struct wpa_authenticator *wpa_auth,
 		wpa_printf(MSG_DEBUG,
 			   "WPA: Increase initial EAPOL-Key 1/4 timeout by %u ms because of acknowledged frame",
 			   timeout_ms);
-		eloop_cancel_timeout(wpa_send_eapol_timeout, wpa_auth, sm);
+		eloop_cancel_timeout(wpa_send_eapol_timeout, ELOOP_ALL_CTX, sm);
 		eloop_register_timeout(timeout_ms / 1000,
 				       (timeout_ms % 1000) * 1000,
 				       wpa_send_eapol_timeout, wpa_auth, sm);
@@ -7601,6 +7620,7 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
 		struct wpa_get_link_auth_ctx ctx;
 
 		sm_link->valid = link->valid;
+		sm_link->rejected = false;
 		if (!link->valid)
 			continue;
 

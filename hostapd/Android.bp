@@ -714,6 +714,7 @@ hostapd_cc_binary {
             static_libs: ["%s"],
         },
     },
+    vintf_fragment_modules: ["android.hardware.wifi.hostapd.xml"],
 }
 
 cc_library_static {

@@ -31,15 +31,11 @@ using namespace android;
 using ndk::SharedRefBase;
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-    struct wpa_params params;
-    os_memset(&params, 0, sizeof(params));
-    params.wpa_debug_level = MSG_INFO;
-
-    struct wpa_global *global = wpa_supplicant_init(&params);
-    if (global == NULL) {
-        return 1;
-    }
-
+    // The wpa_global pointer will usually be initialized by wpa_supplicant_init().
+    // However, wpa_supplicant_init cannot be called from the fuzzer, since it seems
+    // to initialize a separate thread. For now, we can pass a nullptr to indicate that
+    // core supplicant has not been initialized.
+    struct wpa_global *global = nullptr;
     std::shared_ptr<MainlineSupplicant> service = SharedRefBase::make<MainlineSupplicant>(global);
     fuzzService(service->asBinder().get(), FuzzedDataProvider(data, size));
     return 0;

@@ -1247,3 +1247,20 @@ void wpas_aidl_notify_p2p_bootstrap_response(
 		wpa_s, dev_addr, false, convert_p2p_status_code_to_p2p_prov_disc_status(status),
 		WPS_NOT_READY, 0, group_ifname, bootstrap_method);
 }
+
+void wpas_aidl_notify_auth_status_code(struct wpa_supplicant *wpa_s,
+	u16 auth_type, u16 auth_transaction, u16 status_code)
+{
+	if (!wpa_s)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG,
+		"Notifying auth type: %d transaction id: %d status code: %d to aidl control ",
+		auth_type, auth_transaction, status_code);
+
+	aidl_manager->notifyAuthStatusCode(wpa_s, auth_type, auth_transaction, status_code);
+}

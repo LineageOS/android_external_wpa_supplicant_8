@@ -188,12 +188,16 @@ void wpas_notify_mlo_info_change_reason(struct wpa_supplicant *wpa_s,
 }
 
 
-void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s)
+void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s, u16 auth_type,
+					u16 auth_transaction, u16 status_code)
 {
 	if (wpa_s->p2p_mgmt)
 		return;
 
 	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_AUTH_STATUS_CODE);
+
+	wpas_aidl_notify_auth_status_code(wpa_s, auth_type, auth_transaction,
+					  status_code);
 }
 
 

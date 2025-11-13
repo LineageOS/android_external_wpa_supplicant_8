@@ -825,6 +825,23 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 			wpa_s->rsnxe_override_eapol = NULL;
 		else
 			wpa_s->rsnxe_override_eapol = wpabuf_parse_bin(value);
+	} else if (os_strcasecmp(cmd, "link_ies") == 0) {
+		int link_id = atoi(value);
+		char *pos;
+
+		if (link_id < 0 || link_id >= MAX_NUM_MLD_LINKS)
+			return -1;
+
+		pos = os_strchr(value, ':');
+		if (!pos)
+			return -1;
+		pos++;
+
+		wpabuf_free(wpa_s->link_ies[link_id]);
+		if (os_strcmp(value, "NULL") == 0)
+			wpa_s->link_ies[link_id] = NULL;
+		else
+			wpa_s->link_ies[link_id] = wpabuf_parse_bin(pos);
 	} else if (os_strcasecmp(cmd, "reject_btm_req_reason") == 0) {
 		wpa_s->reject_btm_req_reason = atoi(value);
 	} else if (os_strcasecmp(cmd, "get_pref_freq_list_override") == 0) {
@@ -7348,7 +7365,18 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
 
 #ifdef CONFIG_ACS
 	if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_ACS_OFFLOAD) &&
-	    (acs || freq == 2 || freq == 5)) {
+	    (freq == 2 || freq == 5)) {
+		unsigned int res, size = P2P_MAX_PREF_CHANNELS;
+		struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
+
+		acs = 1;
+		res = wpa_drv_get_pref_freq_list(wpa_s, WPA_IF_P2P_GO,
+						 &size, pref_freq_list);
+		if (!res && size > 0)
+			acs = 0;
+	}
+
+	if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_ACS_OFFLOAD) && acs) {
 		if (freq == 2 && wpa_s->best_24_freq <= 0) {
 			wpa_s->p2p_go_acs_band = HOSTAPD_MODE_IEEE80211G;
 			wpa_s->p2p_go_do_acs = 1;
@@ -9042,6 +9070,14 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 	wpabuf_free(wpa_s->rsnxe_override_eapol);
 	wpa_s->rsnxe_override_eapol = NULL;
 	wpas_clear_driver_signal_override(wpa_s);
+	{
+		int i;
+
+		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+			wpabuf_free(wpa_s->link_ies[i]);
+			wpa_s->link_ies[i] = NULL;
+		}
+	}
 #ifndef CONFIG_NO_ROBUST_AV
 	wpa_s->disable_scs_support = 0;
 	wpa_s->disable_mscs_support = 0;
@@ -10747,7 +10783,7 @@ static void wpas_ctrl_neighbor_rep_cb(void *ctx, struct wpabuf *neighbor_rep)
 	const u8 *data;
 
 	/*
-	 * Neighbor Report element (IEEE P802.11-REVmc/D5.0)
+	 * Neighbor Report element (IEEE Std 802.11-2024, 9.4.2.35)
 	 * BSSID[6]
 	 * BSSID Information[4]
 	 * Operating Class[1]

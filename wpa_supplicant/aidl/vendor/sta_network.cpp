@@ -2679,10 +2679,6 @@ ndk::ScopedAStatus StaNetwork::setMinimumTlsVersionEapPhase1ParamInternal(TlsVer
 	if (tlsVersion < TlsVersion::TLS_V1_0 || tlsVersion > TlsVersion::TLS_V1_3) {
 		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
 	}
-	if (tlsVersion == TlsVersion::TLS_V1_0) {
-		// no restriction
-		return ndk::ScopedAStatus::ok();
-	}
 
 	if (tlsVersion < TlsVersion::TLS_V1_3 && (tlsFlags & TLS_CONN_SUITEB)) {
 		// TLS configuration already set up for WPA3-Enterprise 192-bit mode
@@ -2704,6 +2700,9 @@ ndk::ScopedAStatus StaNetwork::setMinimumTlsVersionEapPhase1ParamInternal(TlsVer
 			FALLTHROUGH_INTENDED;
 		case TlsVersion::TLS_V1_1:
 			tlsFlags |= TLS_CONN_DISABLE_TLSv1_0;
+			break;
+		case TlsVersion::TLS_V1_0:
+			// no restriction
 			break;
 		default:
 			return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);

@@ -621,18 +621,24 @@ ieee802_11_build_ap_params_mbssid(struct hostapd_data *hapd,
 				 elem_count, elem_offset, NULL, 0, rnr_elem,
 				 &rnr_elem_count, rnr_elem_offset, rnr_len);
 
-	params->mbssid_tx_iface = tx_bss->conf->iface;
-	params->mbssid_index = hostapd_mbssid_get_bss_index(hapd);
-	params->mbssid_elem = elem;
-	params->mbssid_elem_len = end - elem;
-	params->mbssid_elem_count = elem_count;
-	params->mbssid_elem_offset = elem_offset;
-	params->rnr_elem = rnr_elem;
-	params->rnr_elem_len = rnr_len;
-	params->rnr_elem_count = rnr_elem_count;
-	params->rnr_elem_offset = rnr_elem_offset;
+	params->mbssid.mbssid_tx_iface = tx_bss->conf->iface;
+	params->mbssid.mbssid_index = hostapd_mbssid_get_bss_index(hapd);
+	params->mbssid.mbssid_elem = elem;
+	params->mbssid.mbssid_elem_len = end - elem;
+	params->mbssid.mbssid_elem_count = elem_count;
+	params->mbssid.mbssid_elem_offset = elem_offset;
+	params->mbssid.rnr_elem = rnr_elem;
+	params->mbssid.rnr_elem_len = rnr_len;
+	params->mbssid.rnr_elem_count = rnr_elem_count;
+	params->mbssid.rnr_elem_offset = rnr_elem_offset;
 	if (iface->conf->mbssid == ENHANCED_MBSSID_ENABLED)
-		params->ema = true;
+		params->mbssid.ema = true;
+
+	params->mbssid.mbssid_tx_iface_linkid = -1;
+#ifdef CONFIG_IEEE80211BE
+	if (tx_bss->conf->mld_ap)
+		params->mbssid.mbssid_tx_iface_linkid = tx_bss->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
 
 	return 0;
 
@@ -732,7 +738,12 @@ static void hostapd_free_probe_resp_params(struct probe_resp_params *params)
 static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
 					   struct probe_resp_params *params)
 {
+#ifdef CONFIG_IEEE80211BE
+	struct hostapd_data *hapd_probed = hapd;
+#endif /* CONFIG_IEEE80211BE */
 	size_t buflen = 0;
+
+	hapd = hostapd_mbssid_get_tx_bss(hapd);
 
 #ifdef CONFIG_WPS
 	if (hapd->wps_probe_resp_ie)
@@ -777,6 +788,10 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
 			 * switch */
 			buflen += 6;
 		}
+
+		if (hapd_probed != hapd && hapd_probed->conf->mld_ap)
+			buflen += hostapd_eid_eht_basic_ml_len(hapd_probed,
+							       NULL, true);
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -799,9 +814,13 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
 					  struct probe_resp_params *params,
 					  u8 *pos, size_t len)
 {
+#ifdef CONFIG_IEEE80211BE
+	struct hostapd_data *hapd_probed = hapd;
+#endif /* CONFIG_IEEE80211BE */
 	u8 *csa_pos;
 	u8 *epos;
 
+	hapd = hostapd_mbssid_get_tx_bss(hapd);
 	epos = pos + len;
 
 	*pos++ = WLAN_EID_SSID;
@@ -935,6 +954,10 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
 		pos = hostapd_eid_eht_capab(hapd, pos, IEEE80211_MODE_AP);
 		pos = hostapd_eid_eht_operation(hapd, pos);
 	}
+
+	if (hapd_probed != hapd && hapd_probed->conf->mld_ap)
+		pos = hostapd_eid_eht_basic_ml_common(hapd_probed, pos, NULL,
+						      true);
 #endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_IEEE80211AC
@@ -1003,6 +1026,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
 static void hostapd_gen_probe_resp(struct hostapd_data *hapd,
 				   struct probe_resp_params *params)
 {
+	struct hostapd_data *hapd_probed = hapd;
 	u8 *pos;
 	size_t buflen;
 
@@ -1010,7 +1034,7 @@ static void hostapd_gen_probe_resp(struct hostapd_data *hapd,
 
 #define MAX_PROBERESP_LEN 768
 	buflen = MAX_PROBERESP_LEN;
-	buflen += hostapd_probe_resp_elems_len(hapd, params);
+	buflen += hostapd_probe_resp_elems_len(hapd_probed, params);
 	params->resp = os_zalloc(buflen);
 	if (!params->resp) {
 		params->resp_len = 0;
@@ -1040,7 +1064,7 @@ static void hostapd_gen_probe_resp(struct hostapd_data *hapd,
 	params->resp->u.probe_resp.capab_info =
 		host_to_le16(hostapd_own_capab_info(hapd));
 
-	pos = hostapd_probe_resp_fill_elems(hapd, params,
+	pos = hostapd_probe_resp_fill_elems(hapd_probed, params,
 					    params->resp->u.probe_resp.variable,
 					    buflen);
 
@@ -2323,7 +2347,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 		}
 		complete = hapd->iconf->mbssid == MBSSID_ENABLED ||
 			(hapd->iconf->mbssid == ENHANCED_MBSSID_ENABLED &&
-			 params->mbssid_elem_count == 1);
+			 params->mbssid.mbssid_elem_count == 1);
 	}
 
 	tailpos = hostapd_eid_ext_capab(hapd, tailpos, complete);
@@ -2371,7 +2395,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 
 	tailpos = hostapd_get_rsnxe(hapd, tailpos, tailend - tailpos);
 	tailpos = hostapd_eid_mbssid_config(hapd, tailpos,
-					    params->mbssid_elem_count);
+					    params->mbssid.mbssid_elem_count);
 
 #ifdef CONFIG_IEEE80211AX
 	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax) {
@@ -2617,14 +2641,14 @@ void ieee802_11_free_ap_params(struct wpa_driver_ap_params *params)
 	params->head = NULL;
 	os_free(params->proberesp);
 	params->proberesp = NULL;
-	os_free(params->mbssid_elem);
-	params->mbssid_elem = NULL;
-	os_free(params->mbssid_elem_offset);
-	params->mbssid_elem_offset = NULL;
-	os_free(params->rnr_elem);
-	params->rnr_elem = NULL;
-	os_free(params->rnr_elem_offset);
-	params->rnr_elem_offset = NULL;
+	os_free(params->mbssid.mbssid_elem);
+	params->mbssid.mbssid_elem = NULL;
+	os_free(params->mbssid.mbssid_elem_offset);
+	params->mbssid.mbssid_elem_offset = NULL;
+	os_free(params->mbssid.rnr_elem);
+	params->mbssid.rnr_elem = NULL;
+	os_free(params->mbssid.rnr_elem_offset);
+	params->mbssid.rnr_elem_offset = NULL;
 #ifdef CONFIG_FILS
 	os_free(params->fd_frame_tmpl);
 	params->fd_frame_tmpl = NULL;
@@ -3110,7 +3134,7 @@ static void hostapd_gen_per_sta_profiles(struct hostapd_data *hapd)
 	struct hostapd_data *link_bss;
 	u8 link_id, *sta_profile;
 
-	if (!hapd->conf->mld_ap)
+	if (!hapd->conf->mld_ap || !hapd->started)
 		return;
 
 	wpa_printf(MSG_DEBUG, "MLD: Generating per STA profiles for MLD %s",

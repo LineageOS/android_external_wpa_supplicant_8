@@ -757,6 +757,7 @@ struct wpa_supplicant {
 		unsigned int freq;
 		struct wpa_bss *bss;
 		bool disabled;
+		struct wpabuf *ies;
 	} links[MAX_NUM_MLD_LINKS];
 	u8 *last_con_fail_realm;
 	size_t last_con_fail_realm_len;
@@ -1114,6 +1115,7 @@ struct wpa_supplicant {
 
 #ifdef CONFIG_P2P
 	struct p2p_go_neg_results *go_params;
+	struct rsn_pmksa_cache_entry *p2p_pmksa_entry;
 	int create_p2p_iface;
 	u8 pending_interface_addr[ETH_ALEN];
 	char pending_interface_name[100];
@@ -1397,6 +1399,7 @@ struct wpa_supplicant {
 	unsigned int disable_eapol_g2_tx;
 	unsigned int eapol_2_key_info_set_mask;
 	int test_assoc_comeback_type;
+	struct wpabuf *link_ies[MAX_NUM_MLD_LINKS];
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	struct wmm_ac_assoc_data *wmm_ac_assoc_info;

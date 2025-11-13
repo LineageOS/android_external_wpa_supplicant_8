@@ -1192,7 +1192,7 @@ std::pair<std::string, ndk::ScopedAStatus> P2pIface::connectInternal(
 		}
 		p2p2 = true;
 		pairing_password = password.length() > 0 ? password.data() : nullptr;
-		if (authorize) {
+		if (authorize && !group_ifname.empty()) {
 			auto_join = 1;
 		}
 	}
@@ -1205,7 +1205,7 @@ std::pair<std::string, ndk::ScopedAStatus> P2pIface::connectInternal(
 		pre_selected_pin.length() > 0 ? pre_selected_pin.data() : nullptr;
 	int new_pin = wpas_p2p_connect(
 		wpa_s, peer_address.data(), pin, wps_method, persistent, auto_join,
-		join_existing_group, authorize, go_intent_signed, 0, 0, -1, false, ht40,
+		join_existing_group, authorize, go_intent_signed, frequency, 0, -1, false, ht40,
 		vht, CONF_OPER_CHWIDTH_USE_HT, he, edmg, nullptr, 0, is6GhzAllowed(wpa_s),
 		p2p2, bootstrap, pairing_password, skip_prov);
 	if (new_pin < 0) {
@@ -2166,9 +2166,9 @@ P2pIface::startUsdBasedServiceDiscoveryInternal(
 
 	os_memset(&params, 0, sizeof(params));
 
-	if (serviceDiscoveryConfig.serviceSpecificInfo.size() > 0) {
-		auto ssiBuffer = misc_utils::convertVectorToWpaBuf(
+	auto ssiBuffer = misc_utils::convertVectorToWpaBuf(
 			serviceDiscoveryConfig.serviceSpecificInfo);
+	if (serviceDiscoveryConfig.serviceSpecificInfo.size() > 0) {
 		if (ssiBuffer && ssiBuffer.get() != nullptr) {
 			service_specific_info = ssiBuffer.get();
 		}
@@ -2177,23 +2177,20 @@ P2pIface::startUsdBasedServiceDiscoveryInternal(
 	params.active = true;
 	params.ttl = serviceDiscoveryConfig.timeoutInSeconds;
 	params.query_period = DEFAULT_QUERY_PERIOD_MS;
+	params.freq = NAN_USD_DEFAULT_FREQ;
 	if (serviceDiscoveryConfig.bandMask != 0) {
 		// TODO convert band to channel instead of scanning all channel frequencies.
 		params.freq_list = wpas_nan_usd_all_freqs(wpa_s);
-	} else {
-		if (serviceDiscoveryConfig.frequencyListMhz.size() != 0) {
-			params.freq_list = serviceDiscoveryConfig.frequencyListMhz.data();
-		} else {
-			params.freq = NAN_USD_DEFAULT_FREQ;
-		}
+	} else if (serviceDiscoveryConfig.frequencyListMhz.size() != 0) {
+		params.freq = serviceDiscoveryConfig.frequencyListMhz.front();
+		if (serviceDiscoveryConfig.frequencyListMhz.size() > 1)
+			params.freq_list = serviceDiscoveryConfig.frequencyListMhz.data() + 1;
 	}
 	sessionId = wpas_nan_usd_subscribe(wpa_s, serviceDiscoveryConfig.serviceName.c_str(),
 					      (enum nan_service_protocol_type)
 						  serviceDiscoveryConfig.serviceProtocolType,
 						  service_specific_info, &params, true);
-	if (service_specific_info != NULL) {
-		freeWpaBuf(service_specific_info);
-	}
+
 	if (sessionId > 0) {
 		return {sessionId, ndk::ScopedAStatus::ok()};
 	}
@@ -2225,9 +2222,9 @@ P2pIface::startUsdBasedServiceAdvertisementInternal(
 	struct wpabuf *service_specific_info = NULL;
 	os_memset(&params, 0, sizeof(params));
 
-	if (serviceAdvertisementConfig.serviceSpecificInfo.size() > 0) {
-		auto ssiBuffer = misc_utils::convertVectorToWpaBuf(
+	auto ssiBuffer = misc_utils::convertVectorToWpaBuf(
 			serviceAdvertisementConfig.serviceSpecificInfo);
+	if (serviceAdvertisementConfig.serviceSpecificInfo.size() > 0) {
 		if (ssiBuffer && ssiBuffer.get() != nullptr) {
 			service_specific_info = ssiBuffer.get();
 		}
@@ -2240,9 +2237,7 @@ P2pIface::startUsdBasedServiceAdvertisementInternal(
 					      (enum nan_service_protocol_type)
 						  serviceAdvertisementConfig.serviceProtocolType,
 						  service_specific_info, &params, true);
-	if (service_specific_info != NULL) {
-		freeWpaBuf(service_specific_info);
-	}
+
 	if (sessionId > 0) {
 		return {sessionId, ndk::ScopedAStatus::ok()};
 	}

@@ -8,6 +8,11 @@
 # Include this makefile to generate your hardware specific wpa_supplicant.conf
 # Requires: WIFI_DRIVER_SOCKET_IFACE
 
+# This makefile should not be included since it has been converted to soong.
+ifndef FORCE_USE_ANDROIDMK_FOR_WPA_CONF
+$(error wpa_supplicant.conf already converted to soong, do not include wpa_supplicant_conf.mk in Android.mk. Instead replace it with Android.bp, for example in hardware/broadcom/wlan/bcmdhd/config/Android.bp or add 'FORCE_USE_ANDROIDMK_FOR_WPA_CONF := true' to your product config)
+endif
+
 LOCAL_PATH := $(call my-dir)
 
 ########################

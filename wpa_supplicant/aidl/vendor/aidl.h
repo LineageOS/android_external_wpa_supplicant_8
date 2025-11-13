@@ -178,6 +178,8 @@ extern "C"
 		int publish_id, enum nan_de_reason reason);
 	void wpas_aidl_notify_usd_subscribe_terminated(struct wpa_supplicant *wpa_s,
 		int subscribe_id, enum nan_de_reason reason);
+	void wpas_aidl_notify_auth_status_code(struct wpa_supplicant *wpa_s,
+		u16 auth_type, u16 auth_transaction, u16 status_code);
 #else   // CONFIG_CTRL_IFACE_AIDL
 static inline int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 {
@@ -401,6 +403,8 @@ static void wpas_aidl_notify_usd_publish_terminated(struct wpa_supplicant *wpa_s
 		int publish_id, enum nan_de_reason reason) {}
 static void wpas_aidl_notify_usd_subscribe_terminated(struct wpa_supplicant *wpa_s,
 		int subscribe_id, enum nan_de_reason reason) {}
+static void wpas_aidl_notify_auth_status_code(struct wpa_supplicant *wpa_s,
+		u16 auth_type, u16 auth_transaction, u16 status_code) {}
 #endif  // CONFIG_CTRL_IFACE_AIDL
 
 #ifdef _cplusplus

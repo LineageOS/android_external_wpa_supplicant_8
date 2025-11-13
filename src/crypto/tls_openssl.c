@@ -1567,6 +1567,7 @@ err:
 	if (!conn->private_key)
 		return -1;
 #endif /* !ANDROID */
+
 	return 0;
 #endif /* OPENSSL_NO_ENGINE */
 }

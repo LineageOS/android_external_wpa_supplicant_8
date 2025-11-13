@@ -300,6 +300,8 @@ u8 country_to_global_op_class(const char *country, u8 op_class);
 
 const struct oper_class_map * get_oper_class(const char *country, u8 op_class);
 int oper_class_bw_to_int(const struct oper_class_map *map);
+bool is_24ghz_freq(int freq);
+bool is_5ghz_freq(int freq);
 int center_idx_to_bw_6ghz(u8 idx);
 bool is_6ghz_freq(int freq);
 bool is_6ghz_op_class(u8 op_class);
@@ -378,6 +380,9 @@ int ieee802_edmg_is_allowed(struct ieee80211_edmg_config allowed,
 			    struct ieee80211_edmg_config requested);
 
 struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem);
+size_t ieee802_11_defrag_mle_subelem(struct wpabuf *mlbuf,
+				     const u8 *parent_subelem,
+				     size_t *defrag_len);
 const u8 * get_ml_ie(const u8 *ies, size_t len, u8 type);
 const u8 * get_basic_mle_mld_addr(const u8 *buf, size_t len);
 
