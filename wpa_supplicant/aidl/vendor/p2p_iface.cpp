@@ -2135,10 +2135,6 @@ ndk::ScopedAStatus P2pIface::createGroupOwnerInternal(
 
 std::pair<int64_t, ndk::ScopedAStatus> P2pIface::getFeatureSetInternal()
 {
-	// By default, core supplicant enable WFD R2 and PCC mode for all drivers.
-	// TODO Enable this code once core supplicant implement the configuration flag
-	// to enable/disable the feature for all driver implementations.
-#if 0
 	int64_t featureSet = 0;
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 
@@ -2149,9 +2145,6 @@ std::pair<int64_t, ndk::ScopedAStatus> P2pIface::getFeatureSetInternal()
 		featureSet |= ISupplicantP2pIface::P2P_FEATURE_PCC_MODE_WPA3_COMPATIBILITY;
 	}
 	return {featureSet, ndk::ScopedAStatus::ok()};
-#else
-	return {0, ndk::ScopedAStatus::ok()};
-#endif
 }
 
 std::pair<uint32_t, ndk::ScopedAStatus>
