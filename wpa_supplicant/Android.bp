@@ -739,7 +739,7 @@ cc_defaults {
         "qcwcn": ["-DCONFIG_DRIVER_NL80211_QCA"],
         default: ["-DCONFIG_DRIVER_NL80211_QCA"],
     }) + select(soong_config_variable("wpa_supplicant_8", "board_wlan_bcmdhd_sae"), {
-        "true": ["-DCONFIG_BRCM_SAE"],
+        true: ["-DCONFIG_BRCM_SAE"],
         default: [],
     }),
 }
