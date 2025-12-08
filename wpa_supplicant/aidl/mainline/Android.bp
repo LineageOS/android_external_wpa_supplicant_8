@@ -12,47 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_library_headers {
-    name: "mainline_supplicant_aidl_headers",
-    export_include_dirs: ["."],
-    apex_available: [
-        "//apex_available:platform",
-        "com.android.wifi",
-    ],
-    min_sdk_version: "30",
-}
-
-cc_library_static {
-    name: "mainline_supplicant_aidl_bp",
-    srcs: ["*.cpp"],
-    shared_libs: [
-        "android.system.wifi.mainline_supplicant-ndk",
-        "libbase",
-        "libbinder_ndk",
-    ],
-    cppflags: [
-        "-DMAINLINE_SUPPLICANT",
-        "-Wall",
-        "-Werror",
-        "-Wno-unused-parameter",
-        "-Wno-unused-private-field",
-        "-Wno-unused-variable",
-    ],
-    header_libs: [
-        // Shared headers with vendor supplicant
-        "libwpa_shared_aidl_headers_mainline",
-        // Mainline supplicant headers
-        "mainline_supplicant_aidl_headers",
-        // Core supplicant headers
-        "wpa_supplicant_headers_mainline",
-    ],
-    apex_available: [
-        "//apex_available:platform",
-        "com.android.wifi",
-    ],
-    min_sdk_version: "30",
-}
-
 prebuilt_etc {
     name: "mainline_supplicant_rc",
     src: "config/mainline_supplicant.rc",

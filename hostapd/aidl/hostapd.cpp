@@ -32,6 +32,7 @@
 extern "C"
 {
 #include "common/wpa_ctrl.h"
+#include "common/ieee802_11_common.h"
 #include "drivers/linux_ioctl.h"
 }
 
@@ -164,6 +165,23 @@ inline int32_t areAidlServiceAndClientAtLeastVersion(int32_t expected_version)
 	return isAidlServiceVersionAtLeast(expected_version)
 		&& isAidlClientVersionAtLeast(expected_version);
 }
+// These constants are copied from
+// packages/modules/Wifi/framework/java/android/net/wifi/ScanResult.java
+#define UNSPECIFIED 0
+#define BAND_24_GHZ_FIRST_CH_NUM 1
+#define BAND_24_GHZ_LAST_CH_NUM 14
+#define BAND_24_GHZ_START_FREQ_MHZ 2412
+#define BAND_24_GHZ_END_FREQ_MHZ 2484
+#define BAND_5_GHZ_FIRST_CH_NUM 32
+#define BAND_5_GHZ_LAST_CH_NUM 177
+#define BAND_5_GHZ_START_FREQ_MHZ 5160
+#define BAND_6_GHZ_FIRST_CH_NUM 1
+#define BAND_6_GHZ_LAST_CH_NUM 233
+#define BAND_6_GHZ_START_FREQ_MHZ 5955
+#define BAND_6_GHZ_OP_CLASS_136_CH_2_FREQ_MHZ 5935
+#define BAND_60_GHZ_FIRST_CH_NUM 1
+#define BAND_60_GHZ_LAST_CH_NUM 6
+#define BAND_60_GHZ_START_FREQ_MHZ 58320
 
 #define MAX_PORTS 1024
 bool GetInterfacesInBridge(std::string br_name,
@@ -217,8 +235,8 @@ std::string resolveVendorConfPath(const std::string& conf_path)
 }
 
 void logHostapdConfigError(int error, const std::string& file_path) {
-	wpa_printf(MSG_ERROR, "Cannot read/write hostapd config %s, error: %s", file_path.c_str(),
-			strerror(error));
+	wpa_printf(MSG_ERROR, "Cannot read/write hostapd config %s, error: %d", file_path.c_str(),
+			error);
 	struct stat st;
 	int result = stat(file_path.c_str(), &st);
 	if (result == 0) {
@@ -252,160 +270,98 @@ std::string WriteHostapdConfig(
 	return "";
 }
 
-/*
- * Get the op_class for a channel/band
- * The logic here is based on Table E-4 in the 802.11 Specification
+/**
+ * Utility function to convert Wi-Fi channel number to frequency in MHz.
+ *
+ * Reference the Wi-Fi channel numbering and the channelization in IEEE 802.11-2016
+ * specifications, section 17.3.8.4.2, 17.3.8.4.3 and Table 15-6.
+ *
  */
-int getOpClassForChannel(int channel, int band, bool support11n, bool support11ac) {
-	// 2GHz Band
-	if ((band & band2Ghz) != 0) {
-		if (channel == 14) {
-			return 82;
-		}
-		if (channel >= 1 && channel <= 13) {
-			if (!support11n) {
-				//20MHz channel
-				return 81;
-			}
-			if (channel <= 9) {
-				// HT40 with secondary channel above primary
-				return 83;
-			}
-			// HT40 with secondary channel below primary
-			return 84;
-		}
-		// Error
-		return 0;
-	}
-
-	// 5GHz Band
-	if ((band & band5Ghz) != 0) {
-		if (support11ac) {
-			switch (channel) {
-				case 42:
-				case 58:
-				case 106:
-				case 122:
-				case 138:
-				case 155:
-					// 80MHz channel
-					return 128;
-				case 50:
-				case 114:
-					// 160MHz channel
-					return 129;
-			}
-		}
-
-		if (!support11n) {
-			if (channel >= 36 && channel <= 48) {
-				return 115;
-			}
-			if (channel >= 52 && channel <= 64) {
-				return 118;
-			}
-			if (channel >= 100 && channel <= 144) {
-				return 121;
-			}
-			if (channel >= 149 && channel <= 161) {
-				return 124;
-			}
-			if (channel >= 165 && channel <= 169) {
-				return 125;
-			}
+uint32_t convertChannelToFrequencyMhz(int32_t channel, int32_t band) {
+	if (band == band2Ghz) {
+		// Special case
+		if (channel == BAND_24_GHZ_LAST_CH_NUM) {
+			return BAND_24_GHZ_END_FREQ_MHZ;
+		} else if (channel >= BAND_24_GHZ_FIRST_CH_NUM
+			   && channel < BAND_24_GHZ_LAST_CH_NUM) {
+			return ((channel - BAND_24_GHZ_FIRST_CH_NUM) * 5)
+					+ BAND_24_GHZ_START_FREQ_MHZ;
 		} else {
-			switch (channel) {
-				case 36:
-				case 44:
-					// HT40 with secondary channel above primary
-					return 116;
-				case 40:
-				case 48:
-					// HT40 with secondary channel below primary
-					return 117;
-				case 52:
-				case 60:
-					// HT40 with secondary channel above primary
-					return  119;
-				case 56:
-				case 64:
-					// HT40 with secondary channel below primary
-					return 120;
-				case 100:
-				case 108:
-				case 116:
-				case 124:
-				case 132:
-				case 140:
-					// HT40 with secondary channel above primary
-					return 122;
-				case 104:
-				case 112:
-				case 120:
-				case 128:
-				case 136:
-				case 144:
-					// HT40 with secondary channel below primary
-					return 123;
-				case 149:
-				case 157:
-					// HT40 with secondary channel above primary
-					return 126;
-				case 153:
-				case 161:
-					// HT40 with secondary channel below primary
-					return 127;
+			return UNSPECIFIED;
+		}
+	}
+	if (band == band5Ghz) {
+		if (channel >= BAND_5_GHZ_FIRST_CH_NUM && channel <= BAND_5_GHZ_LAST_CH_NUM) {
+			return ((channel - BAND_5_GHZ_FIRST_CH_NUM) * 5)
+					+ BAND_5_GHZ_START_FREQ_MHZ;
+		} else {
+			return UNSPECIFIED;
+		}
+	}
+	if (band == band6Ghz) {
+		if (channel >= BAND_6_GHZ_FIRST_CH_NUM && channel <= BAND_6_GHZ_LAST_CH_NUM) {
+			if (channel == 2) {
+				return BAND_6_GHZ_OP_CLASS_136_CH_2_FREQ_MHZ;
 			}
+			return ((channel - BAND_6_GHZ_FIRST_CH_NUM) * 5)
+					+ BAND_6_GHZ_START_FREQ_MHZ;
+		} else {
+			return UNSPECIFIED;
 		}
-		// Error
-		return 0;
 	}
-
-	// 6GHz Band
-	if ((band & band6Ghz) != 0) {
-		// Channels 1, 5. 9, 13, ...
-		if ((channel & 0x03) == 0x01) {
-			// 20MHz channel
-			return 131;
+	if (band == band60Ghz) {
+		if (channel >= BAND_60_GHZ_FIRST_CH_NUM && channel <= BAND_60_GHZ_LAST_CH_NUM) {
+			return ((channel - BAND_60_GHZ_FIRST_CH_NUM) * 2160)
+					+ BAND_60_GHZ_START_FREQ_MHZ;
+		} else {
+			return UNSPECIFIED;
 		}
-		// Channels 3, 11, 19, 27, ...
-		if ((channel & 0x07) == 0x03) {
-			// 40MHz channel
-			return 132;
-		}
-		// Channels 7, 23, 39, 55, ...
-		if ((channel & 0x0F) == 0x07) {
-			// 80MHz channel
-			return 133;
-		}
-		// Channels 15, 47, 69, ...
-		if ((channel & 0x1F) == 0x0F) {
-			// 160MHz channel
-			return 134;
-		}
-		if (channel == 2) {
-			// 20MHz channel
-			return 136;
-		}
-		// Error
-		return 0;
 	}
+	return UNSPECIFIED;
+}
 
-	if ((band & band60Ghz) != 0) {
-		if (1 <= channel && channel <= 8) {
-			return 180;
-		} else if (9 <= channel && channel <= 15) {
-			return 181;
-		} else if (17 <= channel && channel <= 22) {
-			return 182;
-		} else if (25 <= channel && channel <= 29) {
-			return 183;
-		}
-		// Error
-		return 0;
+int get_oper_center_freq_6g_seg0_idx(int chwidth, int channel)
+{
+	switch (chwidth) {
+	case 20:
+		return channel;
+	case 40:
+		if ((channel & 0x7) == 0x1)
+			return channel + 2;
+		return channel - 2;
+	case 80:
+		return (channel & 0xFF1) + 6;
+	case 160:
+		return (channel & 0xFE1) + 14;
+	case 320:
+		return (channel & 0xFC1) + 30;
+	default:
+		return -1;
 	}
+}
 
-	return 0;
+/*
+ * Get the center_segment0 value for a given set of
+ * bandwidth, band and channel.
+ */
+
+int get_oper_center_freq_seg0_idx(int chwidth, int band, int channel)
+{
+	int ch_base;
+	int period;
+
+	if (band & band6Ghz)
+		return get_oper_center_freq_6g_seg0_idx(chwidth, channel);
+
+	if (channel >= 36 && channel <= 64)
+		ch_base = 36;
+	else if (channel >= 100 && channel <= 144)
+		ch_base = 100;
+	else
+		ch_base = 149;
+
+	period = (channel % ch_base) * 5 / chwidth;
+	return ch_base + ((period * chwidth) / 5) + ((chwidth - 20) / 10);
 }
 
 bool validatePassphrase(int passphrase_len, int min_len, int max_len)
@@ -612,42 +568,6 @@ std::string CreateHostapdConfig(
 		return "";
 	}
 
-	std::string channel_config_as_string;
-	bool isFirst = true;
-	if (channelParams.enableAcs) {
-		std::string freqList_as_string;
-		for (const auto &range :
-			channelParams.acsChannelFreqRangesMhz) {
-			if (!isFirst) {
-				freqList_as_string += ",";
-			}
-			isFirst = false;
-
-			if (range.startMhz != range.endMhz) {
-				freqList_as_string +=
-					StringPrintf("%d-%d", range.startMhz, range.endMhz);
-			} else {
-				freqList_as_string += StringPrintf("%d", range.startMhz);
-			}
-		}
-		channel_config_as_string = StringPrintf(
-			"channel=0\n"
-			"acs_exclude_dfs=%d\n"
-			"freqlist=%s",
-			channelParams.acsShouldExcludeDfs,
-			freqList_as_string.c_str());
-	} else {
-		int op_class = getOpClassForChannel(
-			channelParams.channel,
-			band,
-			iface_params.hwModeParams.enable80211N,
-			iface_params.hwModeParams.enable80211AC);
-		channel_config_as_string = StringPrintf(
-			"channel=%d\n"
-			"op_class=%d",
-			channelParams.channel, op_class);
-	}
-
 	std::string hw_mode_as_string;
 	std::string enable_edmg_as_string;
 	std::string edmg_channel_as_string;
@@ -724,6 +644,8 @@ std::string CreateHostapdConfig(
 	}
 #endif /* CONFIG_IEEE80211BE */
 
+	int32_t sec_channel = 0;
+	enum oper_chan_width chanwidth = CONF_OPER_CHWIDTH_USE_HT;
 	std::string ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string;
 	switch (iface_params.hwModeParams.maximumChannelBandwidth) {
 	case ChannelBandwidth::BANDWIDTH_20:
@@ -735,9 +657,10 @@ std::string CreateHostapdConfig(
 			"he_oper_chwidth=0\n"
 #endif
 			"vht_oper_chwidth=0\n"
-			"%s", (band & band6Ghz) ? "op_class=131" : "");
+			"%s", ((band & band6Ghz) && channelParams.enableAcs) ? "op_class=131" : "");
 		break;
 	case ChannelBandwidth::BANDWIDTH_40:
+		sec_channel = 1;
 		ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = StringPrintf(
 			"ht_capab=[HT40+]\n"
 #ifdef CONFIG_IEEE80211BE
@@ -747,9 +670,11 @@ std::string CreateHostapdConfig(
 			"he_oper_chwidth=0\n"
 #endif
 			"vht_oper_chwidth=0\n"
-			"%s", (band & band6Ghz) ? "op_class=132" : "");
+			"%s", ((band & band6Ghz) && channelParams.enableAcs) ? "op_class=132" : "");
 		break;
 	case ChannelBandwidth::BANDWIDTH_80:
+		sec_channel = 1;
+		chanwidth = CONF_OPER_CHWIDTH_80MHZ;
 		ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = StringPrintf(
 			"ht_capab=[HT40+]\n"
 #ifdef CONFIG_IEEE80211BE
@@ -767,9 +692,11 @@ std::string CreateHostapdConfig(
 			(iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) ? 1 : 0,
 #endif
 			iface_params.hwModeParams.enable80211AC ? 1 : 0,
-			(band & band6Ghz) ? "op_class=133" : "");
+			((band & band6Ghz) && channelParams.enableAcs) ? "op_class=133\n" : "");
 		break;
 	case ChannelBandwidth::BANDWIDTH_160:
+		sec_channel = 1;
+		chanwidth = CONF_OPER_CHWIDTH_160MHZ;
 		ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = StringPrintf(
 			"ht_capab=[HT40+]\n"
 #ifdef CONFIG_IEEE80211BE
@@ -787,24 +714,39 @@ std::string CreateHostapdConfig(
 			(iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) ? 2 : 0,
 #endif
 			iface_params.hwModeParams.enable80211AC ? 2 : 0,
-			(band & band6Ghz) ? "op_class=134" : "");
+			((band & band6Ghz) && channelParams.enableAcs) ? "op_class=134\n" : "");
 		break;
+	case ChannelBandwidth::BANDWIDTH_320:
+		sec_channel = 1;
+		chanwidth = CONF_OPER_CHWIDTH_320MHZ;
+		FALLTHROUGH_INTENDED;
 	default:
 		if (!is_2Ghz_band_only && !is_60Ghz_used) {
+			sec_channel = 1;
 			if (iface_params.hwModeParams.enable80211AC) {
+				chanwidth = CONF_OPER_CHWIDTH_80MHZ;
 				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string =
 					"ht_capab=[HT40+]\n"
 					"vht_oper_chwidth=1\n";
 			}
 			if (band & band6Ghz) {
+				chanwidth = CONF_OPER_CHWIDTH_160MHZ;
 #ifdef CONFIG_IEEE80211BE
-				if (iface_params.hwModeParams.enable80211BE)
-					ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=137\n";
-				else
-					ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=134\n";
-#else /* CONFIG_IEEE80211BE */
-				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=134\n";
+				if (iface_params.hwModeParams.enable80211BE) {
+					chanwidth = CONF_OPER_CHWIDTH_320MHZ;
+				}
 #endif /* CONFIG_IEEE80211BE */
+				if (channelParams.enableAcs) {
+#ifdef CONFIG_IEEE80211BE
+					if (iface_params.hwModeParams.enable80211BE) {
+						ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=137\n";
+					} else {
+						ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=134\n";
+					}
+#else /* CONFIG_IEEE80211BE */
+					ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=134\n";
+#endif /* CONFIG_IEEE80211BE */
+				}
 			}
 #ifdef CONFIG_IEEE80211AX
 			if (iface_params.hwModeParams.enable80211AX) {
@@ -813,11 +755,85 @@ std::string CreateHostapdConfig(
 #endif
 #ifdef CONFIG_IEEE80211BE
 			if (iface_params.hwModeParams.enable80211BE) {
-				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "eht_oper_chwidth=1";
+				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "eht_oper_chwidth=1\n";
 			}
 #endif
 		}
 		break;
+	}
+
+	std::string channel_config_as_string;
+	bool isFirst = true;
+	if (channelParams.enableAcs) {
+		std::string freqList_as_string;
+		for (const auto &range :
+			channelParams.acsChannelFreqRangesMhz) {
+			if (!isFirst) {
+				freqList_as_string += ",";
+			}
+			isFirst = false;
+
+			if (range.startMhz != range.endMhz) {
+				freqList_as_string +=
+					StringPrintf("%d-%d", range.startMhz, range.endMhz);
+			} else {
+				freqList_as_string += StringPrintf("%d", range.startMhz);
+			}
+		}
+		channel_config_as_string = StringPrintf(
+			"channel=0\n"
+			"acs_exclude_dfs=%d\n"
+			"freqlist=%s",
+			channelParams.acsShouldExcludeDfs,
+			freqList_as_string.c_str());
+	} else {
+		enum hostapd_hw_mode mode;
+		uint8_t op_class = 0;
+		uint8_t chan = 0;
+		uint32_t freq = convertChannelToFrequencyMhz(channelParams.channel, band);
+		if (freq == UNSPECIFIED) {
+			wpa_printf(MSG_ERROR, "Failed to convert channel=%d band=%d to frequency",
+			   channelParams.channel, band);
+			return "";
+		}
+		if (is_2Ghz_band_only && iface_params.hwModeParams.enable80211N) {
+			if (channelParams.channel < 9) {
+				sec_channel = 1;
+			} else  if (channelParams.channel != BAND_24_GHZ_LAST_CH_NUM) {
+				sec_channel = -1;
+			}
+		}
+		mode = ieee80211_freq_to_channel_ext(freq, sec_channel, chanwidth, &op_class,
+						     &chan);
+		if (mode == NUM_HOSTAPD_MODES) {
+			wpa_printf(MSG_ERROR,
+			   "Could not determine operating class for"
+			   "channel=%d freq=%u band=%d sec_channel=%d chanwidth=%d",
+			   channelParams.channel, freq, band, sec_channel, chanwidth);
+			return "";
+		}
+		channel_config_as_string = StringPrintf(
+			"channel=%d\n"
+			"op_class=%d",
+			channelParams.channel, op_class);
+		if (chanwidth != CONF_OPER_CHWIDTH_USE_HT) {
+			int center_segment0 = get_oper_center_freq_seg0_idx(op_class_to_bandwidth(op_class), band,
+				channelParams.channel);
+			ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string +=
+				StringPrintf("vht_oper_centr_freq_seg0_idx=%d\n", center_segment0);
+#ifdef CONFIG_IEEE80211AX
+			if (iface_params.hwModeParams.enable80211AX) {
+				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string +=
+					StringPrintf("he_oper_centr_freq_seg0_idx=%d\n", center_segment0);
+			}
+#endif /* CONFIG_IEEE80211AX */
+#ifdef CONFIG_IEEE80211BE
+			if (iface_params.hwModeParams.enable80211BE) {
+				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string +=
+					StringPrintf("eht_oper_centr_freq_seg0_idx=%d\n", center_segment0);
+			}
+#endif /* CONFIG_IEEE80211BE */
+		}
 	}
 
 #ifdef CONFIG_INTERWORKING

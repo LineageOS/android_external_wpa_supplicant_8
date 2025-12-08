@@ -17,8 +17,6 @@
 #include <android/binder_interface_utils.h>
 #include <fuzzbinder/libbinder_ndk_driver.h>
 
-#include "aidl/mainline/mainline_supplicant.h"
-
 extern "C"
 {
 #include "utils/common.h"
@@ -35,8 +33,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     // However, wpa_supplicant_init cannot be called from the fuzzer, since it seems
     // to initialize a separate thread. For now, we can pass a nullptr to indicate that
     // core supplicant has not been initialized.
-    struct wpa_global *global = nullptr;
-    std::shared_ptr<MainlineSupplicant> service = SharedRefBase::make<MainlineSupplicant>(global);
-    fuzzService(service->asBinder().get(), FuzzedDataProvider(data, size));
+
+    // TODO: Create an instance of MainlineSupplicant and fuzz using fuzzService.
+
     return 0;
 }

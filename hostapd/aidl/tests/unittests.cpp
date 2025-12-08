@@ -66,7 +66,7 @@ class HostapdConfigTest : public testing::Test {
 
 	std::string mWlan42_tethered_config = "\ninterface=wlan42\n"
 		"driver=nl80211\n"
-		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl_wlan42\n"
+		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl\n"
 		"ssid2=31323361626364\n"
 		"channel=6\n"
 		"op_class=83\n"
@@ -87,7 +87,7 @@ class HostapdConfigTest : public testing::Test {
 		"skip_inactivity_poll = 1\n\n"
 		"interface=wlan42\n"
 		"driver=nl80211\n"
-		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl_wlan42\n"
+		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl\n"
 		"ssid2=31323361626364\n"
 		"channel=6\n"
 		"op_class=83\n"
@@ -104,7 +104,7 @@ class HostapdConfigTest : public testing::Test {
 
 	std::string mWlan42_lohs_config_no_overlay = "\ninterface=wlan42\n"
 		"driver=nl80211\n"
-		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl_wlan42\n"
+		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl\n"
 		"ssid2=31323361626364\n"
 		"channel=6\n"
 		"op_class=83\n"

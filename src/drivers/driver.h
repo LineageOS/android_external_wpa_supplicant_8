@@ -218,6 +218,7 @@ struct eht_capabilities {
 #define HOSTAPD_MODE_FLAG_HT_INFO_KNOWN BIT(0)
 #define HOSTAPD_MODE_FLAG_VHT_INFO_KNOWN BIT(1)
 #define HOSTAPD_MODE_FLAG_HE_INFO_KNOWN BIT(2)
+#define HOSTAPD_MODE_FLAG_EHT_INFO_KNOWN BIT(3)
 
 
 enum ieee80211_op_mode {
@@ -7201,6 +7202,8 @@ int channel_width_to_int(enum chan_width width);
 int ht_supported(const struct hostapd_hw_modes *mode);
 int vht_supported(const struct hostapd_hw_modes *mode);
 bool he_supported(const struct hostapd_hw_modes *hw_mode,
+		  enum ieee80211_op_mode op_mode);
+int eht_supported(const struct hostapd_hw_modes *hw_mode,
 		  enum ieee80211_op_mode op_mode);
 
 struct wowlan_triggers *

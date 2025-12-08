@@ -3001,6 +3001,7 @@ void sme_event_auth_timed_out(struct wpa_supplicant *wpa_s,
 			      union wpa_event_data *data)
 {
 	wpa_dbg(wpa_s, MSG_DEBUG, "SME: Authentication timed out");
+	wpas_notify_auth_timeout(wpa_s);
 	wpas_connection_failed(wpa_s, wpa_s->pending_bssid, NULL);
 	wpa_supplicant_mark_disassoc(wpa_s);
 }
@@ -3010,6 +3011,7 @@ void sme_event_assoc_timed_out(struct wpa_supplicant *wpa_s,
 			       union wpa_event_data *data)
 {
 	wpa_dbg(wpa_s, MSG_DEBUG, "SME: Association timed out");
+	wpas_notify_assoc_status_code(wpa_s, wpa_s->pending_bssid, 1, NULL, 0);
 	wpas_connection_failed(wpa_s, wpa_s->pending_bssid, NULL);
 	wpa_supplicant_mark_disassoc(wpa_s);
 }
@@ -3038,6 +3040,7 @@ static void sme_auth_timer(void *eloop_ctx, void *timeout_ctx)
 {
 	struct wpa_supplicant *wpa_s = eloop_ctx;
 	if (wpa_s->wpa_state == WPA_AUTHENTICATING) {
+		wpas_notify_auth_timeout(wpa_s);
 		wpa_msg(wpa_s, MSG_DEBUG, "SME: Authentication timeout");
 		sme_deauth(wpa_s, NULL);
 	}
@@ -3048,6 +3051,7 @@ static void sme_assoc_timer(void *eloop_ctx, void *timeout_ctx)
 {
 	struct wpa_supplicant *wpa_s = eloop_ctx;
 	if (wpa_s->wpa_state == WPA_ASSOCIATING) {
+		wpas_notify_auth_timeout(wpa_s);
 		wpa_msg(wpa_s, MSG_DEBUG, "SME: Association timeout");
 		sme_deauth(wpa_s, NULL);
 	}

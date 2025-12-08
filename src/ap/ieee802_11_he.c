@@ -70,7 +70,7 @@ static int ieee80211_invalid_he_cap_size(const u8 *buf, size_t len)
 	u8 ppe_thres_hdr;
 
 	cap = (struct ieee80211_he_capabilities *) buf;
-	cap_len = sizeof(*cap) - sizeof(cap->optional);
+	cap_len = sizeof(cap->he_mac_capab_info) + sizeof(cap->he_phy_capab_info);
 	if (len < cap_len)
 		return 1;
 
@@ -98,7 +98,7 @@ u8 * hostapd_eid_he_capab(struct hostapd_data *hapd, u8 *eid,
 	if (!mode)
 		return eid;
 
-	ie_size = sizeof(*cap) - sizeof(cap->optional);
+	ie_size = HE_MAX_MAC_CAPAB_SIZE + HE_MAX_PHY_CAPAB_SIZE;
 	ppet_size = ieee80211_he_ppet_size(mode->he_capab[opmode].ppet[0],
 					   mode->he_capab[opmode].phy_cap);
 

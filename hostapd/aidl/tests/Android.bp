@@ -39,6 +39,7 @@ cc_test {
     ],
     static_libs: [
         "libgtest",
+        "libhostapd_aidl",
     ],
     header_libs: [
         "hostapd_headers",

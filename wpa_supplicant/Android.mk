@@ -2009,7 +2009,7 @@ LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_MODULE := wpa_supplicant
 
 ifeq ($(WPA_SUPPLICANT_USE_AIDL), y)
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant-V4-ndk
+LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant-V5-ndk
 LOCAL_SHARED_LIBRARIES += android.system.keystore2-V1-ndk
 LOCAL_SHARED_LIBRARIES += libutils libbase
 LOCAL_SHARED_LIBRARIES += libbinder_ndk
@@ -2113,7 +2113,7 @@ LOCAL_SRC_FILES := \
     aidl/sta_network.cpp \
     aidl/supplicant.cpp
 LOCAL_SHARED_LIBRARIES := \
-    android.hardware.wifi.supplicant-V4-ndk \
+    android.hardware.wifi.supplicant-V5-ndk \
     android.system.keystore2-V1-ndk \
     libbinder_ndk \
     libbase \

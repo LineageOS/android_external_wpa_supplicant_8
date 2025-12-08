@@ -73,6 +73,7 @@ public:
 	::ndk::ScopedAStatus isDebugShowKeysEnabled(bool* _aidl_return) override;
 	::ndk::ScopedAStatus setConcurrencyPriority(IfaceType in_type) override;
 	::ndk::ScopedAStatus terminate() override;
+	::ndk::ScopedAStatus setCurrentUserIdentity(int32_t in_userId) override;
 
 private:
 	// Corresponding worker functions for the AIDL methods.
@@ -95,7 +96,7 @@ private:
 		DebugLevel level, bool show_timestamp, bool show_keys);
 	ndk::ScopedAStatus setConcurrencyPriorityInternal(IfaceType type);
 	ndk::ScopedAStatus addP2pDevInterface(struct wpa_interface iface_params);
-
+	ndk::ScopedAStatus setCurrentUserIdentityInternal(uint32_t userId);
 	// Raw pointer to the global structure maintained by the core.
 	struct wpa_global* wpa_global_;
 	// Driver name to be used for creating interfaces.

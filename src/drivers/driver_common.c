@@ -203,6 +203,21 @@ bool he_supported(const struct hostapd_hw_modes *hw_mode,
 }
 
 
+int eht_supported(const struct hostapd_hw_modes *hw_mode,
+		  enum ieee80211_op_mode op_mode)
+{
+	if (!(hw_mode->flags & HOSTAPD_MODE_FLAG_EHT_INFO_KNOWN)) {
+		/*
+		 * The driver did not indicate whether it supports EHT. Assume
+		 * it does to avoid connection issues.
+		 */
+		return 1;
+	}
+
+	return hw_mode->eht_capab[op_mode].eht_supported;
+}
+
+
 static int wpa_check_wowlan_trigger(const char *start, const char *trigger,
 				    int capa_trigger, u8 *param_trigger)
 {

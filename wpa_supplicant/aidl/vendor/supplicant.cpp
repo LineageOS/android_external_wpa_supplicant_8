@@ -42,6 +42,7 @@ constexpr char kVendorTemplateConfPath[] =
 
 constexpr char kOldStaIfaceConfPath[] = "/data/misc/wifi/wpa_supplicant.conf";
 constexpr char kOldP2pIfaceConfPath[] = "/data/misc/wifi/p2p_supplicant.conf";
+std::string kUserP2pIfaceConfPath;
 
 std::string resolveVendorConfPath(const std::string& conf_path)
 {
@@ -289,6 +290,13 @@ bool Supplicant::isValid()
 	return ndk::ScopedAStatus::ok();
 }
 
+::ndk::ScopedAStatus Supplicant::setCurrentUserIdentity(int32_t in_userId)
+{
+    return validateAndCall(
+        this, SupplicantStatusCode::FAILURE_UNKNOWN,
+        &Supplicant::setCurrentUserIdentityInternal, in_userId);
+}
+
 ndk::ScopedAStatus Supplicant::addP2pDevInterface(struct wpa_interface iface_params)
 {
 	char primary_ifname[IFNAMSIZ];
@@ -380,7 +388,21 @@ Supplicant::addP2pInterfaceInternal(const std::string& name)
 		return {nullptr, createStatusWithMsg(
 			SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
 	}
-	iface_params.confname = kP2pIfaceConfPath;
+	if (!kUserP2pIfaceConfPath.empty()) {
+		wpa_printf(MSG_INFO, "User Conf file is configured: %s",
+			kUserP2pIfaceConfPath.c_str());
+		if (ensureConfigFileExists(
+			kUserP2pIfaceConfPath, kP2pIfaceConfPath) != 0) {
+			wpa_printf(
+				MSG_ERROR, "Conf file does not exists: %s",
+				kUserP2pIfaceConfPath.c_str());
+			return {nullptr, createStatusWithMsg(
+				SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
+		}
+		iface_params.confname = kUserP2pIfaceConfPath.c_str();
+	} else {
+		iface_params.confname = kP2pIfaceConfPath;
+	}
 	std::string overlay_path = resolveVendorConfPath(kP2pIfaceConfOverlayPath);
 	int ret = access(overlay_path.c_str(), R_OK);
 	if (ret == 0) {
@@ -587,6 +609,14 @@ ndk::ScopedAStatus Supplicant::setConcurrencyPriorityInternal(IfaceType type)
 	}
 	return ndk::ScopedAStatus::ok();
 }
+
+::ndk::ScopedAStatus Supplicant::setCurrentUserIdentityInternal(uint32_t in_userId)
+{
+    kUserP2pIfaceConfPath = "/data/vendor_ce/" + std::to_string(in_userId)
+            + "/wifi/wpa/p2p_supplicant.conf";
+    return ndk::ScopedAStatus::ok();
+}
+
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

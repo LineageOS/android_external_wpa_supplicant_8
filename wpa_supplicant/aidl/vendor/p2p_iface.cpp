@@ -2278,6 +2278,7 @@ std::pair<P2pDirInfo, ndk::ScopedAStatus> P2pIface::getDirInfoInternal()
 	std::vector<uint8_t> dir_tag = std::vector<uint8_t>(DEVICE_IDENTITY_TAG_LEN);
 	// Extract MAC address
 	std::getline(dir_info_ss, mac_str, ' ');
+	mac_str.erase(std::remove(mac_str.begin(), mac_str.end(), ':'), mac_str.end());
 	if (hexstr2bin(mac_str.c_str(), mac_addr.data(), ETH_ALEN)) {
 		wpa_printf(MSG_ERROR, "Failed to get MAC address from DIR Info");
 		return {dirInfo, createStatusWithMsg(SupplicantStatusCode::FAILURE_UNKNOWN,

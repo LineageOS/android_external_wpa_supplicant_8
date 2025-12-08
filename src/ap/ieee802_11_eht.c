@@ -1481,7 +1481,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 		pos = sub_elem_end;
 
 		wpa_printf(MSG_DEBUG, "MLD: link ctrl=0x%x, " MACSTR
-			   ", nstr bitmap len=%zu",
+			   ", nstr bitmap len=%hhu",
 			   control, MAC2STR(link_info->peer_addr),
 			   link_info->nstr_bitmap_len);
 
