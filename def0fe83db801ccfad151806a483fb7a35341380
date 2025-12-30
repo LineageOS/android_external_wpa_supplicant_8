@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "b185a42e_6c350ff9",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 4550
+      },
+      "writtenOn": "2025-12-30T17:45:42Z",
+      "side": 1,
+      "message": "exynos9820-common/z3s/y2s/x1s will have to be updated",
+      "revId": "def0fe83db801ccfad151806a483fb7a35341380",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
