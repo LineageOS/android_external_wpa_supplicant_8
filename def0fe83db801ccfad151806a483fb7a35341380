@@ -16,6 +16,24 @@
       "message": "exynos9820-common/z3s/y2s/x1s will have to be updated",
       "revId": "def0fe83db801ccfad151806a483fb7a35341380",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "0288d9e1_f2adfda2",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 35850
+      },
+      "writtenOn": "2025-12-30T21:08:21Z",
+      "side": 1,
+      "message": "Done on x1s/y2s/z3s",
+      "parentUuid": "b185a42e_6c350ff9",
+      "revId": "def0fe83db801ccfad151806a483fb7a35341380",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
