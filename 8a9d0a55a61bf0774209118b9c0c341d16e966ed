@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "10c81e15_62f00f78",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 35850
+      },
+      "writtenOn": "2026-01-16T17:53:11Z",
+      "side": 1,
+      "message": "Cherry-picked from https://review.lineageos.org/c/LineageOS/android_external_wpa_supplicant_8/+/466856.",
+      "revId": "8a9d0a55a61bf0774209118b9c0c341d16e966ed",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
