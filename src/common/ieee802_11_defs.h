@@ -2680,9 +2680,8 @@ struct ieee80211_he_mu_edca_parameter_set {
 /* B21: Disabled Link Indication */
 #define RNR_TBTT_INFO_MLD_PARAM2_LINK_DISABLED  0x20
 
-/* IEEE P802.11be/D2.3, 9.4.2.311 - EHT Operation element */
-
-#define EHT_OPERATION_IE_MIN_LEN 1
+/* IEEE Std 802.11be-2024, 9.4.2.321 - EHT Operation element */
+#define EHT_OPERATION_IE_MIN_LEN                       5
 
 /* Figure 9-1002b: EHT Operation Parameters field subfields */
 #define EHT_OPER_INFO_PRESENT                          BIT(0)
