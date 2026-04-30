@@ -2513,9 +2513,8 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define RNR_BSS_PARAM_CO_LOCATED                    BIT(6)
 #define RNR_20_MHZ_PSD_MAX_TXPOWER                  255 /* dBm */
 
-/* IEEE P802.11be/D2.3, 9.4.2.311 - EHT Operation element */
-
-#define EHT_OPERATION_IE_MIN_LEN 1
+/* IEEE Std 802.11be-2024, 9.4.2.321 - EHT Operation element */
+#define EHT_OPERATION_IE_MIN_LEN 5
 
 /* Figure 9-1002b: EHT Operation Parameters field subfields */
 #define EHT_OPER_INFO_PRESENT                          BIT(0)
