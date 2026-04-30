@@ -2738,7 +2738,7 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define RNR_TBTT_INFO_MLD_PARAM2_LINK_DISABLED  0x20
 
 /* IEEE Std 802.11be-2024, 9.4.2.321 - EHT Operation element */
-#define EHT_OPERATION_ELEM_MIN_LEN                       1
+#define EHT_OPERATION_ELEM_MIN_LEN                       5
 
 /* Figure 9-1074j: EHT Operation Parameters field format */
 #define EHT_OPER_INFO_PRESENT                          BIT(0)
