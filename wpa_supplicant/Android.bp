@@ -696,6 +696,7 @@ cc_library {
         misc_undefined: [
             "unsigned-integer-overflow",
             "signed-integer-overflow",
+            "bounds",
         ],
         cfi: true,
     },
