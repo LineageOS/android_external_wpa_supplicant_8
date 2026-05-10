@@ -1072,13 +1072,13 @@ void wpas_handle_robust_av_scs_recv_action(struct wpa_supplicant *wpa_s,
 		return;
 	}
 
-	scs_resp[0] = (int *) os_zalloc(num_active_scs);
+	scs_resp[0] = os_calloc(num_active_scs, sizeof(int));
 	if (!scs_resp[0]) {
 		wpa_printf(MSG_ERROR, "Failed to allocate memory for scs_resp");
 		return;
 	}
 
-	scs_resp[1] = (int *) os_zalloc(num_active_scs);
+	scs_resp[1] = os_calloc(num_active_scs, sizeof(int));
 	if (!scs_resp[1]) {
 		os_free(scs_resp[0]);
 		wpa_printf(MSG_ERROR, "Failed to allocate memory for scs_resp");
