@@ -405,7 +405,7 @@ bool validateUsdSubscribeConfig(UsdSubscribeConfig subscribeConfig) {
 	return true;
 }
 
-struct nan_publish_params convertAidlNanPublishParamsToInternal(UsdPublishConfig publishConfig) {
+struct nan_publish_params convertAidlNanPublishParamsToInternal(const UsdPublishConfig& publishConfig) {
 	struct nan_publish_params nanPublishParams;
 	nanPublishParams.unsolicited =
 		publishConfig.publishType == UsdPublishConfig::PublishType::UNSOLICITED_ONLY
@@ -426,7 +426,7 @@ struct nan_publish_params convertAidlNanPublishParamsToInternal(UsdPublishConfig
 }
 
 struct nan_subscribe_params convertAidlNanSubscribeParamsToInternal(
-		UsdSubscribeConfig subscribeConfig) {
+		const UsdSubscribeConfig& subscribeConfig) {
 	struct nan_subscribe_params nanSubscribeParams;
 	nanSubscribeParams.active =
 		subscribeConfig.subscribeType == UsdSubscribeConfig::SubscribeType::ACTIVE_MODE;
@@ -2786,6 +2786,15 @@ ndk::ScopedAStatus StaIface::startUsdPublishInternal(
 	struct nan_publish_params nanPublishParams =
 		convertAidlNanPublishParamsToInternal(usdPublishConfig);
 
+	std::vector<int32_t> freqListCopy;
+	if (!usdPublishConfig.usdBaseConfig.freqsMhz.empty()) {
+		freqListCopy = usdPublishConfig.usdBaseConfig.freqsMhz;
+		freqListCopy.push_back(0);
+		nanPublishParams.freq_list = freqListCopy.data();
+	} else {
+		nanPublishParams.freq_list = nullptr;
+	}
+
 	int publishId = wpas_nan_publish(
 		wpa_s, usdPublishConfig.usdBaseConfig.serviceName.c_str(),
 		convertAidlServiceProtoTypeToInternal(
@@ -2822,6 +2831,15 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	struct nan_subscribe_params nanSubscribeParams =
 		convertAidlNanSubscribeParamsToInternal(usdSubscribeConfig);
+
+	std::vector<int32_t> freqListCopy;
+	if (!usdSubscribeConfig.usdBaseConfig.freqsMhz.empty()) {
+		freqListCopy = usdSubscribeConfig.usdBaseConfig.freqsMhz;
+		freqListCopy.push_back(0);
+		nanSubscribeParams.freq_list = freqListCopy.data();
+	} else {
+		nanSubscribeParams.freq_list = nullptr;
+	}
 
 	int subscribeId = wpas_nan_subscribe(
 		wpa_s, usdSubscribeConfig.usdBaseConfig.serviceName.c_str(),

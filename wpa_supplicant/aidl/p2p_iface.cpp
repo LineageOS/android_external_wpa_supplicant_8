@@ -2171,18 +2171,28 @@ P2pIface::startUsdBasedServiceDiscoveryInternal(
 	params.ttl = serviceDiscoveryConfig.timeoutInSeconds;
 	params.query_period = DEFAULT_QUERY_PERIOD_MS;
 	params.freq = NAN_USD_DEFAULT_FREQ;
+	std::vector<int32_t> freqListCopy;
+	int *all_freqs = nullptr;
 	if (serviceDiscoveryConfig.bandMask != 0) {
 		// TODO convert band to channel instead of scanning all channel frequencies.
-		params.freq_list = wpas_nan_usd_all_freqs(wpa_s);
+		// This allocates memory that needs to be freed.
+		all_freqs = wpas_nan_usd_all_freqs(wpa_s);
+		params.freq_list = all_freqs;
 	} else if (serviceDiscoveryConfig.frequencyListMhz.size() != 0) {
 		params.freq = serviceDiscoveryConfig.frequencyListMhz.front();
-		if (serviceDiscoveryConfig.frequencyListMhz.size() > 1)
-			params.freq_list = serviceDiscoveryConfig.frequencyListMhz.data() + 1;
+		if (serviceDiscoveryConfig.frequencyListMhz.size() > 1) {
+			freqListCopy.assign(
+				serviceDiscoveryConfig.frequencyListMhz.begin() + 1,
+				serviceDiscoveryConfig.frequencyListMhz.end());
+			freqListCopy.push_back(0);
+			params.freq_list = freqListCopy.data();
+		}
 	}
 	sessionId = wpas_nan_subscribe(wpa_s, serviceDiscoveryConfig.serviceName.c_str(),
 					      (enum nan_service_protocol_type)
 						  serviceDiscoveryConfig.serviceProtocolType,
 						  service_specific_info, &params, true);
+	os_free(all_freqs);
 
 	if (sessionId > 0) {
 		return {sessionId, ndk::ScopedAStatus::ok()};
