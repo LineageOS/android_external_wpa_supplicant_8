@@ -2419,13 +2419,15 @@ static int set_type4_frame_classifier(QosPolicyScsData qos_policy_data,
 	}
 
 	if (inMask & static_cast<uint32_t>(QosPolicyClassifierParamsMask::FLOW_LABEL)) {
+		// Flow label is expected to have a length of 3 bytes.
 		if (qos_policy_data.classifierParams.flowLabelIpv6.size() !=
 		    sizeof(param->ip_params.v6.flow_label)) {
 			wpa_printf(MSG_ERROR, "Invalid flow label");
 			return -1;
 		}
-		os_memcpy(param->ip_params.v6.flow_label, qos_policy_data.classifierParams.flowLabelIpv6.data(),
-			  sizeof(qos_policy_data.classifierParams.flowLabelIpv6));
+		os_memcpy(param->ip_params.v6.flow_label,
+			qos_policy_data.classifierParams.flowLabelIpv6.data(),
+			sizeof(param->ip_params.v6.flow_label));
 
 		/* Classifier Mask - bit 7 = flow level */
 		classifier_mask |= BIT(7);
