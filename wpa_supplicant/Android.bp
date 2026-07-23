@@ -741,6 +741,9 @@ cc_defaults {
     }) + select(soong_config_variable("wpa_supplicant_8", "board_wlan_bcmdhd_sae"), {
         true: ["-DCONFIG_BRCM_SAE"],
         default: [],
+    }) + select(soong_config_variable("wpa_supplicant_8", "board_wlan_mtk_gen4m"), {
+        true: ["-DCONFIG_DRIVER_NL80211_MTK"],
+        default: [],
     }),
 }
 
