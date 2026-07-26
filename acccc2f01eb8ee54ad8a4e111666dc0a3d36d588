@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "c781fdb7_5d553dcd",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 24442
+      },
+      "writtenOn": "2026-07-26T14:21:54Z",
+      "side": 1,
+      "message": "No, there is gen4m code source available for MT6897, even with ALPS history so I suggest you to take a better look.\n\nIt\u0027s not because Xiaomi didn\u0027t released it for your specific device that you can\u0027t reverse the changes that they did with a tool like Ghidra or IDA (that is if the changes that they did are absolutely required or can\u0027t be guessed from a different device).",
+      "revId": "acccc2f01eb8ee54ad8a4e111666dc0a3d36d588",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
