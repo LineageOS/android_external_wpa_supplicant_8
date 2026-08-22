@@ -127,13 +127,13 @@ enum brcm_nl80211_vendor_events {
 
 };
 
-#ifdef CONFIG_BRCM_SAE
+#if defined(CONFIG_BRCM_SAE) || defined(CONFIG_BRCM_SAE_AP)
 enum wifi_sae_key_attr {
 	BRCM_SAE_KEY_ATTR_BSSID,
 	BRCM_SAE_KEY_ATTR_PMK,
 	BRCM_SAE_KEY_ATTR_PMKID
 };
-#endif /* CONFIG_BRCM_SAE */
+#endif /* CONFIG_BRCM_SAE || CONFIG_BRCM_SAE_AP */
 
 enum wl_vendor_attr_acs_offload {
 	BRCM_VENDOR_ATTR_ACS_CHANNEL_INVALID = 0,

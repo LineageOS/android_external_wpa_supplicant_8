@@ -3506,7 +3506,7 @@ static int issue_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
 }
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
-#ifdef CONFIG_BRCM_SAE
+#if defined(CONFIG_BRCM_SAE) || defined(CONFIG_BRCM_SAE_AP)
 static int bcmdhd_set_sae_password(struct wpa_driver_nl80211_data *drv,
 				   const void *data, int len)
 {
@@ -3531,7 +3531,7 @@ static int bcmdhd_set_sae_password(struct wpa_driver_nl80211_data *drv,
 
 	return ret;
 }
-#endif /* CONFIG_BRCM_SAE */
+#endif /* CONFIG_BRCM_SAE || CONFIG_BRCM_SAE_AP */
 
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 static int key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
@@ -5406,6 +5406,16 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 	    nla_put(msg, NL80211_ATTR_SAE_PASSWORD,
 		    os_strlen(params->sae_password), params->sae_password))
 		goto fail;
+
+#ifdef CONFIG_BRCM_SAE_AP
+	/* Must reach the dongle before START_AP: wl_set_ap_passphrase() reads
+	 * net_info->passphrase while validating the beacon security IEs. */
+	if (wpa_key_mgmt_sae(params->key_mgmt_suites) && params->sae_password &&
+	    bcmdhd_set_sae_password(drv, params->sae_password,
+				    os_strlen(params->sae_password)))
+		wpa_printf(MSG_INFO,
+			   "nl80211: BRCM SAE: could not hand the AP passphrase to firmware");
+#endif /* CONFIG_BRCM_SAE_AP */
 
 	if (nl80211_put_control_port(drv, msg) < 0)
 		goto fail;

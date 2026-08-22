@@ -3440,6 +3440,40 @@ static void brcm_nl80211_sae_key_event(struct wpa_driver_nl80211_data *drv,
 }
 #endif
 
+#ifdef CONFIG_BRCM_SAE_AP
+static void brcm_nl80211_sae_key_event_ap(struct wpa_driver_nl80211_data *drv,
+					  const u8 *data, size_t len)
+{
+	struct nlattr *tb[BRCM_SAE_KEY_ATTR_PMKID + 1];
+	union wpa_event_data event;
+
+	wpa_printf(MSG_DEBUG, "nl80211: BRCM SAE key vendor event received (AP)");
+
+	if (nla_parse(tb, BRCM_SAE_KEY_ATTR_PMKID, (struct nlattr *) data,
+		      len, NULL))
+		return;
+
+	if (!tb[BRCM_SAE_KEY_ATTR_BSSID] || !tb[BRCM_SAE_KEY_ATTR_PMK] ||
+	    !tb[BRCM_SAE_KEY_ATTR_PMKID]) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: BRCM SAE key event missing attributes");
+		return;
+	}
+
+	os_memset(&event, 0, sizeof(event));
+	event.brcm_sae_key.addr = nla_data(tb[BRCM_SAE_KEY_ATTR_BSSID]);
+	event.brcm_sae_key.pmk = nla_data(tb[BRCM_SAE_KEY_ATTR_PMK]);
+	event.brcm_sae_key.pmk_len = nla_len(tb[BRCM_SAE_KEY_ATTR_PMK]);
+	event.brcm_sae_key.pmkid = nla_data(tb[BRCM_SAE_KEY_ATTR_PMKID]);
+
+	wpa_printf(MSG_DEBUG, "nl80211: BRCM SAE key for " MACSTR " len=%zu",
+		   MAC2STR(event.brcm_sae_key.addr),
+		   event.brcm_sae_key.pmk_len);
+
+	wpa_supplicant_event(drv->ctx, EVENT_BRCM_SAE_KEY, &event);
+}
+#endif /* CONFIG_BRCM_SAE_AP */
+
 static void nl80211_vendor_event_brcm(struct wpa_driver_nl80211_data *drv,
 				      u32 subcmd, u8 *data, size_t len)
 {
@@ -3458,6 +3492,11 @@ static void nl80211_vendor_event_brcm(struct wpa_driver_nl80211_data *drv,
 		brcm_nl80211_sae_key_event(drv, data, len);
 		break;
 #endif
+#ifdef CONFIG_BRCM_SAE_AP
+	case BRCM_VENDOR_EVENT_SAE_KEY:
+		brcm_nl80211_sae_key_event_ap(drv, data, len);
+		break;
+#endif /* CONFIG_BRCM_SAE_AP */
 	default:
 		wpa_printf(MSG_DEBUG,
 			   "%s: Ignore unsupported BRCM vendor event %u",
