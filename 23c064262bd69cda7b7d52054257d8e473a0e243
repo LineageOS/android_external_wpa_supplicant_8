@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e35e3297_bc765712",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 35850
+      },
+      "writtenOn": "2026-08-22T09:02:00Z",
+      "side": 1,
+      "message": "Not fully functional: My Galaxy S20 can connect with it (albeit it takes a few tries) but my MacBook cannot.",
+      "revId": "23c064262bd69cda7b7d52054257d8e473a0e243",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
