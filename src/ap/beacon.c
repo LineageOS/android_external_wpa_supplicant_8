@@ -2504,6 +2504,19 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 		}
 	}
 
+#ifdef CONFIG_BRCM_SAE_AP
+/* bcmdhd performs SAE in firmware for an AP interface, but has no AP-side
+ * nl80211 SAE offload and so never advertises SAE_OFFLOAD_AP.  The dongle
+ * still needs the password - it is delivered by the Broadcom vendor command
+ * in driver_nl80211.c - so params->sae_password must be populated regardless
+ * of that capability bit.  Without this the field stays NULL and the firmware
+ * reports "wl_set_ap_passphrase : Invalid config ... passphrase_len 0".
+ */
+#define BRCM_SAE_AP_NEEDS_PASSWORD 1
+#else
+#define BRCM_SAE_AP_NEEDS_PASSWORD 0
+#endif /* CONFIG_BRCM_SAE_AP */
+
 #ifdef CONFIG_SAE
 	/* If SAE offload is enabled, provide password to lower layer for
 	 * SAE authentication and PMK generation.
@@ -2511,7 +2524,8 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	if (wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt |
 			     hapd->conf->rsn_override_key_mgmt |
 			     hapd->conf->rsn_override_key_mgmt_2) &&
-	    (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP)) {
+	    ((hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP) ||
+	     BRCM_SAE_AP_NEEDS_PASSWORD)) {
 		if (hostapd_sae_pk_in_use(hapd->conf)) {
 			wpa_printf(MSG_ERROR,
 				   "SAE PK not supported with SAE offload");

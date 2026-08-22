@@ -2878,6 +2878,22 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		hostapd_mld_interface_freed(hapd);
 		break;
 #endif /* CONFIG_IEEE80211BE */
+#ifdef CONFIG_BRCM_SAE_AP
+	case EVENT_BRCM_SAE_KEY:
+		if (!data || !hapd->wpa_auth)
+			break;
+		wpa_printf(MSG_DEBUG,
+			   "BRCM SAE: install firmware-derived PMK for " MACSTR,
+			   MAC2STR(data->brcm_sae_key.addr));
+		if (wpa_auth_pmksa_add_sae(hapd->wpa_auth,
+					   data->brcm_sae_key.addr,
+					   data->brcm_sae_key.pmk,
+					   data->brcm_sae_key.pmk_len,
+					   data->brcm_sae_key.pmkid,
+					   WPA_KEY_MGMT_SAE, false) < 0)
+			wpa_printf(MSG_DEBUG, "BRCM SAE: failed to cache PMKSA");
+		break;
+#endif /* CONFIG_BRCM_SAE_AP */
 	default:
 		wpa_printf(MSG_DEBUG, "Unknown event %d", event);
 		break;

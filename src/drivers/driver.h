@@ -6114,6 +6114,18 @@ enum wpa_event_type {
 	 * EVENT_MLD_INTERFACE_FREED - Notification of AP MLD interface removal
 	 */
 	EVENT_MLD_INTERFACE_FREED,
+
+	/**
+	 * EVENT_BRCM_SAE_KEY - SAE PMK derived by Broadcom firmware
+	 *
+	 * Reported on bcmdhd devices that perform SAE in firmware (WL_SAE
+	 * dongle offload) for an AP interface. Carries the PMK/PMKID the
+	 * firmware derived for a peer so the authenticator can install a
+	 * PMKSA and run the 4-way handshake.
+	 *
+	 * Described in wpa_event_data.brcm_sae_key.
+	 */
+	EVENT_BRCM_SAE_KEY,
 };
 
 
@@ -7101,6 +7113,20 @@ union wpa_event_data {
 		u8 valid_links;
 		struct t2lm_mapping t2lmap[MAX_NUM_MLD_LINKS];
 	} t2l_map_info;
+
+	/**
+	 * struct brcm_sae_key - Data for EVENT_BRCM_SAE_KEY
+	 * @addr: Peer STA MAC address the PMK belongs to
+	 * @pmk: Pairwise master key derived by firmware
+	 * @pmk_len: Length of @pmk in octets
+	 * @pmkid: PMKID matching @pmk
+	 */
+	struct brcm_sae_key {
+		const u8 *addr;
+		const u8 *pmk;
+		size_t pmk_len;
+		const u8 *pmkid;
+	} brcm_sae_key;
 };
 
 /**
