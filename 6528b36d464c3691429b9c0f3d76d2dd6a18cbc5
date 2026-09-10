@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "6fbd84b0_85baf520",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 37795
+      },
+      "writtenOn": "2026-09-10T16:58:12Z",
+      "side": 1,
+      "message": "Will add Assisted-by: Claude Code:claude-opus-5 in the next patchset. ExtremeXT — before I reroll, could you check `strings $OUT/vendor/bin/hw/hostapd | grep \"BRCM SAE key\"`? If that\u0027s empty, board_wlan_bcmdhd_sae wasn\u0027t set for your device and the patch compiled away silently, which would explain the behaviour you saw.",
+      "revId": "6528b36d464c3691429b9c0f3d76d2dd6a18cbc5",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
