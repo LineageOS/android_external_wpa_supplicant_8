@@ -2680,6 +2680,24 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			wpa_printf(MSG_DEBUG,
 				   "No STA info matching port authorized event found");
 		break;
+#ifdef CONFIG_SAE
+	case EVENT_SAE_KEY:
+		/* SAE was run by the driver/firmware (e.g., bcmdhd in-dongle
+		 * SAE); cache the PMKSA so that the 4-way handshake after the
+		 * association can use it. */
+		if (!data || !hapd->wpa_auth)
+			break;
+		if (wpa_auth_pmksa_add_sae(hapd->wpa_auth,
+					   data->sae_key_info.peer_mac,
+					   data->sae_key_info.pmk,
+					   data->sae_key_info.pmk_len,
+					   data->sae_key_info.pmkid,
+					   WPA_KEY_MGMT_SAE, false) < 0)
+			wpa_printf(MSG_INFO,
+				   "SAE: Failed to add driver PMKSA for " MACSTR,
+				   MAC2STR(data->sae_key_info.peer_mac));
+		break;
+#endif /* CONFIG_SAE */
 #ifdef CONFIG_OWE
 	case EVENT_UPDATE_DH:
 		if (!data)

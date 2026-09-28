@@ -6114,6 +6114,18 @@ enum wpa_event_type {
 	 * EVENT_MLD_INTERFACE_FREED - Notification of AP MLD interface removal
 	 */
 	EVENT_MLD_INTERFACE_FREED,
+
+	/**
+	 * EVENT_SAE_KEY - SAE authentication completed by the driver (AP mode)
+	 *
+	 * Drivers that run SAE in the device firmware for an AP interface (e.g.
+	 * bcmdhd with in-dongle SAE, BRCM_VENDOR_EVENT_SAE_KEY) use this event
+	 * to hand the resulting PMK and PMKID for the peer STA to hostapd, which
+	 * then runs the 4-way handshake with it.
+	 *
+	 * Described in wpa_event_data.sae_key_info.
+	 */
+	EVENT_SAE_KEY,
 };
 
 
@@ -7101,6 +7113,20 @@ union wpa_event_data {
 		u8 valid_links;
 		struct t2lm_mapping t2lmap[MAX_NUM_MLD_LINKS];
 	} t2l_map_info;
+
+	/**
+	 * struct sae_key_info - Data for EVENT_SAE_KEY
+	 * @peer_mac: MAC address of the STA that completed SAE
+	 * @pmk: PMK derived by the driver/firmware
+	 * @pmk_len: Length of @pmk in octets
+	 * @pmkid: PMKID (PMKID_LEN octets)
+	 */
+	struct sae_key_info {
+		const u8 *peer_mac;
+		const u8 *pmk;
+		size_t pmk_len;
+		const u8 *pmkid;
+	} sae_key_info;
 };
 
 /**

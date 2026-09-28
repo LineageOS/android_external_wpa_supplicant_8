@@ -5288,6 +5288,29 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 	else if (!drv->device_ap_sme && !nl80211_get_wiphy_data_ap(bss))
 		return -ENOBUFS;
 
+#if defined(CONFIG_BRCM_SAE) && defined(HOSTAPD)
+	/*
+	 * bcmdhd runs SAE in the dongle (BRCM "sae" firmware feature). Hand it
+	 * the password before the AP is started; the resulting PMK comes back
+	 * through BRCM_VENDOR_EVENT_SAE_KEY (EVENT_SAE_KEY). Must be done
+	 * before NL80211_CMD_START_AP, which then sets the final wpa_auth
+	 * (SAE or SAE+PSK) from the RSN element.
+	 */
+	if (!beacon_set && wpa_key_mgmt_sae(params->key_mgmt_suites)) {
+		if (!params->sae_password || !params->sae_password[0])
+			wpa_printf(MSG_ERROR,
+				   "nl80211: No SAE password for BRCM dongle SAE");
+		else if (bcmdhd_set_sae_password(
+				 drv, params->sae_password,
+				 os_strlen(params->sae_password)))
+			wpa_printf(MSG_ERROR,
+				   "nl80211: Failed to set BRCM dongle SAE password");
+		else
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: BRCM dongle SAE password set");
+	}
+#endif /* CONFIG_BRCM_SAE && HOSTAPD */
+
 	wpa_hexdump(MSG_DEBUG, "nl80211: Beacon head",
 		    params->head, params->head_len);
 	wpa_hexdump(MSG_DEBUG, "nl80211: Beacon tail",

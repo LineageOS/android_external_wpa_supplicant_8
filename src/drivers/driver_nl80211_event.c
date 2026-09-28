@@ -19,7 +19,7 @@
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
 #include "driver_nl80211.h"
-#ifdef CONFIG_BRCM_SAE
+#if defined(CONFIG_BRCM_SAE) && !defined(HOSTAPD)
 #include "rsn_supp/wpa.h"
 #include "rsn_supp/wpa_i.h"
 #include "wpa_supplicant_i.h"
@@ -3413,6 +3413,44 @@ static void brcm_nl80211_acs_select_ch(struct wpa_driver_nl80211_data *drv,
 }
 
 #ifdef CONFIG_BRCM_SAE
+#ifdef HOSTAPD
+/*
+ * AP mode: the dongle ran SAE with a STA (BRCM "sae" firmware feature, the
+ * password was set with BRCM_VENDOR_SCMD_BCM_PSK at start AP). Pass the
+ * resulting PMK/PMKID on so that hostapd can run the 4-way handshake.
+ */
+static void brcm_nl80211_sae_key_event(struct wpa_driver_nl80211_data *drv,
+				       const u8 *data, size_t len)
+{
+	struct nlattr *tb[BRCM_SAE_KEY_ATTR_PMKID + 1];
+	union wpa_event_data event;
+
+	wpa_printf(MSG_DEBUG, "nl80211: BRCM SAE key vendor event received");
+
+	if (nla_parse(tb, BRCM_SAE_KEY_ATTR_PMKID, (struct nlattr *) data,
+		      len, NULL) ||
+	    !tb[BRCM_SAE_KEY_ATTR_BSSID] || !tb[BRCM_SAE_KEY_ATTR_PMK] ||
+	    !tb[BRCM_SAE_KEY_ATTR_PMKID] ||
+	    nla_len(tb[BRCM_SAE_KEY_ATTR_BSSID]) != ETH_ALEN ||
+	    nla_len(tb[BRCM_SAE_KEY_ATTR_PMKID]) != PMKID_LEN ||
+	    nla_len(tb[BRCM_SAE_KEY_ATTR_PMK]) < PMK_LEN ||
+	    nla_len(tb[BRCM_SAE_KEY_ATTR_PMK]) > PMK_LEN_MAX) {
+		wpa_printf(MSG_INFO,
+			   "nl80211: Invalid BRCM SAE key vendor event");
+		return;
+	}
+
+	os_memset(&event, 0, sizeof(event));
+	event.sae_key_info.peer_mac = nla_data(tb[BRCM_SAE_KEY_ATTR_BSSID]);
+	event.sae_key_info.pmk = nla_data(tb[BRCM_SAE_KEY_ATTR_PMK]);
+	event.sae_key_info.pmk_len = nla_len(tb[BRCM_SAE_KEY_ATTR_PMK]);
+	event.sae_key_info.pmkid = nla_data(tb[BRCM_SAE_KEY_ATTR_PMKID]);
+	wpa_printf(MSG_DEBUG, "nl80211: BRCM SAE key for " MACSTR " pmk_len=%zu",
+		   MAC2STR(event.sae_key_info.peer_mac),
+		   event.sae_key_info.pmk_len);
+	wpa_supplicant_event(drv->ctx, EVENT_SAE_KEY, &event);
+}
+#else /* HOSTAPD */
 static void brcm_nl80211_sae_key_event(struct wpa_driver_nl80211_data *drv,
                                        const u8 *data, size_t len)
 {
@@ -3438,7 +3476,8 @@ static void brcm_nl80211_sae_key_event(struct wpa_driver_nl80211_data *drv,
 
 	wpa_sm_set_pmk(sm, params.pmk, params.pmk_len, params.pmkid, params.bssid);
 }
-#endif
+#endif /* HOSTAPD */
+#endif /* CONFIG_BRCM_SAE */
 
 static void nl80211_vendor_event_brcm(struct wpa_driver_nl80211_data *drv,
 				      u32 subcmd, u8 *data, size_t len)

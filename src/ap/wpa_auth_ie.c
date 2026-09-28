@@ -1254,6 +1254,21 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 			break;
 		}
 	}
+#if defined(CONFIG_BRCM_SAE) && defined(HOSTAPD)
+	/* bcmdhd in-dongle SAE: the firmware ran SAE before this association
+	 * and the PMKSA was added from EVENT_SAE_KEY. The STA does not have to
+	 * list that PMKID in its (Re)Association Request frame, so use the
+	 * PMKSA cached for this STA. */
+	if (!sm->pmksa && sm->wpa_key_mgmt == WPA_KEY_MGMT_SAE) {
+		sm->pmksa = pmksa_cache_auth_get(wpa_auth->pmksa, sm->addr,
+						 NULL);
+		if (sm->pmksa) {
+			wpa_auth_vlogger(wpa_auth, sm->addr, LOGGER_DEBUG,
+					 "SAE: Using driver-provided PMKSA");
+			pmkid = sm->pmksa->pmkid;
+		}
+	}
+#endif /* CONFIG_BRCM_SAE && HOSTAPD */
 	for (i = 0; sm->pmksa == NULL && wpa_auth->conf.okc &&
 		     i < data.num_pmkid; i++) {
 		struct wpa_auth_okc_iter_data idata;

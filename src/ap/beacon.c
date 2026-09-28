@@ -2178,6 +2178,21 @@ static u8 * hostapd_fils_discovery(struct hostapd_data *hapd,
 #endif /* CONFIG_FILS */
 
 
+#ifdef CONFIG_SAE
+static bool hostapd_drv_sae_offload_ap(struct hostapd_data *hapd)
+{
+#if defined(CONFIG_BRCM_SAE) && defined(HOSTAPD)
+	/* bcmdhd runs SAE in the dongle; the nl80211 driver wrapper passes the
+	 * password down with BRCM_VENDOR_SCMD_BCM_PSK and the PMK comes back
+	 * with EVENT_SAE_KEY. */
+	return true;
+#else /* CONFIG_BRCM_SAE && HOSTAPD */
+	return !!(hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP);
+#endif /* CONFIG_BRCM_SAE && HOSTAPD */
+}
+#endif /* CONFIG_SAE */
+
+
 int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 			       struct wpa_driver_ap_params *params)
 {
@@ -2511,7 +2526,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	if (wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt |
 			     hapd->conf->rsn_override_key_mgmt |
 			     hapd->conf->rsn_override_key_mgmt_2) &&
-	    (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP)) {
+	    hostapd_drv_sae_offload_ap(hapd)) {
 		if (hostapd_sae_pk_in_use(hapd->conf)) {
 			wpa_printf(MSG_ERROR,
 				   "SAE PK not supported with SAE offload");

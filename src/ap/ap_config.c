@@ -1468,6 +1468,31 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 	}
 #endif /* CONFIG_SAE_PK */
 
+#if defined(CONFIG_SAE) && defined(CONFIG_BRCM_SAE) && defined(HOSTAPD)
+	/*
+	 * bcmdhd in-dongle SAE: the dongle runs SAE (hunting-and-pecking)
+	 * and the firmware builds the Beacon/Probe Response frames. Those
+	 * carry no RSNXE, because the firmware takes no RSNXE from the host
+	 * (bcmdhd's "rsnxe" iovar has no effect). If hostapd advertised
+	 * SAE H2E, its RSNXE would still go into EAPOL-Key msg 3/4. The STA
+	 * would then see an RSNXE mismatch and reject msg 3/4 with reason 17.
+	 * Use hunting-and-pecking only, like the vendor hostapd (whose WPA3
+	 * SoftAP configuration has no sae_pwe). The RSNXE then is not
+	 * advertised anywhere. (H2E is mandatory on 6 GHz; leave that alone.)
+	 */
+	if (full_config && wpa_key_mgmt_sae(bss->wpa_key_mgmt) &&
+	    !is_6ghz_op_class(conf->op_class) &&
+	    bss->sae_pwe == SAE_PWE_BOTH) {
+		wpa_printf(MSG_INFO,
+			   "SAE: bcmdhd in-dongle SAE does not support H2E; using sae_pwe=0");
+		bss->sae_pwe = SAE_PWE_HUNT_AND_PECK;
+	} else if (full_config && wpa_key_mgmt_sae(bss->wpa_key_mgmt) &&
+		   bss->sae_pwe == SAE_PWE_HASH_TO_ELEMENT) {
+		wpa_printf(MSG_WARNING,
+			   "SAE: sae_pwe=1 (H2E only) is not supported by bcmdhd in-dongle SAE; SAE stations will fail");
+	}
+#endif /* CONFIG_SAE && CONFIG_BRCM_SAE && HOSTAPD */
+
 #ifdef CONFIG_FILS
 	if (full_config && bss->fils_discovery_max_int &&
 	    (!conf->ieee80211ax || bss->disable_11ax)) {
